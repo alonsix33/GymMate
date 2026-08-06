@@ -83,3 +83,165 @@ completar los 11.
 
 Grupo B (XSS/CSP), Grupo C, y todos los hallazgos de severidad Media/Baja/
 Informativo del `FULL_CODEBASE_AUDIT.md` siguen sin tocar, como se pidió.
+
+---
+
+# Grupo B: seguridad (XSS + cabeceras)
+
+Fecha: 2026-08-06
+Alcance: los hallazgos del Grupo B de `FULL_CODEBASE_AUDIT.md` ("Requisitos de
+seguridad a incorporar en el rediseño desde el día uno"): UI-01, UI-02, GAM2-10,
+WKT-10, HIST-01, PWA-01, PWA-02. No se tocó Grupo C ni hallazgos de severidad
+Media/Baja fuera de estos IDs. El Grupo A (11 fixes de integridad de datos)
+sigue como se documentó arriba, sin cambios adicionales.
+
+## 1. Tabla de cambios
+
+| ID | Qué se cambió | Archivo:línea | Cómo se verificó |
+|----|----------------|----------------|-------------------|
+| **UI-01** | Se creó una función centralizada `escapeHtml()` (nuevo archivo `src/utils/sanitize.ts`) que escapa `& < > " '`. Se aplicó en **todos** los puntos donde se interpola texto de usuario dentro de `innerHTML` encontrados en el repo (más allá de los ~5 que citaba el audit, ver sección 5 — se hizo un barrido completo, no solo los puntos nombrados): nombre de ejercicio y `data-exercise-name` en `renderExercise()`, nombre de rutina en `renderHistoryItem()`, nombre de ejercicio en `renderPRItem()` (`ui/components.ts`); nombre de rutina personalizada en `renderCustomWorkoutsInHome()`, nombre de ejercicio en `renderExerciseItem()`/`updateSelectedExercisesList()`/`renderCustomExercisesList()` (`main.ts`); nombre de ejercicio en el mensaje de PR del resumen de sesión (`session-summary.ts`, ver GAM2-10 abajo); y **dos puntos que el audit no había citado explícitamente**: el nombre de grupo/rutina en la tarjeta de "entrenamiento en progreso" (draft) y el `insight.message`/`insight.subtext`/`recentPR.exercise` de la tarjeta hero del Home (`ui/navigation.ts`). | `src/utils/sanitize.ts` (nuevo); `src/ui/components.ts:146,161,297,326`; `src/main.ts:338,543,588,804,809-810`; `src/ui/navigation.ts:207,240-241,347` | `npx tsc --noEmit` limpio; barrido con grep de todos los `innerHTML =` del repo (48 sitios) y de todo campo interpolado con `.nombre`/`.grupo`/nombre de usuario, verificando caso por caso si el dato es de usuario o estático/generado (detalle en sección 5) |
+| **UI-02** | Los 3 puntos donde `main.ts` interpolaba un nombre de ejercicio escrito por el usuario dentro de un string `onclick="fn('${...}')"` (rompible con una comilla simple) se reemplazaron por atributos `data-*` (ya pasados por `escapeHtml()`) leídos vía `addEventListener` después de `container.innerHTML = html`, siguiendo el mismo patrón que la app ya usaba para `data-guidance-btn`/`data-custom-workout`. Ya no hay ningún nombre de ejercicio ni de rutina interpolado directamente en un string de JavaScript. | `src/main.ts:588-611` (`updateSelectedExercisesList`), `src/main.ts:790-846` (`renderCustomExercisesList`, dos botones: seleccionar y eliminar) | `npx tsc --noEmit` limpio; grep de verificación en sección 2 (no queda ningún `onclick="...${...}"` que interpole un campo de texto libre de usuario) |
+| **GAM2-10** | `pr.exercise` (nombre de ejercicio, potencialmente proveniente de un CSV importado de otra persona) ahora pasa por `escapeHtml()` antes de interpolarse en el popup de resumen de XP de la sesión. Mismo patrón de UI-01, misma función centralizada. | `src/ui/gamification/session-summary.ts:109` | `npx tsc --noEmit` limpio |
+| **WKT-10** | Mismo hallazgo que UI-01 desde el ángulo de la sesión activa (`renderExercise()` en `ui/components.ts`) — ya cubierto por el fix de UI-01, sin trabajo adicional. | `src/ui/components.ts:146` (mismo cambio que UI-01) | Cubierto por la verificación de UI-01 |
+| **HIST-01** | `escapeCSV()` ahora antepone un apóstrofe (`'`) a cualquier valor que empiece con `=`, `+`, `-`, `@`, tab o retorno de carro, **antes** de aplicar el escape de comillas/envoltura existente — mitigación estándar de OWASP contra CSV/Excel Formula Injection. Un nombre de ejercicio como `=HYPERLINK(...)` ahora se exporta como texto plano, no como fórmula ejecutable al abrir el CSV en Excel/Sheets. | `src/features/history.ts:95-109` | `npx tsc --noEmit` limpio; `npm test` (21/21) en verde; revisión manual de que el prefijo se aplica antes del wrap-in-quotes para que ambas protecciones compongan correctamente |
+| **PWA-01** | Se añadieron a `netlify.toml` las cabeceras de bajo riesgo pendientes: `Strict-Transport-Security` (HSTS, 1 año + subdominios), `Referrer-Policy: strict-origin-when-cross-origin`, y `Permissions-Policy` desactivando explícitamente cámara/micrófono/geolocalización/pago/USB/sensores de movimiento (APIs que la app confirmadamente no usa, verificado por grep antes de desactivarlas). `X-Content-Type-Options`/`X-Frame-Options` ya existían, sin cambios. | `netlify.toml:25-37` | TOML parseado y validado (`python3 -c "import tomllib; tomllib.load(...)"` sin errores); `npm run build` limpio |
+| **PWA-02** | Se añadió `Content-Security-Policy-Report-Only` (no bloqueante) con `script-src 'self'` (sin `'unsafe-inline'`), `style-src 'self' 'unsafe-inline' https://fonts.googleapis.com` (la app usa 36 atributos `style=""` inline para barras de progreso/colores dinámicos, y carga Google Fonts vía `@import`), `font-src` a `fonts.gstatic.com`, `img-src` incluyendo `raw.githubusercontent.com` (origen real de las imágenes de guía de ejercicios), y el resto de directivas (`connect-src`, `worker-src`, `object-src 'none'`, `frame-ancestors 'none'`, etc.) ajustadas a lo que la app realmente usa hoy. **No se puso en modo bloqueante**: aunque los fixes 1-3 cerraron los `onclick` que sí eran explotables (interpolaban texto de usuario), quedan confirmadas **24 atributos `onclick` en `index.html`** más otros ~48 en los `.ts` (numérico/estático, no explotables, ver sección 2) que romperían la interacción de la app bajo un `script-src 'self'` sin `'unsafe-inline'`. Eliminarlos todos es el refactor grande que el propio audit marca como "decisión de producto" ligada a la migración de UI — fuera de alcance de esta sesión. | `netlify.toml:31-37` | TOML válido; revisión de que el Report-Only no bloquea nada (solo reporta), así que no hay riesgo de romper producción |
+
+## 2. Confirmación de que no quedan `onclick`/similares inline con datos de usuario interpolados
+
+Grep de verificación ejecutado tras los 4 primeros fixes:
+
+```
+$ grep -rn 'onclick="[^"]*\${' src/ --include=*.ts
+
+src/ui/components.ts:31   onclick="${onClick}"                                     → parámetro de función (iconButton/buttonPrimary/buttonSecondary);
+                                                                                       únicos call-sites reales pasan `window.deleteHistoryItem(${index})`
+                                                                                       (índice numérico, no texto de usuario)
+src/ui/components.ts:50   onclick="${onClick}"                                     → ídem (buttonSecondary, sin call-sites — código muerto, UI-07)
+src/ui/components.ts:75   onclick="${onClick}"                                     → ídem (iconButton)
+src/ui/components.ts:130  onclick="window.toggleCompletado(${index})"              → índice numérico
+src/features/cardio.ts:78 onclick="window.selectCardioMode('${mode}')"             → `mode: CardioMode`, literal fijo ('tabata'|'emom'|...), nunca texto libre
+src/features/profile.ts:466 onclick="window.deleteMeasurementEntry('${m.date}')"   → `date: new Date().toISOString()`, generado por la app, no editable por el usuario
+src/main.ts:343           onclick="...deleteCustomWorkout('${workout.id}')"        → `id: \`custom_${Date.now()}\``, generado por la app, no el nombre que el usuario escribió
+src/main.ts:539            onclick="window.toggleExerciseSelection('${nombre}', ...)" → renderExerciseItem() solo recibe nombres de `trainingGroups`/`allExercises`
+                                                                                       (base de datos estática); los ejercicios personalizados NO pasan por esta función
+                                                                                       (usan renderCustomExercisesList(), ya convertido a data-*/addEventListener)
+```
+
+Los 8 restantes se revisaron uno por uno y **ninguno interpola texto libre escrito por el usuario** — todos son índices numéricos, valores de un enum fijo, IDs/fechas generados por la app, o nombres que solo pueden venir de la base de datos estática de ejercicios. Los 3 que sí lo hacían (`main.ts:589,789,797` en la numeración pre-fix, citados por UI-02) ya no existen como `onclick` — se convirtieron a `data-*` + `addEventListener`.
+
+También se confirmó que `escapeHtml()` se usa en 5 archivos (`sanitize.ts` mismo, `components.ts`, `main.ts`, `navigation.ts`, `session-summary.ts`) y que no quedó ningún `innerHTML` de los 48 sitios del repo interpolando `.nombre`/`.grupo`/nombre de rutina sin pasar por ella (barrido completo documentado en la sección 5).
+
+## 3. Estado de la CSP: Report-Only, no bloqueante
+
+Se dejó en modo **Report-Only** (`Content-Security-Policy-Report-Only`, no
+`Content-Security-Policy`) porque, aun después de cerrar los vectores de XSS
+reales (fixes 1-3), la app sigue usando `onclick` inline en:
+
+- **24 atributos** en `index.html` (botones de navegación, guardar, timer, etc. — todos llaman funciones sin argumentos o con literales fijos)
+- **~48 más** repartidos en `.ts` (`cardio.ts`: 37, `components.ts`: 4, `navigation.ts`: 3, `main.ts`: 2, `profile.ts`: 1, `modals.ts`: 1) — todos confirmados no explotables (sección 2), pero un `script-src 'self'` sin `'unsafe-inline'` los bloquearía a todos por igual, sean o no seguros, rompiendo el guardado de entrenamientos, el timer, cardio, y la navegación completa.
+
+Eliminar la totalidad de esos `onclick` (no solo los explotables) es exactamente
+el "refactor grande / decisión de producto" que `PWA-02` describe — ligado a la
+migración de la UI a un framework con event binding nativo (React/Svelte), no a
+esta sesión de seguridad puntual. El modo Report-Only permite:
+1. Confirmar en producción (vía la consola del navegador o un endpoint de
+   reporte, si se configura `report-to`/`report-uri` más adelante) que la
+   política propuesta es correcta antes de activarla.
+2. Servir de especificación exacta para el equipo que haga el rediseño de UI:
+   el día que se elimine el último `onclick` inline, cambiar
+   `Content-Security-Policy-Report-Only` a `Content-Security-Policy` en
+   `netlify.toml` activa la protección sin tocar nada más.
+
+## 4. Confirmación de build/typecheck/test
+
+```
+$ npx tsc --noEmit
+(sin salida — limpio)
+
+$ npm test -- --run
+✓ src/tests/calculations.test.ts  (21 tests)
+Test Files  1 passed (1)
+     Tests  21 passed (21)
+
+$ npm run build
+✓ 1594 modules transformed
+✓ built in ~8s
+PWA v0.17.5 — 26 entries precacheadas
+
+$ python3 -c "import tomllib; tomllib.load(open('netlify.toml','rb'))"
+TOML OK
+```
+
+## 5. Decisiones tomadas que no estaban explícitas en el fix original
+
+1. **UI-01 se aplicó en más puntos de los que el audit citó explícitamente.**
+   El audit decía "al menos 5 puntos" y listaba `renderExercise`,
+   `renderHistoryItem`, `renderCustomWorkoutsInHome`, listas del Workout
+   Builder. Se hizo un barrido completo de los 48 `innerHTML =` del repo
+   buscando cualquier campo `.nombre`/`.grupo`/nombre de usuario sin escapar,
+   y se encontraron **dos puntos adicionales no citados**: `renderPRItem()`
+   (nombre de ejercicio en la lista de PRs) y, más importante, la tarjeta
+   "Entrenamiento en progreso" (`draft.grupo`) y la tarjeta hero de Home
+   (`insight.message`/`insight.subtext`/`recentPR.exercise` en
+   `ui/navigation.ts`) — esta última se dispara automáticamente cada vez que
+   el usuario abre la app con un draft pendiente o un insight generado, sin
+   ninguna acción explícita, por lo que es una superficie de ataque más
+   directa que varias de las citadas originalmente. Se documentan en la
+   sección 5 del reporte porque el mandato explícito era "aplicarla en TODOS
+   los puntos", no solo los nombrados.
+
+2. **Se revisó `coach.ts` e `insights.ts` y se decidió NO tocarlos.**
+   Ambos interpolan `ejercicio.nombre` sin escapar en sus strings de
+   `message`, pero esos strings se asignan con `element.textContent = ...`
+   (no `innerHTML`) en el único lugar donde se renderizan
+   (`coach.ts:329-338`) — `textContent` no interpreta HTML, así que no hay
+   vector ahí pese a la interpolación sin escapar. Se decidió no envolver
+   estos casos en `escapeHtml()` innecesariamente (produciría entidades
+   `&amp;`/`&#39;` visibles como texto literal en la UI, un bug cosmético
+   nuevo) — la mitigación correcta ya existe (`textContent`), solo se
+   documenta aquí para que quede constancia de que se revisó y no es un
+   punto pendiente.
+
+3. **`renderExerciseItem()` (`main.ts`, antes línea 538) no se convirtió a
+   `addEventListener` pese a tener el mismo patrón `onclick="fn('${nombre}')"`
+   que UI-02.** Se verificó que sus únicos llamadores (`renderExerciseGroups()`)
+   solo le pasan nombres de `trainingGroups`/`allExercises`, ambos arrays
+   estáticos hardcodeados en el repo — nunca ejercicios personalizados
+   (esos se renderizan aparte, en `renderCustomExercisesList()`, que sí se
+   convirtió). No es explotable hoy. Se dejó como `onclick` para no exceder
+   el alcance ("no refactorices más allá de lo necesario"); si en el futuro
+   esta función empieza a recibir nombres de ejercicios personalizados,
+   deberá convertirse con el mismo patrón.
+
+4. **`deleteCustomWorkout('${workout.id}')` (`main.ts:343`) tampoco se
+   convirtió.** `workout.id` se genera siempre como `` `custom_${Date.now()}` ``
+   (`main.ts`, `saveCustomWorkout()`), nunca a partir de texto que el usuario
+   escriba — no es el vector que UI-02 describe (que es específicamente sobre
+   el *nombre*, no el id). Revisado y confirmado seguro.
+
+5. **Permissions-Policy: se verificó con grep que la app no usa cámara,
+   micrófono, geolocalización, pagos, USB ni sensores de movimiento antes de
+   desactivar esas APIs.** Si el futuro AI Coach o alguna función de
+   redespecializado más adelante necesitara alguna de ellas, esta cabecera
+   tendría que revisarse — se deja documentado aquí explícitamente para que
+   no se olvide en el rediseño.
+
+6. **CSP con `style-src 'unsafe-inline'` explícito, en vez de intentar
+   eliminar los estilos inline en esta sesión.** Hay 36 atributos
+   `style="..."` inline (mayormente anchos de barra de progreso y colores
+   dinámicos en `ui/gamification/gamification-ui.ts`). Migrarlos a clases
+   CSS o a `style.setProperty()` vía JS (que si sería compatible con una CSP
+   estricta) es un refactor de UI no relacionado con el vector de XSS que
+   esta sesión debía cerrar — se deja fuera, documentado, y `'unsafe-inline'`
+   en `style-src` es de severidad mucho menor que en `script-src` (no permite
+   ejecución de JavaScript).
+
+## 6. Qué queda fuera de esta sesión (recordatorio)
+
+Grupo C y todos los hallazgos de severidad Media/Baja/Informativo del
+`FULL_CODEBASE_AUDIT.md` siguen sin tocar. Dentro del propio Grupo B, la
+eliminación completa de `onclick` inline (para poder pasar la CSP a modo
+bloqueante) y la migración de estilos inline a clases CSS quedan explícitamente
+para la sesión de rediseño de UI, como anticipaba `PWA-02` en el audit
+original.

@@ -27,3 +27,13 @@
   [headers.values]
     X-Frame-Options = "DENY"
     X-Content-Type-Options = "nosniff"
+    Strict-Transport-Security = "max-age=31536000; includeSubDomains"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    Permissions-Policy = "camera=(), microphone=(), geolocation=(), payment=(), usb=(), magnetometer=(), gyroscope=(), accelerometer=()"
+    # CSP en modo Report-Only (no bloqueante): la UI actual todavía usa onclick
+    # inline en varios puntos (index.html y varios .ts) que no interpolan datos
+    # de usuario y por tanto no son vector de XSS, pero sí romperían una CSP
+    # estricta con script-src 'self' sin 'unsafe-inline'. Ver FIXES_APPLIED.md
+    # (sección Grupo B) para el detalle de qué queda pendiente de eliminar
+    # antes de poder pasar esta CSP a modo bloqueante.
+    Content-Security-Policy-Report-Only = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https://raw.githubusercontent.com; connect-src 'self'; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"

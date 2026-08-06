@@ -93,7 +93,16 @@ export function loadPRs(): void {
 // ==========================================
 
 function escapeCSV(value: string | number): string {
-  const str = String(value);
+  let str = String(value);
+
+  // Neutralizar CSV/Excel Formula Injection: si el valor empieza con un
+  // caracter que Excel/Sheets interpreta como inicio de fórmula (=,+,-,@,
+  // tab o retorno de carro), anteponer un apóstrofe para forzar texto plano
+  // (mitigación estándar de OWASP).
+  if (/^[=+\-@\t\r]/.test(str)) {
+    str = `'${str}`;
+  }
+
   // Escapar comillas dobles y envolver en comillas si contiene caracteres especiales
   if (str.includes(',') || str.includes('"') || str.includes('\n')) {
     return `"${str.replace(/"/g, '""')}"`;

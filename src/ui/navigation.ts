@@ -6,6 +6,7 @@ import { initializeCalculators } from '@/features/calculators';
 import { loadProfile } from '@/features/profile';
 import { refreshIcons, icon } from '@/utils/icons';
 import { generateInsight } from '@/utils/insights';
+import { escapeHtml } from '@/utils/sanitize';
 
 // ==========================================
 // NAVEGACIÓN ENTRE TABS
@@ -203,7 +204,7 @@ function updateHeroSection(): void {
           <p class="text-[10px] text-yellow-400 font-bold uppercase tracking-wide truncate flex items-center gap-1">
             <i data-lucide="trophy" class="w-3 h-3"></i> PR Reciente!
           </p>
-          <p class="text-sm text-white font-bold truncate">${recentPR.exercise}</p>
+          <p class="text-sm text-white font-bold truncate">${escapeHtml(recentPR.exercise)}</p>
           <p class="text-xs text-yellow-300/80 font-semibold truncate">${recentPR.weight}kg x ${recentPR.reps} reps</p>
         </div>
       </div>
@@ -236,8 +237,8 @@ function updateHeroSection(): void {
               <i data-lucide="${insight.icon}" class="w-4 h-4 ${insight.textClass}"></i>
             </div>
             <div class="flex-1 min-w-0">
-              <p class="text-sm font-semibold text-white">${insight.message}</p>
-              ${insight.subtext ? `<p class="text-xs text-white/60 mt-0.5">${insight.subtext}</p>` : ''}
+              <p class="text-sm font-semibold text-white">${escapeHtml(insight.message)}</p>
+              ${insight.subtext ? `<p class="text-xs text-white/60 mt-0.5">${escapeHtml(insight.subtext)}</p>` : ''}
             </div>
           </div>
         </div>
@@ -342,7 +343,7 @@ function updateResumeWorkoutCard(): void {
           ${icon('close', 'sm')}
         </button>
       </div>
-      <h3 class="font-bold text-text-primary mb-1">${draft.grupo}</h3>
+      <h3 class="font-bold text-text-primary mb-1">${escapeHtml(draft.grupo)}</h3>
       <p class="text-xs text-text-muted mb-3">Guardado: ${draftDate}</p>
       <div class="flex gap-2">
         <button

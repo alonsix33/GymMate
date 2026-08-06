@@ -3,6 +3,7 @@ import { icon, refreshIcons } from '@/utils/icons';
 import { muscleIcon } from '@/utils/muscle-icons';
 import { getExerciseGuidance } from '@/data/training-groups';
 import { formatDate } from '@/utils/calculations';
+import { escapeHtml } from '@/utils/sanitize';
 
 // ==========================================
 // COMPONENTES DE UI REUTILIZABLES
@@ -142,7 +143,7 @@ export function renderExercise(
               ejercicio.completado
                 ? 'text-emerald-400 line-through decoration-emerald-400 decoration-2'
                 : 'text-white'
-            }">${ejercicio.nombre}</h3>
+            }">${escapeHtml(ejercicio.nombre)}</h3>
             <div class="flex items-center gap-2 mt-1">
               <span class="text-xs text-slate-400 flex items-center gap-1">
                 ${muscleIconSvg}
@@ -157,7 +158,7 @@ export function renderExercise(
             ? `
           <button
             data-guidance-btn
-            data-exercise-name="${ejercicio.nombre}"
+            data-exercise-name="${escapeHtml(ejercicio.nombre)}"
             data-guidance-type="${guidance.type}"
             data-guidance-content="${guidance.content.replace(/"/g, '&quot;')}"
             ${guidance.fallback ? `data-guidance-fallback="${guidance.fallback.replace(/"/g, '&quot;')}"` : ''}
@@ -293,7 +294,7 @@ export function renderHistoryItem(
         <div>
           <div class="flex items-center gap-2">
             ${icon('workout', 'md', 'text-accent')}
-            <h3 class="font-bold text-text-primary">${session.grupo || 'Entrenamiento'}</h3>
+            <h3 class="font-bold text-text-primary">${escapeHtml(session.grupo || 'Entrenamiento')}</h3>
           </div>
           <p class="text-sm text-text-secondary mt-1">${date}</p>
         </div>
@@ -322,7 +323,7 @@ export function renderPRItem(nombre: string, data: PRData): string {
     <div class="bg-dark-surface border border-dark-border border-l-4 border-l-status-warning rounded-xl p-4">
       <div class="flex justify-between items-start">
         <div>
-          <h3 class="font-bold text-text-primary">${nombre}</h3>
+          <h3 class="font-bold text-text-primary">${escapeHtml(nombre)}</h3>
           <p class="text-sm text-text-secondary mt-1">
             <span class="text-2xl font-bold text-status-warning">${data.peso}kg</span>
             <span class="text-text-muted ml-2">${data.sets}x${data.reps}</span>

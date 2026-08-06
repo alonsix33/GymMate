@@ -6,6 +6,7 @@ import type { SessionXPSummary, GamificationMuscleGroup, StrengthRank } from '@/
 import { RANK_COLORS, RANK_DISPLAY_NAMES } from '@/features/gamification';
 import { renderLevelBadge } from './level-badge';
 import { renderRankEmblem } from './rank-emblem';
+import { escapeHtml } from '@/utils/sanitize';
 
 /**
  * Helper para mostrar nombre de rango con estilo shiny si es Simétrico
@@ -105,7 +106,7 @@ export function renderSessionSummary(summary: SessionXPSummary): string {
             <!-- PRs XP -->
             ${summary.prXP.map(pr => `
               <div class="flex justify-between items-center">
-                <span class="text-sm text-yellow-400">🏆 PR: ${pr.exercise}</span>
+                <span class="text-sm text-yellow-400">🏆 PR: ${escapeHtml(pr.exercise)}</span>
                 <span class="text-yellow-400 font-medium">+${pr.amount} XP</span>
               </div>
             `).join('')}

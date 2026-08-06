@@ -26,11 +26,13 @@ function getItem<T>(key: string, defaultValue: T): T {
   }
 }
 
-function setItem<T>(key: string, value: T): void {
+function setItem<T>(key: string, value: T): boolean {
   try {
     localStorage.setItem(key, JSON.stringify(value));
+    return true;
   } catch (error) {
     console.error(`Error saving to localStorage: ${key}`, error);
+    return false;
   }
 }
 
@@ -65,15 +67,15 @@ export function getHistory(): HistorySession[] {
   return history;
 }
 
-export function saveHistory(history: HistorySession[]): void {
+export function saveHistory(history: HistorySession[]): boolean {
   // Mantener solo los últimos MAX_HISTORY_ITEMS
   if (history.length > MAX_HISTORY_ITEMS) {
     history.length = MAX_HISTORY_ITEMS;
   }
-  setItem(STORAGE_KEYS.HISTORY, history);
+  return setItem(STORAGE_KEYS.HISTORY, history);
 }
 
-export function addToHistory(session: HistorySession): void {
+export function addToHistory(session: HistorySession): boolean {
   // Normalizar nombres de ejercicios antes de guardar
   const normalizedSession = {
     ...session,
@@ -94,7 +96,7 @@ export function addToHistory(session: HistorySession): void {
     history.unshift(normalizedSession);
   }
 
-  saveHistory(history);
+  return saveHistory(history);
 }
 
 export function deleteFromHistory(index: number): void {
@@ -189,8 +191,8 @@ export function getSession(): SessionData | null {
   return getItem<SessionData | null>(STORAGE_KEYS.SESSION, null);
 }
 
-export function saveSession(session: SessionData): void {
-  setItem(STORAGE_KEYS.SESSION, session);
+export function saveSession(session: SessionData): boolean {
+  return setItem(STORAGE_KEYS.SESSION, session);
 }
 
 export function clearSession(): void {

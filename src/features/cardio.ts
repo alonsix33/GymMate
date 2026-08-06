@@ -908,7 +908,9 @@ function finishCardioWorkout(): void {
     totalTime: cardioState.totalTimeElapsed,
     workTime: cardioState.workTimeTotal,
     restTime: cardioState.restTimeTotal,
-    roundsCompleted: cardioState.currentRound,
+    // AMRAP lleva su propio contador de rondas (incrementado manualmente por el usuario);
+    // el resto de modos usa cardioState.currentRound.
+    roundsCompleted: cardioState.mode === 'amrap' ? amrapRounds : cardioState.currentRound,
     calories: estimateCalories(cardioState.workTimeTotal),
   };
 
@@ -918,6 +920,7 @@ function finishCardioWorkout(): void {
     mode: cardioState.mode!,
     date: new Date().toISOString(),
     savedAt: new Date().toISOString(),
+    sessionId: `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
     config: { ...cardioState.config },
     stats,
     grupo: `Cardio - ${cardioState.mode?.toUpperCase()}`,

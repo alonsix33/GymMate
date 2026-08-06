@@ -7,6 +7,15 @@ export const DRAFT_SAVE_DELAY = 15000; // 15 segundos
 export const DRAFT_MAX_AGE = 24 * 60 * 60 * 1000; // 24 horas
 export const MAX_HISTORY_ITEMS = 200;
 
+// Verificación de PR: esperar a que el usuario termine de editar la fila
+// antes de persistir un posible nuevo récord (evita capturar valores a medio escribir)
+export const PR_CHECK_DEBOUNCE_DELAY = 1200; // 1.2 segundos
+
+// Rango razonable para aceptar un valor como PR real (evita fat-finger typos)
+export const MAX_REASONABLE_PESO = 500; // kg
+export const MAX_REASONABLE_SETS = 20;
+export const MAX_REASONABLE_REPS = 100;
+
 // LocalStorage Keys
 export const STORAGE_KEYS = {
   HISTORY: 'gymmate_history',

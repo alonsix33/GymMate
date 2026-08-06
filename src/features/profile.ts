@@ -274,10 +274,53 @@ function setupBodyFatCalculation(): void {
   calculateBodyFat();
 }
 
+interface NavyBodyFatInput {
+  gender: 'male' | 'female' | null | undefined;
+  height: number;
+  waist: number;
+  neck: number;
+  hips?: number;
+}
+
+/**
+ * Formula Navy para % de grasa corporal (unica implementacion, usada tanto
+ * por el preview en vivo como por el guardado de la medicion). Requiere
+ * genero explicito: no asume ningun valor por defecto si el perfil no lo
+ * tiene configurado.
+ */
+function calculateNavyBodyFat({
+  gender,
+  height,
+  waist,
+  neck,
+  hips = 0,
+}: NavyBodyFatInput): number | null {
+  if (!gender) return null;
+  if (!(height > 0) || !(waist > 0) || !(neck > 0)) return null;
+
+  let bodyFat: number | null = null;
+
+  if (gender === 'female') {
+    // Female formula: 163.205 * log10(waist + hips - neck) - 97.684 * log10(height) - 78.387
+    if (hips > 0 && waist + hips > neck) {
+      bodyFat = 163.205 * Math.log10(waist + hips - neck) - 97.684 * Math.log10(height) - 78.387;
+    }
+  } else {
+    // Male formula: 86.010 * log10(waist - neck) - 70.041 * log10(height) + 36.76
+    if (waist > neck) {
+      bodyFat = 86.010 * Math.log10(waist - neck) - 70.041 * Math.log10(height) + 36.76;
+    }
+  }
+
+  if (bodyFat === null || !(bodyFat > 0) || bodyFat >= 60) return null;
+
+  return bodyFat;
+}
+
 function calculateBodyFat(): void {
   const profile = getProfile();
   const height = profile.height;
-  const gender = profile.gender || 'male';
+  const gender = profile.gender;
 
   const waist = parseFloat((document.getElementById('measureWaist') as HTMLInputElement)?.value || '0');
   const neck = parseFloat((document.getElementById('measureNeck') as HTMLInputElement)?.value || '0');
@@ -285,29 +328,24 @@ function calculateBodyFat(): void {
 
   const estimateEl = document.getElementById('bodyFatEstimate');
   const valueEl = document.getElementById('bodyFatValue');
+  const noteEl = document.getElementById('bodyFatNote');
 
   if (!estimateEl || !valueEl || !height) return;
 
-  // Navy method requires: height, waist, neck, and hips (for women)
-  let bodyFat: number | null = null;
-
-  if (waist > 0 && neck > 0 && height > 0) {
-    if (gender === 'male') {
-      // Male formula: 86.010 * log10(waist - neck) - 70.041 * log10(height) + 36.76
-      if (waist > neck) {
-        bodyFat = 86.010 * Math.log10(waist - neck) - 70.041 * Math.log10(height) + 36.76;
-      }
-    } else {
-      // Female formula: 163.205 * log10(waist + hips - neck) - 97.684 * log10(height) - 78.387
-      if (hips > 0 && (waist + hips) > neck) {
-        bodyFat = 163.205 * Math.log10(waist + hips - neck) - 97.684 * Math.log10(height) - 78.387;
-      }
-    }
+  if (!gender) {
+    // No calcular con un genero por defecto oculto: pedir explicitamente el dato
+    estimateEl.classList.remove('hidden');
+    valueEl.textContent = '--%';
+    if (noteEl) noteEl.textContent = 'Configura tu género en el perfil para estimar la grasa corporal';
+    return;
   }
 
-  if (bodyFat !== null && bodyFat > 0 && bodyFat < 60) {
+  const bodyFat = calculateNavyBodyFat({ gender, height, waist, neck, hips });
+
+  if (bodyFat !== null) {
     estimateEl.classList.remove('hidden');
     valueEl.textContent = bodyFat.toFixed(1) + '%';
+    if (noteEl) noteEl.textContent = 'Calculado con el método Navy';
   } else {
     estimateEl.classList.add('hidden');
   }
@@ -329,21 +367,21 @@ function saveMeasurement(): void {
     thighRight: parseFloat((document.getElementById('measureThighRight') as HTMLInputElement)?.value || '0') || undefined,
   };
 
-  // Calculate body fat if possible
+  // Calcular grasa corporal solo si el perfil tiene genero configurado
+  // (sin defaults ocultos — misma formula que el preview en vivo)
   const height = profile.height;
-  const gender = profile.gender || 'male';
+  const gender = profile.gender;
 
-  if (measurement.waist && measurement.neck && height) {
-    if (gender === 'male' && measurement.waist > measurement.neck) {
-      measurement.bodyFat = 86.010 * Math.log10(measurement.waist - measurement.neck) - 70.041 * Math.log10(height) + 36.76;
-    } else if (gender === 'female' && measurement.hips && (measurement.waist + measurement.hips) > measurement.neck) {
-      measurement.bodyFat = 163.205 * Math.log10(measurement.waist + measurement.hips - measurement.neck) - 97.684 * Math.log10(height) - 78.387;
-    }
+  const bodyFat = calculateNavyBodyFat({
+    gender,
+    height: height || 0,
+    waist: measurement.waist || 0,
+    neck: measurement.neck || 0,
+    hips: measurement.hips || 0,
+  });
 
-    // Validate body fat range
-    if (measurement.bodyFat && (measurement.bodyFat < 0 || measurement.bodyFat > 60)) {
-      measurement.bodyFat = undefined;
-    }
+  if (bodyFat !== null) {
+    measurement.bodyFat = bodyFat;
   }
 
   addBodyMeasurement(measurement);

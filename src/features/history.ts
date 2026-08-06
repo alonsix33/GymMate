@@ -2,6 +2,11 @@ import { getHistory, deleteFromHistory, getPRs, saveHistory, updatePR } from '@/
 import { renderHistoryItem, renderPRItem, refreshIcons } from '@/ui/components';
 import { icon } from '@/utils/icons';
 import { normalizeExerciseName } from '@/utils/exercise-normalizer';
+import {
+  MAX_REASONABLE_PESO,
+  MAX_REASONABLE_SETS,
+  MAX_REASONABLE_REPS,
+} from '@/constants';
 
 // ==========================================
 // CARGAR HISTORIAL
@@ -285,7 +290,9 @@ function parseSpanishDate(dateStr: string): string {
   return dateStr;
 }
 
-export function importFromCSV(file: File): Promise<{ imported: number; duplicates: number }> {
+export function importFromCSV(
+  file: File
+): Promise<{ imported: number; duplicates: number; rejected: number; rejectedDetails: string[] }> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
 
@@ -313,25 +320,56 @@ export function importFromCSV(file: File): Promise<{ imported: number; duplicate
           return;
         }
 
-        // Parsear filas
+        // Parsear filas, validando tipos y rangos razonables antes de aceptarlas
         const rows: ParsedCSVRow[] = [];
+        const rejectedDetails: string[] = [];
+
         for (let i = 1; i < lines.length; i++) {
           const values = parseCSVLine(lines[i]);
-          if (values.length >= 10) {
-            rows.push({
-              fecha: values[0],
-              grupo: values[1],
-              ejercicio: values[2],
-              sets: parseInt(values[3]) || 0,
-              reps: parseInt(values[4]) || 0,
-              peso: parseFloat(values[5]) || 0,
-              esMancuerna: values[6]?.toLowerCase() === 'sí' || values[6]?.toLowerCase() === 'si',
-              grupoMuscular: values[7] || 'Core',
-              volumen: parseFloat(values[8]) || 0,
-              completado: values[9]?.toLowerCase() === 'sí' || values[9]?.toLowerCase() === 'si',
-              volumenTotalSesion: parseFloat(values[10]) || 0,
-            });
+          const rowNumber = i + 1; // +1 por la fila de encabezado
+
+          if (values.length < 10) {
+            rejectedDetails.push(`Fila ${rowNumber}: faltan columnas`);
+            continue;
           }
+
+          const ejercicio = values[2]?.trim();
+          if (!ejercicio) {
+            rejectedDetails.push(`Fila ${rowNumber}: falta el nombre del ejercicio`);
+            continue;
+          }
+
+          const sets = parseInt(values[3], 10);
+          if (!Number.isFinite(sets) || sets <= 0 || sets > MAX_REASONABLE_SETS) {
+            rejectedDetails.push(`Fila ${rowNumber} (${ejercicio}): sets inválido ("${values[3]}")`);
+            continue;
+          }
+
+          const reps = parseInt(values[4], 10);
+          if (!Number.isFinite(reps) || reps <= 0 || reps > MAX_REASONABLE_REPS) {
+            rejectedDetails.push(`Fila ${rowNumber} (${ejercicio}): reps inválido ("${values[4]}")`);
+            continue;
+          }
+
+          const peso = parseFloat(values[5]);
+          if (!Number.isFinite(peso) || peso <= 0 || peso > MAX_REASONABLE_PESO) {
+            rejectedDetails.push(`Fila ${rowNumber} (${ejercicio}): peso inválido ("${values[5]}")`);
+            continue;
+          }
+
+          rows.push({
+            fecha: values[0],
+            grupo: values[1],
+            ejercicio,
+            sets,
+            reps,
+            peso,
+            esMancuerna: values[6]?.toLowerCase() === 'sí' || values[6]?.toLowerCase() === 'si',
+            grupoMuscular: values[7] || 'Core',
+            volumen: parseFloat(values[8]) || 0,
+            completado: values[9]?.toLowerCase() === 'sí' || values[9]?.toLowerCase() === 'si',
+            volumenTotalSesion: parseFloat(values[10]) || 0,
+          });
         }
 
         if (rows.length === 0) {
@@ -339,10 +377,14 @@ export function importFromCSV(file: File): Promise<{ imported: number; duplicate
           return;
         }
 
-        // Agrupar por fecha + grupo para reconstruir sesiones
+        // Agrupar por fecha + grupo + volumen total de sesión para reconstruir sesiones.
+        // Incluir el volumen total en la clave (no solo fecha+grupo) evita fusionar dos
+        // sesiones reales distintas del mismo día y grupo muscular en una sola: cada
+        // sesión original lleva su propio "Volumen Total Sesión" repetido en sus filas,
+        // así que dos sesiones distintas casi nunca coinciden en ese valor.
         const sessionMap = new Map<string, ParsedCSVRow[]>();
         rows.forEach(row => {
-          const key = `${row.fecha}|${row.grupo}`;
+          const key = `${row.fecha}|${row.grupo}|${row.volumenTotalSesion}`;
           if (!sessionMap.has(key)) {
             sessionMap.set(key, []);
           }
@@ -354,7 +396,7 @@ export function importFromCSV(file: File): Promise<{ imported: number; duplicate
         const existingKeys = new Set(
           existingHistory.map(s => {
             const date = new Date(s.savedAt || s.date).toLocaleDateString('es-ES');
-            return `${date}|${s.grupo}`;
+            return `${date}|${s.grupo}|${s.volumenTotal}`;
           })
         );
 
@@ -362,7 +404,7 @@ export function importFromCSV(file: File): Promise<{ imported: number; duplicate
         let duplicates = 0;
 
         sessionMap.forEach((sessionRows, key) => {
-          // Verificar si ya existe
+          // Verificar si ya existe (misma fecha + grupo + volumen total = ya importada)
           if (existingKeys.has(key)) {
             duplicates++;
             return;
@@ -384,7 +426,10 @@ export function importFromCSV(file: File): Promise<{ imported: number; duplicate
             sessionId: `imported_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
             grupo: firstRow.grupo,
             type: 'weights',
-            volumenTotal: firstRow.volumenTotalSesion || sessionRows.reduce((sum, r) => sum + r.volumen, 0),
+            // Sumar siempre las filas del grupo (nunca tomar solo el valor de la
+            // primera fila) para no subestimar el volumen si el agrupado incluyera
+            // más de un origen.
+            volumenTotal: sessionRows.reduce((sum, r) => sum + r.volumen, 0),
             volumenPorGrupo,
             ejercicios: sessionRows.map(row => ({
               nombre: row.ejercicio,
@@ -441,7 +486,12 @@ export function importFromCSV(file: File): Promise<{ imported: number; duplicate
           });
         }
 
-        resolve({ imported: newSessions.length, duplicates });
+        resolve({
+          imported: newSessions.length,
+          duplicates,
+          rejected: rejectedDetails.length,
+          rejectedDetails,
+        });
       } catch (error) {
         reject(new Error('Error al procesar el archivo CSV: ' + (error as Error).message));
       }
@@ -472,6 +522,16 @@ export function triggerCSVImport(): void {
       message += `✅ ${result.imported} entrenamiento(s) importado(s)`;
       if (result.duplicates > 0) {
         message += `\n⚠️ ${result.duplicates} duplicado(s) omitido(s)`;
+      }
+      if (result.rejected > 0) {
+        message += `\n❌ ${result.rejected} fila(s) rechazada(s) por datos inválidos:`;
+        const preview = result.rejectedDetails.slice(0, 5);
+        preview.forEach(detail => {
+          message += `\n   • ${detail}`;
+        });
+        if (result.rejectedDetails.length > preview.length) {
+          message += `\n   • ...y ${result.rejectedDetails.length - preview.length} más`;
+        }
       }
 
       alert(message);

@@ -167,6 +167,10 @@ export function renderFromDraft(): void {
   // sessionData ya debe estar restaurado por restoreFromDraft
   if (sessionData.ejercicios.length === 0) return;
 
+  // Capturar los PRs vigentes ahora, igual que al iniciar una sesión nueva,
+  // para no comparar contra PRs desactualizados de antes de recargar la página.
+  captureSessionStartPRs();
+
   // Renderizar UI usando todos los ejercicios como obligatorios
   // (ya que no tenemos la info original del grupo)
   renderWorkoutUI(sessionData.grupo, sessionData.ejercicios, sessionData.ejercicios.length);
@@ -457,11 +461,19 @@ export function saveWorkout(): void {
 
   const saveMessage = document.getElementById('saveMessage');
   if (saveMessage) {
-    saveMessage.textContent =
-      result === 'updated'
-        ? 'Entrenamiento actualizado correctamente'
-        : 'Entrenamiento guardado correctamente';
-    saveMessage.classList.remove('hidden');
+    if (result === 'failed') {
+      saveMessage.textContent =
+        'No se pudo guardar el entrenamiento (almacenamiento lleno o no disponible). Tus datos siguen en el borrador automático — libera espacio e inténtalo de nuevo.';
+      saveMessage.classList.remove('hidden', 'text-status-success');
+      saveMessage.classList.add('text-status-error');
+    } else {
+      saveMessage.textContent =
+        result === 'updated'
+          ? 'Entrenamiento actualizado correctamente'
+          : 'Entrenamiento guardado correctamente';
+      saveMessage.classList.remove('hidden', 'text-status-error');
+      saveMessage.classList.add('text-status-success');
+    }
 
     setTimeout(() => {
       saveMessage.classList.add('hidden');
@@ -642,8 +654,12 @@ export async function confirmRPE(): Promise<void> {
   };
 
   // Save session with RPE if there are pending changes
-  if (pendingSaveBeforeRPE) {
-    saveCurrentSession(rpeData);
+  if (pendingSaveBeforeRPE && saveCurrentSession(rpeData) === 'failed') {
+    alert(
+      'No se pudo guardar el entrenamiento (almacenamiento lleno o no disponible). ' +
+      'Tus datos siguen en el borrador automático. Libera espacio e inténtalo de nuevo.'
+    );
+    return;
   }
 
   // Process gamification if session has data (always process even if already saved)
@@ -662,8 +678,12 @@ export async function confirmRPE(): Promise<void> {
 
 export async function skipRPE(): Promise<void> {
   // Save session without RPE if there are pending changes
-  if (pendingSaveBeforeRPE) {
-    saveCurrentSession();
+  if (pendingSaveBeforeRPE && saveCurrentSession() === 'failed') {
+    alert(
+      'No se pudo guardar el entrenamiento (almacenamiento lleno o no disponible). ' +
+      'Tus datos siguen en el borrador automático. Libera espacio e inténtalo de nuevo.'
+    );
+    return;
   }
 
   // Process gamification if session has data (always process even if already saved)

@@ -22,6 +22,7 @@ import {
 import { getPRs } from '@/utils/storage';
 import { processCompletedSession } from '@/features/gamification';
 import { showSessionSummary } from '@/ui/gamification';
+import { MAX_REASONABLE_PESO, MAX_REASONABLE_SETS, MAX_REASONABLE_REPS } from '@/constants';
 
 // ==========================================
 // CARGAR GRUPO DE ENTRENAMIENTO
@@ -190,9 +191,17 @@ export function updateEjercicio(index: number): void {
   // Validar entrada decimal (bloquear comas)
   if (!validateDecimalInput(pesoInput)) return;
 
-  const sets = parseFloat(setsInput.value) || 0;
-  const reps = parseFloat(repsInput.value) || 0;
-  const peso = parseFloat(pesoInput.value) || 0;
+  // Rango razonable (WKT-03): sin esto, un signo negativo o un valor
+  // astronómico pasa intacto a calculateVolume() y de ahí al PR persistido,
+  // al volumen de sesión y a las estadísticas.
+  const sets = clampToRange(parseFloat(setsInput.value) || 0, 0, MAX_REASONABLE_SETS);
+  const reps = clampToRange(parseFloat(repsInput.value) || 0, 0, MAX_REASONABLE_REPS);
+  const peso = clampToRange(parseFloat(pesoInput.value) || 0, 0, MAX_REASONABLE_PESO);
+
+  // Reflejar el valor corregido en el input si el usuario escribió algo fuera de rango
+  setsInput.value = sets === 0 ? '' : String(sets);
+  repsInput.value = reps === 0 ? '' : String(reps);
+  pesoInput.value = peso === 0 ? '' : String(peso);
 
   // Actualizar estado
   updateExerciseState(index, sets, reps, peso);
@@ -244,6 +253,12 @@ function validateDecimalInput(input: HTMLInputElement): boolean {
     setTimeout(() => input.classList.remove('animate-shake'), 300);
   }
   return true;
+}
+
+/** Recorta un valor a un rango [min, max] razonable (WKT-03) */
+function clampToRange(value: number, min: number, max: number): number {
+  if (Number.isNaN(value)) return min;
+  return Math.min(max, Math.max(min, value));
 }
 
 // ==========================================
@@ -569,8 +584,9 @@ function showRPEModal(): void {
     // Show modal
     modal.classList.add('active');
 
-    // Refresh icons
-    import('@/utils/icons').then(({ refreshIcons }) => refreshIcons());
+    // Refresh icons (ya importado estáticamente arriba — un import() dinámico
+    // aquí no lograba ningún code-splitting real, PWA-08)
+    refreshIcons();
   }
 }
 

@@ -2,6 +2,11 @@
   command = "npm run build"
   publish = "dist"
 
+[build.environment]
+  # PWA-09: sin esto, Netlify usa su versión de Node por defecto (puede
+  # cambiar entre builds); se fija a la misma que @types/node en devDependencies.
+  NODE_VERSION = "20"
+
 [[redirects]]
   from = "/*"
   to = "/index.html"

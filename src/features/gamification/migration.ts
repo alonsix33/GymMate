@@ -19,6 +19,7 @@ import {
   ACHIEVEMENT_XP_V2,
   STREAK_XP,
   STREAK_MILESTONES,
+  GAMIFICATION_STORAGE_KEYS,
 } from './constants';
 import {
   calculateVolumeXP,
@@ -423,7 +424,9 @@ function calculateRetroactiveRankXP(
  */
 export function needsMigration(): boolean {
   try {
-    const saved = localStorage.getItem('gymmate_gamification');
+    // CORE-11: usar la constante compartida en vez de una clave mágica
+    // duplicada (riesgo de desincronización si se renombra la clave real).
+    const saved = localStorage.getItem(GAMIFICATION_STORAGE_KEYS.STATE);
     if (!saved) return true;
 
     const state = JSON.parse(saved) as GamificationState;

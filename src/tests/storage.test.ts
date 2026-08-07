@@ -5,9 +5,11 @@ import {
   saveCurrentSession,
   saveDraftNow,
   resetSession,
+  checkForExistingDraft,
 } from '../state/session';
 import { saveWorkout, finishWorkout, selectRPE, confirmRPE, skipRPE } from '../features/workout';
 import { getDraft, getHistory } from '../utils/storage';
+import { STORAGE_KEYS } from '../constants';
 import type { ExerciseData, MuscleGroup } from '../types';
 
 // ==========================================
@@ -163,5 +165,47 @@ describe('confirmRPE / skipRPE (CORE-01) — no terminan la sesión si el guarda
     expect(window.alert).toHaveBeenCalled();
     expect(getDraft()).not.toBeNull();
     expect(getHistory().length).toBe(0);
+  });
+});
+
+// ==========================================
+// CORE-02 — un draft corrupto se trata como inválido, no como recuperable
+// ==========================================
+
+describe('checkForExistingDraft (CORE-02)', () => {
+  it('trata como no-draft y limpia un draft sin draftTimestamp (antes: NaN nunca expira)', () => {
+    localStorage.setItem(
+      STORAGE_KEYS.DRAFT,
+      JSON.stringify({ grupo: 'Pecho', ejercicios: [], volumenTotal: 0, volumenPorGrupo: {} })
+    );
+
+    const { hasDraft, draft } = checkForExistingDraft();
+
+    expect(hasDraft).toBe(false);
+    expect(draft).toBeNull();
+    expect(getDraft()).toBeNull(); // se limpió de localStorage
+  });
+
+  it('trata como no-draft un draft sin ejercicios (antes: TypeError en renderFromDraft)', () => {
+    localStorage.setItem(
+      STORAGE_KEYS.DRAFT,
+      JSON.stringify({ grupo: 'Pecho', draftTimestamp: Date.now(), volumenTotal: 0 })
+    );
+
+    const { hasDraft } = checkForExistingDraft();
+
+    expect(hasDraft).toBe(false);
+    expect(getDraft()).toBeNull();
+  });
+
+  it('acepta un draft válido normalmente', () => {
+    seedSession();
+    saveDraftNow();
+
+    const { hasDraft, draft, isStale } = checkForExistingDraft();
+
+    expect(hasDraft).toBe(true);
+    expect(draft).not.toBeNull();
+    expect(isStale).toBe(false);
   });
 });

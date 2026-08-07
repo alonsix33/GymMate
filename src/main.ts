@@ -921,6 +921,26 @@ function initializeEventDelegation(): void {
 }
 
 // ==========================================
+// ATAJOS DEL MANIFEST PWA
+// ==========================================
+
+/**
+ * Lee ?action=... de la URL (los shortcuts declarados en el manifest PWA,
+ * ver vite.config.ts) y navega a la pestaña correspondiente. "workout" no
+ * tiene una pestaña propia sin una rutina ya cargada — el equivalente real
+ * de "empezar un entrenamiento nuevo" en esta app es Home (donde se elige
+ * la rutina), que ya es la vista por defecto.
+ */
+function applyManifestShortcut(): void {
+  const action = new URLSearchParams(window.location.search).get('action');
+  if (action === 'history') {
+    switchTab('history');
+  } else if (action === 'prs') {
+    switchTab('prs');
+  }
+}
+
+// ==========================================
 // INICIALIZACIÓN
 // ==========================================
 
@@ -957,6 +977,11 @@ function init(): void {
 
   // Mostrar home por defecto
   showHome();
+
+  // Atajos del manifest PWA (?action=workout|history|prs): antes no hacían
+  // nada — abrir la app desde el ícono largo-presionado en Android/desktop
+  // siempre caía en Home sin importar el atajo elegido.
+  applyManifestShortcut();
 
   // Ocultar bottom nav cuando el teclado virtual está activo
   initializeKeyboardHandler();

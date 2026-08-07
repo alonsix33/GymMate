@@ -226,6 +226,20 @@ export function checkForExistingDraft(): {
     return { hasDraft: false, draft: null, isStale: false };
   }
 
+  // Validar forma mínima antes de ofrecerlo como recuperable (CORE-02): un
+  // draftTimestamp faltante/corrupto da NaN, que nunca es "> DRAFT_MAX_AGE"
+  // (el draft jamás expiraría), y un ejercicios faltante rompe
+  // renderFromDraft() con un TypeError al pulsar "Continuar".
+  const hasValidShape =
+    typeof draft.draftTimestamp === 'number' &&
+    Number.isFinite(draft.draftTimestamp) &&
+    Array.isArray(draft.ejercicios);
+
+  if (!hasValidShape) {
+    clearDraft();
+    return { hasDraft: false, draft: null, isStale: false };
+  }
+
   const draftAge = Date.now() - draft.draftTimestamp;
   const isStale = draftAge > DRAFT_MAX_AGE;
 

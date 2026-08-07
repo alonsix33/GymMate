@@ -380,10 +380,21 @@ export function showCardioConfig(): void {
 // AJUSTAR CONFIGURACIÓN
 // ==========================================
 
+// Piso mínimo por campo: un piso genérico de 5 rompía "rounds" (cuyo default
+// puede ser menor, ej. Circuito empieza en 3) y hacía que "duration" cayera
+// en valores que no son múltiplos de 60, mostrando fracciones de minuto
+// (CARDIO-06, CARDIO-07).
+const CONFIG_MIN_VALUES: Partial<Record<keyof CardioConfig, number>> = {
+  rounds: 1,
+  duration: 60, // mismo tamaño de paso que los botones +/- (60s = 1 min)
+};
+const DEFAULT_CONFIG_MIN = 5;
+
 export function adjustCardioConfig(key: keyof CardioConfig, delta: number): void {
   const config = cardioState.config;
   const current = (config[key] as number) || 0;
-  const newValue = Math.max(5, current + delta); // Mínimo 5 segundos
+  const minValue = CONFIG_MIN_VALUES[key] ?? DEFAULT_CONFIG_MIN;
+  const newValue = Math.max(minValue, current + delta);
 
   (config as Record<string, number>)[key] = newValue;
 
@@ -576,6 +587,10 @@ export function incrementAmrapRound(): void {
 // TIMER LOGIC
 // ==========================================
 
+// Tope defensivo de "ticks" a recuperar de una sola vez (evita un bucle
+// descontrolado si el reloj del sistema saltara de forma anómala)
+const MAX_DRIFT_CATCHUP_TICKS = 3600; // 1 hora
+
 function startTimer(): void {
   if (timerInterval) {
     clearInterval(timerInterval);
@@ -584,22 +599,41 @@ function startTimer(): void {
   timerInterval = setInterval(() => {
     if (cardioState.isPaused) return;
 
-    cardioState.timeRemaining--;
-    cardioState.totalTimeElapsed++;
+    // Corregir drift: en pestañas en segundo plano el navegador puede
+    // limitar setInterval a mucho menos de 1 tick/seg, desviando el timer
+    // del tiempo real transcurrido. Se calcula cuántos segundos reales
+    // pasaron desde el inicio y se "recuperan" los ticks que falten en esta
+    // misma ejecución, en vez de asumir que siempre pasó exactamente 1s.
+    const now = Date.now();
+    const realElapsed = cardioState.startTime
+      ? Math.floor((now - cardioState.startTime) / 1000)
+      : cardioState.totalTimeElapsed + 1;
+    const pendingTicks = Math.min(
+      MAX_DRIFT_CATCHUP_TICKS,
+      Math.max(1, realElapsed - cardioState.totalTimeElapsed)
+    );
 
-    // Track work/rest time
-    if (cardioState.currentPhase === 'work' || cardioState.currentPhase === 'emom') {
-      cardioState.workTimeTotal++;
-    } else {
-      cardioState.restTimeTotal++;
+    for (let i = 0; i < pendingTicks; i++) {
+      cardioState.timeRemaining--;
+      cardioState.totalTimeElapsed++;
+
+      // Track work/rest time
+      if (cardioState.currentPhase === 'work' || cardioState.currentPhase === 'emom') {
+        cardioState.workTimeTotal++;
+      } else {
+        cardioState.restTimeTotal++;
+      }
+
+      // Check if phase ended
+      if (cardioState.timeRemaining <= 0) {
+        handlePhaseEnd();
+        // finishCardioWorkout() limpia timerInterval al terminar el workout;
+        // si ya terminó, no seguir procesando ticks pendientes.
+        if (!timerInterval) return;
+      }
     }
 
     updateTimerDisplay();
-
-    // Check if phase ended
-    if (cardioState.timeRemaining <= 0) {
-      handlePhaseEnd();
-    }
 
     // Play sound at 3, 2, 1
     if (cardioState.timeRemaining <= 3 && cardioState.timeRemaining > 0) {
@@ -767,7 +801,9 @@ function renderTimerView(): void {
       <div class="flex items-center gap-1 mb-6">
         ${levels.map((l, i) => `
           <div class="flex flex-col items-center">
-            <div class="w-6 h-${Math.round(l / 10)} ${i === cardioState.currentExerciseIndex ? 'bg-orange-500' : 'bg-dark-surface'} rounded-sm"></div>
+            <!-- Altura vía style inline: una clase Tailwind construida en runtime
+                 nunca aparece como texto literal, así que el JIT la purgaría -->
+            <div class="w-6 ${i === cardioState.currentExerciseIndex ? 'bg-orange-500' : 'bg-dark-surface'} rounded-sm" style="height: ${Math.round(l / 10) * 0.25}rem"></div>
             <span class="text-[10px] ${i === cardioState.currentExerciseIndex ? 'text-orange-400 font-bold' : 'text-text-muted'}">${l}s</span>
           </div>
         `).join('')}
@@ -888,7 +924,9 @@ export function toggleCardioPause(): void {
 
 export function stopCardioWorkout(): void {
   if (confirm('¿Seguro que quieres terminar el entrenamiento?')) {
-    finishCardioWorkout();
+    // Detención manual: la ronda en curso (cardioState.currentRound) todavía
+    // no se completó, a diferencia del fin natural del workout.
+    finishCardioWorkout(false);
   }
 }
 
@@ -896,12 +934,23 @@ export function stopCardioWorkout(): void {
 // FINALIZAR WORKOUT
 // ==========================================
 
-function finishCardioWorkout(): void {
+function finishCardioWorkout(completedNaturally: boolean = true): void {
   // Stop timer
   if (timerInterval) {
     clearInterval(timerInterval);
     timerInterval = null;
   }
+
+  // currentRound representa la ronda EN CURSO, no rondas completadas: solo
+  // coincide con "rondas completadas" cuando el workout terminó naturalmente
+  // (se cruzó el descanso de la última ronda). Si se detuvo a mitad de ronda,
+  // la ronda en curso no cuenta como completada.
+  const roundsCompleted =
+    cardioState.mode === 'amrap'
+      ? amrapRounds
+      : completedNaturally
+        ? cardioState.currentRound
+        : Math.max(0, cardioState.currentRound - 1);
 
   // Calculate stats
   const stats: CardioSessionStats = {
@@ -910,7 +959,7 @@ function finishCardioWorkout(): void {
     restTime: cardioState.restTimeTotal,
     // AMRAP lleva su propio contador de rondas (incrementado manualmente por el usuario);
     // el resto de modos usa cardioState.currentRound.
-    roundsCompleted: cardioState.mode === 'amrap' ? amrapRounds : cardioState.currentRound,
+    roundsCompleted,
     calories: estimateCalories(cardioState.workTimeTotal),
   };
 
@@ -1051,4 +1100,19 @@ function playBeep(long = false): void {
 
 export function initializeCardio(): void {
   // Nothing to initialize yet, views are created dynamically
+}
+
+/**
+ * Detiene el intervalo del timer de cardio sin finalizar ni guardar la
+ * sesión (CARDIO-04). Se usa al navegar fuera de la vista de cardio para
+ * que el timer no siga corriendo en segundo plano — de lo contrario podía
+ * seguir mutando cardioState y disparar finishCardioWorkout() sin que el
+ * usuario lo pidiera, o crear una condición de carrera con una sesión nueva.
+ */
+export function pauseCardioTimerOnNavigation(): void {
+  if (timerInterval) {
+    clearInterval(timerInterval);
+    timerInterval = null;
+  }
+  cardioState.isPaused = true;
 }

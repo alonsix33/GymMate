@@ -245,3 +245,435 @@ eliminación completa de `onclick` inline (para poder pasar la CSP a modo
 bloqueante) y la migración de estilos inline a clases CSS quedan explícitamente
 para la sesión de rediseño de UI, como anticipaba `PWA-02` en el audit
 original.
+
+---
+
+# Fase 1: tests de integración para los fixes de Grupo A/B
+
+Fecha: 2026-08-07
+Alcance: cerrar la brecha de verificación que Grupo A y Grupo B dejaron
+documentada (fixes verificados solo por lectura de código y trazado manual,
+sin tests automatizados). Se añadieron 5 archivos nuevos en `src/tests/`,
+organizados por dominio, más una corrección de producción que uno de los
+tests encontró en el camino.
+
+## 1. Tabla de cambios
+
+| ID | Qué se cambió | Archivo:línea | Cómo se verificó |
+|----|----------------|----------------|-------------------|
+| **CORE-01** | Tests de `saveCurrentSession()`, `saveWorkout()`, `confirmRPE()`/`skipRPE()` con `localStorage.setItem` mockeado para lanzar `QuotaExceededError` (`vi.spyOn(Storage.prototype, 'setItem')`). Verifican que el resultado es `'failed'`, que no se persiste nada, que el draft no se borra, y que `confirmRPE`/`skipRPE` muestran `alert()` y no llegan a `endSession()`/reload. | `src/tests/storage.test.ts` (nuevo) | `npx vitest run src/tests/storage.test.ts` — 7 tests, todos en verde |
+| **HIST-02** | Tests de `importFromCSV()`: dos sesiones reales del mismo día+grupo con distinto volumen total NO se fusionan (se importan como 2), un re-import exacto SÍ se reconoce como duplicado, y el volumen se suma correctamente sobre todas las filas agrupadas (no solo la primera). | `src/tests/history.test.ts` (nuevo) | 16 tests en el archivo, todos en verde |
+| **HIST-03** | Tests de `importFromCSV()`: filas con `sets`/`reps`/`peso` fuera de rango se rechazan con el motivo correcto en `rejectedDetails`, sin descartar las filas válidas de la misma sesión; un archivo donde ninguna fila es válida rechaza la promesa completa. | `src/tests/history.test.ts` | Incluido en los 16 tests de arriba |
+| **HIST-01** | Se exportó `escapeCSV()` (antes función privada) para testearla directamente. Tests cubren cada carácter neutralizado (`=`,`+`,`-`,`@`), que texto/números normales no se tocan, y que la composición con el escape de comillas/wrap existente es correcta. | `src/features/history.ts` (`export` agregado); `src/tests/history.test.ts` | Incluido en los 16 tests de arriba |
+| **CARDIO-01/CARDIO-02** | Tests de `stopCardioWorkout()`: dos sesiones consecutivas generan `sessionId` distintos y ambas persisten; el conteo real de rondas AMRAP (vía `incrementAmrapRound()`) se guarda, no un valor fijo; otros modos siguen usando `cardioState.currentRound`. | `src/tests/cardio.test.ts` (nuevo) | 4 tests en el archivo (ampliado después en Fase 2, ver abajo), todos en verde |
+| **GAM2-01/GAM2-02** | Simulación completa de 7 sesiones reales en 7 días consecutivos (`processCompletedSession()` llamado en orden, con reloj falso vía `vi.useFakeTimers()`/`vi.setSystemTime()`) que cruza el milestone de racha de 7 días y una subida de rango. Verifica que `migrateExistingData()` nunca da menos XP que el acumulado en vivo, que `streakMilestones` queda poblado retroactivamente, y — el mecanismo específico del fix — que **sin** pasar `existingAchievements` el logro `streak_7` se pierde tras romperse la racha, pero **con** `existingAchievements` se preserva. | `src/tests/gamification.test.ts` (nuevo) | 5 tests, todos en verde |
+| **UI-01/UI-02** | Tests de `escapeHtml()` (los 5 caracteres peligrosos) y de `renderExercise()`/`renderHistoryItem()`/`renderPRItem()` con un nombre malicioso (`<script>...</script>Curl'"`): verifican que el HTML generado no contiene el `<script>` crudo, y que al insertarse en un DOM real (`container.innerHTML = ...`) no se crea ningún `<script>` ejecutable y el texto aparece literal vía `textContent`. | `src/tests/sanitize.test.ts` (nuevo) | 9 tests, todos en verde |
+| **WKT-04/HIST-06** *(hallazgo nuevo, ver sección 2)* | Test adicional para la fórmula de Brzycki con `reps >= 37` (antes no cubierta por ningún test). | `src/tests/calculations.test.ts` | 4 tests nuevos añadidos al archivo existente |
+
+## 2. Hallazgo nuevo y fix aplicado durante la Fase 1
+
+Escribir el test de "el recálculo nunca da menos XP que el acumulado en vivo"
+(GAM2-01) **falló** en el primer intento: con un PR grande desde cero
+(ejercicio nuevo, mejora de 60kg), el recálculo retroactivo daba **menos**
+XP que el sistema en vivo (1398 vs 1588). La causa: `calculateRetroactiveXP()`
+todavía usaba una aproximación plana para el XP de PRs
+(`prCount * PR_XP.minor`, heredada de antes del fix de Grupo A — GAM2-01 solo
+había añadido racha y rango, no había tocado esta parte) en vez de clasificar
+cada mejora real como hace el motor en vivo (`getNewPRsInSession()` +
+`calculatePRXP()`), que para una mejora de 60kg cae en el tier "exceptional"
+(mucho más XP que "minor").
+
+**Fix aplicado**: nueva función `calculateRetroactivePRXP()` en
+`migration.ts` que recorre el historial cronológicamente, reconstruye el
+mejor peso visto hasta el momento por ejercicio, y clasifica cada mejora con
+`calculatePRXP()` — igual que el motor en vivo. Reemplaza la aproximación
+plana. Se eliminó el parámetro `prs` (ya no usado) de `calculateRetroactiveXP()`.
+
+Archivo: `src/features/gamification/migration.ts:277-330` aprox. (numeración
+tras el fix).
+
+## 3. Confirmación de build/typecheck/test
+
+```
+$ npx tsc --noEmit
+(sin salida — limpio)
+
+$ npx vitest run
+✓ src/tests/calculations.test.ts  (21 tests)
+✓ src/tests/gamification.test.ts  (5 tests)
+✓ src/tests/history.test.ts       (16 tests)
+✓ src/tests/cardio.test.ts        (4 tests)
+✓ src/tests/sanitize.test.ts      (9 tests)
+✓ src/tests/storage.test.ts       (7 tests)
+Test Files  6 passed (6)
+     Tests  62 passed (62)
+
+$ npm run build
+✓ built in ~8s
+```
+
+## 4. Veredicto del subagente verificador (Fase 1)
+
+Ver sección **"Veredictos de los subagentes verificadores"** al final de
+este documento.
+
+---
+
+# Fase 2: Grupo C (paralelo, no bloqueante) + higiene de infraestructura
+
+Fecha: 2026-08-07
+Alcance: `FULL_CODEBASE_AUDIT.md`, sección "C. Se puede arreglar en paralelo,
+sin bloquear nada". El Grupo C listado en el audit agrupa ~40 hallazgos
+(CORE-02 a CORE-13, WKT-03 a WKT-09, CARDIO-03 a CARDIO-17, PROF-02 a
+PROF-12, PWA-03/04/05/08/09) de severidad y esfuerzo muy dispares. Siguiendo
+el mismo criterio de triage que usa el propio audit en sus secciones D/E, se
+aplicó un subconjunto de ~19 fixes concretos priorizando: (a) bugs
+funcionales reales de severidad Alta/Media con esfuerzo Trivial/Pequeño, (b)
+las tres categorías que pidió explícitamente esta sesión (timer de cardio,
+validaciones de input, higiene de infraestructura), y (c) descartando código
+muerto (reservado para Fase 3) y cualquier ítem que requiriera una decisión
+de producto o un refactor de alcance amplio. La lista completa de ítems
+deferidos con su razonamiento está en la sección 3.
+
+## 1. Tabla de cambios
+
+### Timer de cardio (precisión/drift)
+
+| ID | Qué se cambió | Archivo:línea | Cómo se verificó |
+|----|----------------|----------------|-------------------|
+| **CARDIO-05** | `startTimer()` ahora calcula cuántos segundos reales pasaron desde `cardioState.startTime` en cada tick (`Date.now()`) y "recupera" los ticks que falten en la misma ejecución del `setInterval`, en vez de asumir que siempre pasó exactamente 1s. Corrige la desviación acumulada en pestañas en segundo plano (throttling del navegador) para timers largos (AMRAP 20+ min). Tope defensivo de 3600 ticks por recuperación para evitar un bucle descontrolado si el reloj saltara de forma anómala. | `src/features/cardio.ts` (`startTimer()`) | `npx tsc --noEmit` limpio; revisión manual del bucle de catch-up y su guard de fin de sesión (`if (!timerInterval) return`) |
+| **CARDIO-04** | Nueva función exportada `pauseCardioTimerOnNavigation()` que detiene `timerInterval` sin finalizar/guardar la sesión. Se invoca desde `hideCardioViews()` en `navigation.ts` (compartida por `switchTab()` y `showHome()`), así que el timer ya no sigue corriendo en segundo plano al navegar fuera de la vista de cardio — antes podía disparar `finishCardioWorkout()` sin que el usuario lo pidiera, o crear una condición de carrera con una sesión nueva. | `src/features/cardio.ts`; `src/ui/navigation.ts` (`hideCardioViews()`) | 2 tests nuevos en `cardio.test.ts` |
+| **CARDIO-06** | El piso de `adjustCardioConfig()` pasó de un valor genérico de 5 para cualquier campo a un mapa `CONFIG_MIN_VALUES` por campo (`rounds: 1`). Antes, Circuito (default 3 rondas) saltaba a 5 rondas en el primer toque de "−", 100% reproducible. | `src/features/cardio.ts` (`adjustCardioConfig()`) | 3 tests nuevos en `cardio.test.ts` |
+| **CARDIO-07** | Mismo mecanismo que CARDIO-06: el piso de `duration` (AMRAP) pasó a 60s (el mismo tamaño de paso que los botones +/-), así nunca cae en un valor que no sea múltiplo de 60 y el display ("Duración (minutos)") nunca muestra una fracción como "0.0833...". | `src/features/cardio.ts` (`CONFIG_MIN_VALUES`) | Cubierto por los mismos tests de CARDIO-06 |
+| **CARDIO-09** | La altura de las barras de nivel de pirámide pasó de una clase Tailwind construida en runtime (`` `h-${n}` ``, nunca aparece como texto literal → el JIT la purga, altura 0) a un `style="height: ...rem"` inline, que no depende del escaneo de contenido de Tailwind. | `src/features/cardio.ts` (render de niveles de pirámide) | `npx tsc --noEmit` limpio; inspección visual del cálculo (`Math.round(l/10) * 0.25rem`, replica la escala de espaciado de Tailwind) |
+| **CARDIO-11** | `finishCardioWorkout()` ahora recibe `completedNaturally: boolean`. En detención manual (`stopCardioWorkout()`), `roundsCompleted` resta 1 a `cardioState.currentRound` (la ronda en curso no estaba completada); en fin natural del workout, se mantiene igual que antes. Nunca reporta rondas negativas. | `src/features/cardio.ts` (`finishCardioWorkout()`, `stopCardioWorkout()`) | 2 tests nuevos + 1 test existente actualizado en `cardio.test.ts` |
+
+### Validaciones de input
+
+| ID | Qué se cambió | Archivo:línea | Cómo se verificó |
+|----|----------------|----------------|-------------------|
+| **WKT-03** | `updateEjercicio()` ahora recorta sets/reps/peso a `[0, MAX_REASONABLE_*]` (mismas constantes compartidas de Grupo A) antes de pasarlos a `calculateVolume()`/`updateExerciseState()`, y refleja el valor corregido de vuelta en el input. Antes, un peso negativo o astronómico pasaba intacto al volumen de sesión, al desglose por grupo y (vía WKT-02) al PR persistido. | `src/features/workout.ts` (`updateEjercicio()`, nuevo helper `clampToRange()`) | `npx tsc --noEmit` limpio |
+| **WKT-04 / HIST-06** | La fórmula de Brzycki (`calculate1RM()`) acota `reps` a 36 antes de aplicar `36/(37-reps)`, evitando el denominador 0/negativo que daba `Infinity` o un resultado negativo sin sentido con `reps >= 37`. Un solo fix resuelve ambos IDs (misma función, citada desde dos ángulos distintos en el audit). | `src/utils/calculations.ts` (`calculate1RM()`) | 4 tests nuevos en `calculations.test.ts` |
+| **PROF-02 / PROF-03** | Nuevo helper `parsePositiveMeasurement()` en `profile.ts`, usado por los 9 campos de `saveMeasurement()`: descarta como "no provisto" cualquier valor `<= 0` o inválido, de forma consistente (antes un negativo se conservaba tal cual mientras que exactamente `0` se descartaba — mismo patrón `\|\| undefined` aplicado de forma inconsistente). `saveProfile()` recorta `weight`/`height` a `>= 0`. | `src/features/profile.ts` (`saveMeasurement()`, `saveProfile()`) | `npx tsc --noEmit` limpio |
+| **PROF-04** | `calculateBodyFat()` ahora distingue "el usuario no ha completado los campos todavía" (se mantiene oculto en silencio, comportamiento normal) de "el usuario ya ingresó cintura/cuello pero el resultado no es válido" (cintura ≤ cuello, o el % calculado cae fuera de 0-60): en ese segundo caso muestra un mensaje explícito en vez de ocultar el bloque sin explicación. Extiende el mecanismo de `noteEl` ya introducido en el fix de PROF-06 (Grupo B). | `src/features/profile.ts` (`calculateBodyFat()`) | `npx tsc --noEmit` limpio; revisión manual de los 3 casos (oculto normal / mensaje explicativo / resultado válido) |
+| **CORE-02** | `checkForExistingDraft()` valida la forma mínima del draft antes de ofrecerlo como recuperable: `draftTimestamp` debe ser un número finito y `ejercicios` debe ser un array. Si no, se trata como "sin draft" y se limpia de localStorage. Antes, un `draftTimestamp` corrupto daba `NaN`, que nunca es "> DRAFT_MAX_AGE" (el draft jamás expiraba), y un `ejercicios` faltante rompía `renderFromDraft()` con un `TypeError` no controlado al pulsar "Continuar". | `src/state/session.ts` (`checkForExistingDraft()`) | 3 tests nuevos en `storage.test.ts` |
+
+### Higiene de infraestructura
+
+| ID | Qué se cambió | Archivo:línea | Cómo se verificó |
+|----|----------------|----------------|-------------------|
+| **PWA-03** | Se instalaron `@vitest/ui` y `@vitest/coverage-v8` (mismo major que `vitest@^1.0.0`) como devDependencies, antes ausentes. `npm run test:ui`/`npm run test:coverage` ya no fallan por dependencia faltante. | `package.json`, `package-lock.json` | `npm run test:coverage` ejecutado de punta a punta, genera el reporte de cobertura sin error |
+| **PWA-05** | Se eliminó `public/_redirects` (regla `/* /index.html 200` duplicada exacta de la que ya declara `netlify.toml`). Una sola fuente de verdad para el redirect SPA. | `public/_redirects` (eliminado) | `npm run build` limpio; TOML de `netlify.toml` sigue siendo válido y ya cubre la misma regla |
+| **PWA-08** | Se eliminó el `import('@/utils/icons')` dinámico dentro de `showRPEModal()` en `workout.ts` — `refreshIcons` ya estaba importado estáticamente en el mismo archivo, así que el import dinámico no lograba ningún code-splitting real (solo generaba el warning de build). Se convirtieron a estáticos los dos `import('@/features/workout')` dinámicos en `navigation.ts` (`renderFromDraft`, `loadTrainingGroup`) tras verificar con grep que **no existe** ninguna dependencia circular real entre `workout.ts` y `navigation.ts` (el comentario original que advertía sobre esto no correspondía a ningún import real detectable). Ambos warnings de Vite ("dynamic import will not move module into another chunk") desaparecieron del build. | `src/features/workout.ts`, `src/ui/navigation.ts` | `npm run build` — los dos warnings específicos de PWA-08 ya no aparecen; `npx tsc --noEmit` limpio |
+| **PWA-09** | Se fijó la versión de Node: `NODE_VERSION = "20"` en `netlify.toml` (`[build.environment]`), `.nvmrc` nuevo con `20`, y `"engines": { "node": ">=20" }` en `package.json` — coherente con `@types/node@^20.10.0` ya declarado. | `netlify.toml`, `.nvmrc` (nuevo), `package.json` | TOML válido (`tomllib.load`); `npm run build` limpio |
+| **Atajos del manifest PWA** *(mencionado explícitamente en el pedido de esta fase, ya identificado en `FEATURES.md`)* | Nueva función `applyManifestShortcut()` en `main.ts`, invocada tras `showHome()` en el arranque: lee `?action=` de la URL y navega a la pestaña correspondiente (`history` → tab Historial, `prs` → tab PRs). `action=workout` no tiene pestaña propia sin una rutina cargada — su equivalente real en esta app es Home (donde se elige la rutina), que ya es la vista por defecto, así que no requiere manejo explícito. Antes, abrir la app desde cualquiera de los 3 atajos del ícono (long-press en Android/desktop) siempre caía en Home sin importar cuál se eligiera. | `src/main.ts` | `npx tsc --noEmit` limpio; revisión manual de los 3 valores de `action` contra `vite.config.ts` |
+| **CORE-03** | `resumeDraft()` ahora aplica el mismo guard `hasUnsavedData()` + `confirm()` que ya usan `loadTrainingGroup()`/`showHome()`. Antes, pulsar "Continuar" sobre un draft sobrescribía sin aviso una sesión activa distinta con cambios sin guardar. | `src/ui/navigation.ts` (`resumeDraft()`) | `npx tsc --noEmit` limpio |
+| **CORE-05** | `updateResumeWorkoutCard()` llama `clearDraft()` cuando detecta `isStale`, en vez de solo ocultar la tarjeta. El draft huérfano ya no queda en localStorage indefinidamente. | `src/ui/navigation.ts` (`updateResumeWorkoutCard()`) | `npx tsc --noEmit` limpio |
+| **CORE-06** | `getWeeklyVolume()` y `getQuickHomeStats()` en `navigation.ts` reemplazaron el acceso directo `JSON.parse(localStorage.getItem(...) \|\| '[]')` (sin try/catch) por `getHistory()` del wrapper seguro de `utils/storage.ts`. Un JSON corrupto en `gymmate_history` ya no puede romper `updateHomeUI()` completa. De paso, `getRecentPR()` (que ya tenía try/catch) se migró también a `getPRs()` para no dejar la clave mágica `'gymmate_prs'` duplicada. | `src/ui/navigation.ts` | `npx tsc --noEmit` limpio; no se tocó la lógica de racha/estadísticas en sí (ver nota en sección 3 sobre por qué no se consolidó con `calculateCurrentStreak()`) |
+| **CORE-11** | `needsMigration()` en `migration.ts` usa `GAMIFICATION_STORAGE_KEYS.STATE` en vez de la clave mágica `'gymmate_gamification'` duplicada. | `src/features/gamification/migration.ts` (`needsMigration()`) | `npx tsc --noEmit` limpio |
+
+## 2. Confirmación de build/typecheck/test
+
+```
+$ npx tsc --noEmit
+(sin salida — limpio)
+
+$ npx vitest run
+✓ src/tests/calculations.test.ts  (25 tests)
+✓ src/tests/storage.test.ts       (10 tests)
+✓ src/tests/gamification.test.ts  (5 tests)
+✓ src/tests/cardio.test.ts        (11 tests)
+✓ src/tests/sanitize.test.ts      (9 tests)
+✓ src/tests/history.test.ts       (16 tests)
+Test Files  6 passed (6)
+     Tests  76 passed (76)
+
+$ npm run build
+✓ 1594 modules transformed
+✓ built in ~4.5s
+(los 2 warnings de code-splitting de PWA-08 ya no aparecen; solo queda el
+warning genérico de tamaño de chunk >500kB, no relacionado)
+
+$ npm run test:coverage
+✓ genera reporte de cobertura completo (antes fallaba por dependencia faltante)
+```
+
+## 3. Ítems del Grupo C evaluados y deferidos deliberadamente (con razonamiento)
+
+No se intentó cerrar los ~40 hallazgos del Grupo C — igual que el propio
+audit triagea en sus secciones D/E, aquí se aplicó el mismo criterio: severidad
+× esfuerzo, y se documenta explícitamente qué queda fuera y por qué, en vez
+de dejarlo implícito.
+
+**Cardio** — CARDIO-03 (autoguardado/draft para cardio: Esfuerzo Mediano,
+es un mecanismo nuevo del tamaño del que ya existe para pesas, no un fix
+puntual). CARDIO-08 (escalado de pirámide converge a niveles planos: el
+algoritmo geométrico necesita rediseñarse con cuidado para no introducir una
+regresión visual, no es un cambio de una línea). CARDIO-10 (calorías por
+tarifa fija: hacerlo bien requiere ponderar por ejercicio usando el campo
+`calories` ya existente en `cardio-exercises.ts`, Esfuerzo Mediano). CARDIO-12
+a CARDIO-17 (código muerto o requieren decisión de producto — Grupo D/E).
+
+**WKT** — WKT-05 (detección de PR duplicada en 3 lugares, una es código
+muerto: mezcla de Fase 3 y de una decisión de producto sobre cuál es la
+fuente de verdad). WKT-06 (alias "tríceps cuerda"), WKT-07 (cola de mensajes
+del coach), WKT-08 (`AudioContext` sin cerrar), WKT-09 (coma decimal en
+sets/reps): todos triviales individualmente, pero se priorizó profundidad en
+los ítems ya incluidos sobre cubrir la lista completa — quedan como
+candidatos claros para una próxima pasada corta.
+
+**PROF** — PROF-05 (sobrescritura silenciosa de medición del mismo día:
+requiere decidir el comportamiento deseado — ¿agregar entrada nueva? ¿pedir
+confirmación? — no es un fix mecánico). PROF-07 (código muerto → Fase 3).
+PROF-08/PROF-09 (edad triplicada + desviación de huso horario: trivial pero
+toca 3 sitios, se prioriza consolidar cuando se decida una única fuente).
+PROF-10 (sin export/backup de perfil: es una función nueva del tamaño del
+CSV de historial, no un fix — candidato a feature, no a esta fase). PROF-11
+(límite de 100 mediciones sin aviso: Pequeño esfuerzo real, quedó fuera solo
+por priorización de tiempo, buen candidato para la próxima pasada).
+
+**CORE** — CORE-04 (`dismissDraft()` desincroniza el singleton de sesión:
+Esfuerzo Mediano, toca el modelo de identidad de sesión/draft, no es un
+guard de una línea como CORE-02/03). CORE-07, CORE-08, CORE-09 (código
+muerto → Fase 3, no tocado aquí para no duplicar el análisis). CORE-10
+(desincronización del singleton de gamificación entre pestañas: requiere un
+listener de evento `storage` + lógica de invalidación, se evaluó pero se
+priorizó no introducirlo sin poder probarlo con dos pestañas reales en esta
+sesión). CORE-12 (versionado de esquema: explícitamente "requiere decisión
+de producto" según el propio audit). CORE-13 (severidad Informativo, sin
+impacto real).
+
+**PWA** — PWA-04 (ESLint/Prettier: Esfuerzo "Pequeño" según el audit, pero
+introducir un toolchain nuevo con la configuración flat de ESLint 9 de forma
+segura merece su propia sesión dedicada con revisión, no un añadido rápido
+dentro de una fase ya grande). PWA-06 (regla muerta de `.ts` en
+`netlify.toml` → Fase 3-adyacente, informativo). PWA-07 (sourcemaps
+completos en producción: Trivial pero es un cambio de configuración de build
+con implicaciones para debugging en producción que vale la pena decidir
+explícitamente, no fue parte del pedido de esta fase). PWA-10 a PWA-12
+(assets de iconos musculares, fuera del pedido explícito de esta fase).
+
+## 4. Veredicto del subagente verificador (Fase 2)
+
+Ver sección **"Veredictos de los subagentes verificadores"** al final de
+este documento.
+
+---
+
+# Veredictos de los subagentes verificadores
+
+Cada fase se verificó con un subagente Haiku independiente, sin contexto
+previo de la conversación, instruido para revisar únicamente el diff de esa
+fase — no una confirmación de lo ya asumido. A continuación, el veredicto de
+cada uno **tal cual lo entregó**, sin resumir ni reinterpretar.
+
+## Fase 1
+
+> Perfecto. He completado mi análisis exhaustivo. Voy a compilar mi reporte:
+>
+> ## REPORTE DE REVISIÓN - COMMIT "Fase 1: tests de integración"
+>
+> ### EJECUCIÓN DE PRUEBAS
+> ✅ **TypeScript (tsc --noEmit)**: Sin errores de compilación
+> ✅ **npm test (62 tests)**: Todos los tests pasan
+> ✅ **npm run build**: Construcción exitosa
+>
+> ---
+>
+> ## ARCHIVOS DE TEST NUEVOS
+>
+> ### 1. **src/tests/storage.test.ts** (CORE-01)
+> **Veredicto: OK**
+> - ✅ Test de persistencia con localStorage funcionando vs fallo
+> - ✅ Mock de QuotaExceededError implementado correctamente con `vi.spyOn(Storage.prototype, 'setItem')`
+> - ✅ Verifica no solo el retorno sino también los efectos secundarios (getHistory() y getDraft())
+> - ✅ Casos borde: preservación de draft al fallar guardado (línea 82-93, 111-128, 136-167)
+> - ✅ Arquitectura: Prueba en tres niveles de abstracción (saveCurrentSession, saveWorkout, confirmRPE/skipRPE)
+>
+> **Detalle crítico verificado**: Línea 84 `saveDraftNow()` preserva draft mientras falla el guardado histórico. Correcto. ✓
+>
+> ---
+>
+> ### 2. **src/tests/history.test.ts** (HIST-01/02/03)
+> **Veredicto: OK CON OBSERVACIÓN**
+>
+> **HIST-02 (Fusión de sesiones)**:
+> - ✅ Línea 34-36: Dos sesiones del mismo día/grupo con volúmenes distintos → Se importan como 2 sesiones (no fusionadas)
+> - ✅ Línea 47-48: Verifica que los volúmenes se preservan: `[1280, 1500]` (no se pierden datos)
+> - ✅ Línea 51-65: Re-import detecta duplicados comparando en formato correcto (sin ceros: `"9/3/2026"`)
+>
+> **HIST-03 (Validación de rangos)**:
+> - ✅ Línea 88-109: Rechaza filas con sets=0, peso=99999, reps=500 pero acepta la válida
+> - ✅ Verifica el rechazo sin descartar filas válidas de la misma sesión
+> - ✅ Línea 123-131: Si todas las filas son inválidas, rechaza el archivo completo
+>
+> **HIST-01 (Formula Injection)**:
+> - ✅ Línea 171-178: Verifica que `escapeCSV()` antepone apóstrofe a =, +, -, @
+> - ✅ Línea 188-197: Test complejo con comillas internas - verifica que se envuelve en comillas y se escapa correctamente
+> - ✅ Lógica verificada (línea 102-110 de features/history.ts): Regex `/^[=+\-@\t\r]/` correcta
+>
+> **Observación**: Línea 52-53 del comentario dice "sin ceros a la izquierda". Verificado manualmente: `new Date('2026-03-09').toLocaleDateString('es-ES')` → `"9/3/2026"` ✓
+>
+> ---
+>
+> ### 3. **src/tests/cardio.test.ts** (CARDIO-01/02)
+> **Veredicto: OK**
+>
+> **CARDIO-01** (Línea 22-47):
+> - ✅ Dos sesiones de cardio consecutivas generan `sessionId` distintos
+> - ✅ Ambas persisten en historial (length === 2)
+> - ✅ Verifica que sessionIds son definidos y diferentes
+>
+> **CARDIO-02** (Línea 54-85):
+> - ✅ Línea 62-67: Llama a `incrementAmrapRound()` 5 veces, verifica `roundsCompleted === 5`
+> - ✅ Línea 74-85: Modo Tabata usa `currentRound` (8), no contador AMRAP
+> - ✅ Arquitectura correcta: Modo AMRAP incrementa contador de forma distinta
+>
+> ---
+>
+> ### 4. **src/tests/gamification.test.ts** (GAM2-01/02)
+> **Veredicto: OK CON OBSERVACIÓN IMPORTANTE**
+>
+> **Estructura del test**:
+> - ✅ `liveSimulateSevenDayStreak()` simula correctamente 7 días consecutivos
+> - ✅ Línea 59-66: Manejo correcto del reloj falso (vi.useFakeTimers + setSystemTime)
+> - ✅ Línea 69: Ancho PR solo el Día 0 (hace 6 días) - setupcorrecto
+> - ✅ Línea 81: Llama a `processCompletedSession()` para cada sesión en vivo
+>
+> **GAM2-01** (Línea 106-114):
+> - ✅ Verifica `liveTotalXP > 0` (sistema en vivo acumula XP)
+> - ⚠️ **OBSERVACIÓN**: Usa `toBeGreaterThanOrEqual()` en lugar de `toBe()`
+>   - **Justificación**: El commit message (líneas 14-20 del diff) dice que el bug anterior daba "MENOS XP del que el usuario ya tenía". El fix previene que baje, permitiendo que suba. Esto es defensivo pero correcto.
+>   - **Riesgo potencial**: Si en el futuro hay una regresión donde el cálculo da menos XP pero sigue siendo mayor que una cierta constante, el test podría no detectarla.
+>   - **Mitigación aceptable**: Es mejor usar `>=` que no testear nada. El fix garantiza >= liveTotalXP.
+>
+> **GAM2-02** (Línea 132-172):
+> - ✅ Línea 132-142: Verifica que SIN `existingAchievements`, se pierde el logro (documenta el bug)
+> - ✅ Línea 144-157: Verifica que CON `existingAchievements`, se preserva (documenta el fix)
+> - ✅ Línea 159-172: Verifica que no se descuentan logros ya pagados
+>
+> ---
+>
+> ### 5. **src/tests/sanitize.test.ts** (UI-01/UI-02)
+> **Veredicto: OK**
+>
+> **escapeHtml()**:
+> - ✅ Línea 11-35: Tests exhaustivos para <>, "", ', & characters
+> - ✅ Línea 33-34: Verifica que texto plano no se modifica
+>
+> **renderExercise()** (Línea 56-73):
+> - ✅ Línea 57-59: Verifica que <script> no aparece cruda en HTML
+> - ✅ Línea 62-73: **CRÍTICO**: Inserta en DOM real y verifica que `querySelector('script')` es null
+> - ✅ Línea 71-72: Verifica que el texto aparece como textContent literal, no como markup
+> - ✅ Prueba bipolar: Tanto a nivel de string como de DOM
+>
+> **renderHistoryItem() y renderPRItem()**:
+> - ✅ Verifican escaping en ambas funciones de rendering
+>
+> ---
+>
+> ## CAMBIO DE PRODUCCIÓN: migration.ts
+>
+> ### Nueva función: `calculateRetroactivePRXP()` (Líneas 294-319)
+> **Veredicto: OK**
+>
+> **Lógica verificada línea por línea**:
+>
+> ```typescript
+> function calculateRetroactivePRXP(sortedHistory: HistorySession[]): number {
+>   const runningBest: Record<string, number> = {};          // ✓ Acumula mejor peso
+>   let totalXP = 0;
+>
+>   for (const session of sortedHistory) {                   // ✓ Recorre en orden
+>     if (session.type === 'cardio' || !session.ejercicios) continue;  // ✓ Salta cardio
+>
+>     for (const ej of session.ejercicios) {
+>       if (!ej.peso || ej.peso <= 0 || !ej.volumen) continue;  // ✓ Validación defensiva
+>       const previousBest = runningBest[ej.nombre] || 0;    // ✓ Inicializa a 0
+>       if (ej.peso > previousBest) {
+>         const improvement = ej.peso - previousBest;        // ✓ Calcula mejora
+>         totalXP += calculatePRXP(improvement).xp;           // ✓ Usa MISMO calculatePRXP() que vivo
+>         runningBest[ej.nombre] = ej.peso;                  // ✓ Actualiza mejor
+>       }
+>     }
+>   }
+>   return totalXP;
+> }
+> ```
+>
+> **Verificación de correspondencia con sistema en vivo**:
+> - ✅ `calculatePRXP(improvement)` es la MISMA función que en xp.ts línea 95-111
+> - ✅ Sistema en vivo (xp.ts línea 225-260) usa `calculatePRXP(pr.newWeight - pr.oldWeight)` idénticamente
+> - ✅ Orden cronológico: `sortedHistory` llega ya ordenado desde calculateRetroactiveXP (línea 225-227)
+>
+> **Casos borde manejados**:
+> - ✅ Ejercicios nuevos (previousBest = 0) → improvement = peso inicial
+> - ✅ Ejercicios sin mejora (ej.peso === previousBest) → salta correctamente
+> - ✅ Ejercicios con peso no numérico (0 o null) → salta correctamente
+> - ✅ Sesiones de cardio → salta correctamente
+>
+> **PROBLEMA POTENCIAL (arquitectura, no en esta función)**:
+> - Si hay inconsistencias entre historial y PRs globales (p.ej., historial importado antiguo), podría haber doble-conteo de XP. Sin embargo, esto es un problema de integridad de datos general, no del recálculo en sí.
+>
+> ### Cambios relacionados:
+> - ✅ Línea 81: Parámetro `prs` eliminado de `calculateRetroactiveXP()` (ya no se usa)
+> - ✅ Línea 25: `calculatePRXP` importado correctamente de `./xp`
+> - ✅ Línea 36: Eliminada importación de `PR_XP` (ya no necesaria)
+> - ✅ Línea 286: Descripción actualizada a "PRs históricos" (en lugar de contar PRs)
+>
+> ---
+>
+> ## ANÁLISIS DE SCOPE
+>
+> ✅ El commit se limita a:
+> 1. Añadir 5 archivos de test nuevos (793 líneas)
+> 2. Modificar migration.ts (cambio lógico + imports)
+> 3. Exportar escapeCSV en history.ts (para testabilidad)
+>
+> ❌ NO hay refactors no relacionados, cambios cosméticos, o limpieza innecesaria fuera del scope.
+>
+> ---
+>
+> ## FRAGILIDAD DE TESTS
+>
+> **Verificación de dependencias de tiempo/orden**:
+> - ✅ Todos los tests usan `beforeEach()` para limpiar localStorage
+> - ✅ gamification.test.ts usa `vi.useFakeTimers()` + `vi.setSystemTime()` (controlado)
+> - ✅ storage.test.ts usa `afterEach()` para restaurar mocks
+> - ✅ No hay dependencias entre tests (cada uno es independiente)
+>
+> **Verificación de mocks**:
+> - ✅ window.confirm mockado y restaurado
+> - ✅ window.alert mockado y restaurado
+> - ✅ Storage.prototype.setItem mockado solo donde se necesita
+>
+> ---
+>
+> ## RESUMEN EJECUTIVO
+>
+> | Aspecto | Estado | Evidencia |
+> |---------|--------|-----------|
+> | Tests pasan | ✅ | 62/62 pass, TypeScript limpio, build exitoso |
+> | Asercciones fuertes | ✅ | No hay tautologías; uso de `>=` es defensivo y justificado |
+> | Datos realistas | ✅ | Formato de fecha verificado, casos borde cubiertos |
+> | Lógica de producción | ✅ | `calculateRetroactivePRXP()` es correcta y usa mismo `calculatePRXP()` que vivo |
+> | Cobertura de bugs | ✅ | Cada fix de Grupo A/B tiene test que verifica el bug y el fix |
+> | Scope correcto | ✅ | Solo cambios necesarios, sin refactors no relacionados |
+> | Fragil a tiempo | ✅ | Reloj falso controlado, sin dependencias del sistema |
+> | Mocks limpios | ✅ | Todos se restituyen en afterEach |
+>
+> ---
+>
+> **VEREDICTO ÚNICO:**
+>
+> `APROBADO`
+>
+> El commit tiene sólida cobertura de tests, lógica de producción correcta, y no presenta errores críticos. El uso defensivo de `>=` en gamification.test.ts es justificado dado el contexto del fix. La cobertura de los 5 bugs (CORE-01, HIST-01/02/03, CARDIO-01/02, GAM2-01/02, UI-01/02) es exhaustiva y verifica tanto el comportamiento incorrecto anterior como la solución.
+
+## Fase 2
+
+*(pendiente — se agrega tras ejecutar la verificación independiente de esta fase)*
+
+## Fase 3
+
+*(pendiente — se agrega tras ejecutar la verificación independiente de esta fase)*

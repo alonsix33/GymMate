@@ -1,4 +1,4 @@
-import type { TabName, HistorySession } from '@/types';
+import type { TabName } from '@/types';
 import { hasUnsavedData, checkForExistingDraft, restoreFromDraft, endSession } from '@/state/session';
 import { loadHistory, loadPRs } from '@/features/history';
 import { initializeCharts } from '@/features/charts';
@@ -7,6 +7,14 @@ import { loadProfile } from '@/features/profile';
 import { refreshIcons, icon } from '@/utils/icons';
 import { generateInsight } from '@/utils/insights';
 import { escapeHtml } from '@/utils/sanitize';
+import { pauseCardioTimerOnNavigation } from '@/features/cardio';
+import { clearDraft, getHistory, getPRs } from '@/utils/storage';
+// Import estático: workout.ts ya se carga en el chunk principal vía main.ts,
+// así que el import() dinámico no lograba ningún code-splitting real (PWA-08).
+// Verificado que no hay dependencia circular real: ningún módulo que
+// features/workout.ts importa (directa o transitivamente) importa de vuelta
+// desde ui/navigation.ts.
+import { renderFromDraft, loadTrainingGroup } from '@/features/workout';
 
 // ==========================================
 // NAVEGACIÓN ENTRE TABS
@@ -98,6 +106,10 @@ function hideCardioViews(): void {
       view.classList.add('hidden');
     }
   });
+
+  // CARDIO-04: detener el timer de cardio al navegar fuera de su vista,
+  // para que no siga corriendo en segundo plano.
+  pauseCardioTimerOnNavigation();
 }
 
 function updateBottomNav(activeTab: TabName | 'home'): void {
@@ -254,7 +266,7 @@ function updateHeroSection(): void {
 
 function getRecentPR(): { exercise: string; weight: number; reps: number } | null {
   try {
-    const prs = JSON.parse(localStorage.getItem('gymmate_prs') || '{}');
+    const prs = getPRs();
     const entries = Object.entries(prs);
 
     if (entries.length === 0) return null;
@@ -294,7 +306,9 @@ function getRecentPR(): { exercise: string; weight: number; reps: number } | nul
 }
 
 function getWeeklyVolume(): number {
-  const history: HistorySession[] = JSON.parse(localStorage.getItem('gymmate_history') || '[]');
+  // CORE-06: usar el wrapper seguro en vez de leer/parsear localStorage
+  // directo — un JSON corrupto ya no rompe toda la pantalla de Home.
+  const history = getHistory();
   const oneWeekAgo = new Date();
   oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
 
@@ -322,6 +336,9 @@ function updateResumeWorkoutCard(): void {
   }
 
   if (isStale) {
+    // CORE-05: no solo ocultar la tarjeta — limpiar el draft huérfano de
+    // localStorage en vez de dejarlo ahí hasta que otra acción lo sobreescriba.
+    clearDraft();
     resumeCard.classList.add('hidden');
     return;
   }
@@ -374,7 +391,9 @@ function getQuickHomeStats(): {
   streak: number;
   daysSinceLastWorkout: number;
 } {
-  const history: HistorySession[] = JSON.parse(localStorage.getItem('gymmate_history') || '[]');
+  // CORE-06: usar el wrapper seguro en vez de leer/parsear localStorage
+  // directo — un JSON corrupto ya no rompe toda la pantalla de Home.
+  const history = getHistory();
   const weightSessions = history.filter((s) => s.type !== 'cardio');
 
   let streak = 0;
@@ -418,14 +437,24 @@ function getQuickHomeStats(): {
 // ==========================================
 
 export function resumeDraft(): void {
+  // CORE-03: a diferencia de loadTrainingGroup()/showHome(), esta función no
+  // verificaba cambios sin guardar antes de sobreescribir la sesión activa.
+  if (hasUnsavedData()) {
+    if (
+      !confirm(
+        'Tienes cambios sin guardar en la sesión actual. ¿Continuar con el entrenamiento guardado de todas formas?'
+      )
+    ) {
+      return;
+    }
+  }
+
   const { draft } = checkForExistingDraft();
   if (draft) {
     restoreFromDraft(draft);
     switchTab('workout');
     // Renderizar el workout con los datos del draft
-    import('@/features/workout').then(({ renderFromDraft }) => {
-      renderFromDraft();
-    });
+    renderFromDraft();
   }
 }
 
@@ -458,11 +487,8 @@ export function initializeNavigation(): void {
     card.addEventListener('click', function (this: HTMLElement) {
       const grupo = this.dataset.grupo;
       if (grupo) {
-        // Import dinámico para evitar dependencia circular
-        import('@/features/workout').then(({ loadTrainingGroup }) => {
-          loadTrainingGroup(grupo);
-          switchTab('workout');
-        });
+        loadTrainingGroup(grupo);
+        switchTab('workout');
       }
     });
   });

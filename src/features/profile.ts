@@ -69,16 +69,20 @@ export function saveProfile(e: Event): boolean {
     gender:
       ((document.getElementById('profileGender') as HTMLSelectElement)
         ?.value as 'male' | 'female') || 'male',
-    weight:
+    weight: Math.max(
+      0,
       parseFloat(
         (document.getElementById('profileWeight') as HTMLInputElement)?.value ||
           '0'
-      ) || 0,
-    height:
+      ) || 0
+    ),
+    height: Math.max(
+      0,
       parseFloat(
         (document.getElementById('profileHeight') as HTMLInputElement)?.value ||
           '0'
-      ) || 0,
+      ) || 0
+    ),
     activity:
       parseFloat(
         (document.getElementById('profileActivity') as HTMLSelectElement)
@@ -346,9 +350,33 @@ function calculateBodyFat(): void {
     estimateEl.classList.remove('hidden');
     valueEl.textContent = bodyFat.toFixed(1) + '%';
     if (noteEl) noteEl.textContent = 'Calculado con el método Navy';
+  } else if (waist > 0 && neck > 0) {
+    // El usuario ya ingresó datos pero la geometría no da un resultado válido
+    // (cintura <= cuello, o el % calculado cae fuera de 0-60): explicar por
+    // qué en vez de ocultar el bloque sin ningún aviso (PROF-04).
+    estimateEl.classList.remove('hidden');
+    valueEl.textContent = '--%';
+    if (noteEl) {
+      noteEl.textContent =
+        gender === 'female'
+          ? 'Verifica las medidas: cintura + cadera debe ser mayor que el cuello'
+          : 'Verifica las medidas: la cintura debe ser mayor que el cuello';
+    }
   } else {
     estimateEl.classList.add('hidden');
   }
+}
+
+/**
+ * Lee un input numérico de medida corporal. Descarta valores negativos,
+ * cero, o inválidos como "no provisto" (PROF-02/PROF-03: antes un negativo
+ * se conservaba tal cual mientras que un cero se descartaba, misma lógica
+ * pero aplicada de forma inconsistente).
+ */
+function parsePositiveMeasurement(elementId: string): number | undefined {
+  const raw = (document.getElementById(elementId) as HTMLInputElement)?.value;
+  const value = parseFloat(raw || '');
+  return Number.isFinite(value) && value > 0 ? value : undefined;
 }
 
 function saveMeasurement(): void {
@@ -356,15 +384,15 @@ function saveMeasurement(): void {
 
   const measurement: BodyMeasurement = {
     date: new Date().toISOString(),
-    weight: parseFloat((document.getElementById('measureWeight') as HTMLInputElement)?.value || '0') || undefined,
-    neck: parseFloat((document.getElementById('measureNeck') as HTMLInputElement)?.value || '0') || undefined,
-    chest: parseFloat((document.getElementById('measureChest') as HTMLInputElement)?.value || '0') || undefined,
-    waist: parseFloat((document.getElementById('measureWaist') as HTMLInputElement)?.value || '0') || undefined,
-    hips: parseFloat((document.getElementById('measureHips') as HTMLInputElement)?.value || '0') || undefined,
-    armLeft: parseFloat((document.getElementById('measureArmLeft') as HTMLInputElement)?.value || '0') || undefined,
-    armRight: parseFloat((document.getElementById('measureArmRight') as HTMLInputElement)?.value || '0') || undefined,
-    thighLeft: parseFloat((document.getElementById('measureThighLeft') as HTMLInputElement)?.value || '0') || undefined,
-    thighRight: parseFloat((document.getElementById('measureThighRight') as HTMLInputElement)?.value || '0') || undefined,
+    weight: parsePositiveMeasurement('measureWeight'),
+    neck: parsePositiveMeasurement('measureNeck'),
+    chest: parsePositiveMeasurement('measureChest'),
+    waist: parsePositiveMeasurement('measureWaist'),
+    hips: parsePositiveMeasurement('measureHips'),
+    armLeft: parsePositiveMeasurement('measureArmLeft'),
+    armRight: parsePositiveMeasurement('measureArmRight'),
+    thighLeft: parsePositiveMeasurement('measureThighLeft'),
+    thighRight: parsePositiveMeasurement('measureThighRight'),
   };
 
   // Calcular grasa corporal solo si el perfil tiene genero configurado

@@ -94,17 +94,6 @@ export function muscleIcon(
 }
 
 /**
- * Alias de muscleIcon para compatibilidad
- */
-export function muscleIconImg(
-  muscle: string,
-  size: number = 48,
-  className: string = ''
-): string {
-  return muscleIcon(muscle, size, className);
-}
-
-/**
  * Iconos específicos para los grupos de entrenamiento
  */
 const GROUP_ICON_MAP: Record<string, string> = {
@@ -130,20 +119,3 @@ export function groupIcon(
   return muscleIcon(muscle, size, className);
 }
 
-/**
- * Obtiene todos los iconos de músculos disponibles
- */
-export function getAvailableMuscleIcons(): string[] {
-  return Object.keys(MUSCLE_ICON_FILES);
-}
-
-/**
- * Obtiene todos los iconos de grupos disponibles
- */
-export function getAvailableGroupIcons(): string[] {
-  return Object.keys(GROUP_ICON_MAP);
-}
-
-// Para compatibilidad con código existente
-export const MUSCLE_SVG_ICONS = MUSCLE_ICON_FILES;
-export const GROUP_SVG_ICONS = GROUP_ICON_MAP;

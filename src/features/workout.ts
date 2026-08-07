@@ -22,6 +22,7 @@ import {
 import { getPRs } from '@/utils/storage';
 import { processCompletedSession } from '@/features/gamification';
 import { showSessionSummary } from '@/ui/gamification';
+import { MAX_REASONABLE_PESO, MAX_REASONABLE_SETS, MAX_REASONABLE_REPS } from '@/constants';
 
 // ==========================================
 // CARGAR GRUPO DE ENTRENAMIENTO
@@ -167,6 +168,10 @@ export function renderFromDraft(): void {
   // sessionData ya debe estar restaurado por restoreFromDraft
   if (sessionData.ejercicios.length === 0) return;
 
+  // Capturar los PRs vigentes ahora, igual que al iniciar una sesión nueva,
+  // para no comparar contra PRs desactualizados de antes de recargar la página.
+  captureSessionStartPRs();
+
   // Renderizar UI usando todos los ejercicios como obligatorios
   // (ya que no tenemos la info original del grupo)
   renderWorkoutUI(sessionData.grupo, sessionData.ejercicios, sessionData.ejercicios.length);
@@ -186,9 +191,17 @@ export function updateEjercicio(index: number): void {
   // Validar entrada decimal (bloquear comas)
   if (!validateDecimalInput(pesoInput)) return;
 
-  const sets = parseFloat(setsInput.value) || 0;
-  const reps = parseFloat(repsInput.value) || 0;
-  const peso = parseFloat(pesoInput.value) || 0;
+  // Rango razonable (WKT-03): sin esto, un signo negativo o un valor
+  // astronómico pasa intacto a calculateVolume() y de ahí al PR persistido,
+  // al volumen de sesión y a las estadísticas.
+  const sets = clampToRange(parseFloat(setsInput.value) || 0, 0, MAX_REASONABLE_SETS);
+  const reps = clampToRange(parseFloat(repsInput.value) || 0, 0, MAX_REASONABLE_REPS);
+  const peso = clampToRange(parseFloat(pesoInput.value) || 0, 0, MAX_REASONABLE_PESO);
+
+  // Reflejar el valor corregido en el input si el usuario escribió algo fuera de rango
+  setsInput.value = sets === 0 ? '' : String(sets);
+  repsInput.value = reps === 0 ? '' : String(reps);
+  pesoInput.value = peso === 0 ? '' : String(peso);
 
   // Actualizar estado
   updateExerciseState(index, sets, reps, peso);
@@ -240,6 +253,12 @@ function validateDecimalInput(input: HTMLInputElement): boolean {
     setTimeout(() => input.classList.remove('animate-shake'), 300);
   }
   return true;
+}
+
+/** Recorta un valor a un rango [min, max] razonable (WKT-03) */
+function clampToRange(value: number, min: number, max: number): number {
+  if (Number.isNaN(value)) return min;
+  return Math.min(max, Math.max(min, value));
 }
 
 // ==========================================
@@ -457,11 +476,19 @@ export function saveWorkout(): void {
 
   const saveMessage = document.getElementById('saveMessage');
   if (saveMessage) {
-    saveMessage.textContent =
-      result === 'updated'
-        ? 'Entrenamiento actualizado correctamente'
-        : 'Entrenamiento guardado correctamente';
-    saveMessage.classList.remove('hidden');
+    if (result === 'failed') {
+      saveMessage.textContent =
+        'No se pudo guardar el entrenamiento (almacenamiento lleno o no disponible). Tus datos siguen en el borrador automático — libera espacio e inténtalo de nuevo.';
+      saveMessage.classList.remove('hidden', 'text-status-success');
+      saveMessage.classList.add('text-status-error');
+    } else {
+      saveMessage.textContent =
+        result === 'updated'
+          ? 'Entrenamiento actualizado correctamente'
+          : 'Entrenamiento guardado correctamente';
+      saveMessage.classList.remove('hidden', 'text-status-error');
+      saveMessage.classList.add('text-status-success');
+    }
 
     setTimeout(() => {
       saveMessage.classList.add('hidden');
@@ -557,8 +584,9 @@ function showRPEModal(): void {
     // Show modal
     modal.classList.add('active');
 
-    // Refresh icons
-    import('@/utils/icons').then(({ refreshIcons }) => refreshIcons());
+    // Refresh icons (ya importado estáticamente arriba — un import() dinámico
+    // aquí no lograba ningún code-splitting real, PWA-08)
+    refreshIcons();
   }
 }
 
@@ -642,8 +670,12 @@ export async function confirmRPE(): Promise<void> {
   };
 
   // Save session with RPE if there are pending changes
-  if (pendingSaveBeforeRPE) {
-    saveCurrentSession(rpeData);
+  if (pendingSaveBeforeRPE && saveCurrentSession(rpeData) === 'failed') {
+    alert(
+      'No se pudo guardar el entrenamiento (almacenamiento lleno o no disponible). ' +
+      'Tus datos siguen en el borrador automático. Libera espacio e inténtalo de nuevo.'
+    );
+    return;
   }
 
   // Process gamification if session has data (always process even if already saved)
@@ -662,8 +694,12 @@ export async function confirmRPE(): Promise<void> {
 
 export async function skipRPE(): Promise<void> {
   // Save session without RPE if there are pending changes
-  if (pendingSaveBeforeRPE) {
-    saveCurrentSession();
+  if (pendingSaveBeforeRPE && saveCurrentSession() === 'failed') {
+    alert(
+      'No se pudo guardar el entrenamiento (almacenamiento lleno o no disponible). ' +
+      'Tus datos siguen en el borrador automático. Libera espacio e inténtalo de nuevo.'
+    );
+    return;
   }
 
   // Process gamification if session has data (always process even if already saved)

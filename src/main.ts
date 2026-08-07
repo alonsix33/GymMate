@@ -49,6 +49,7 @@ import {
 } from '@/utils/storage';
 import { icon } from '@/utils/icons';
 import { groupIcon } from '@/utils/muscle-icons';
+import { escapeHtml } from '@/utils/sanitize';
 import type { MuscleGroup } from '@/types';
 
 // ==========================================
@@ -334,7 +335,7 @@ function renderCustomWorkoutsInHome(): void {
               ${icon('workout', 'lg', 'text-accent')}
             </div>
             <div>
-              <h3 class="font-bold text-text-primary text-sm">${workout.nombre}</h3>
+              <h3 class="font-bold text-text-primary text-sm">${escapeHtml(workout.nombre)}</h3>
               <p class="text-xs text-text-secondary">${workout.ejercicios.length} ejercicios</p>
             </div>
           </div>
@@ -539,7 +540,7 @@ function renderExerciseItem(nombre: string, grupoMuscular: string, isSelected: b
       class="w-full flex items-center gap-2 p-2 rounded-lg border ${bgClass} transition-all active:scale-[0.98]"
     >
       <i data-lucide="${isSelected ? 'check-circle' : 'circle'}" class="w-4 h-4 ${checkClass} flex-shrink-0"></i>
-      <span class="text-sm text-text-primary text-left flex-1 truncate">${nombre}${optionalTag}</span>
+      <span class="text-sm text-text-primary text-left flex-1 truncate">${escapeHtml(nombre)}${optionalTag}</span>
       <span class="text-[10px] text-text-muted flex-shrink-0">${grupoMuscular}</span>
     </button>
   `;
@@ -584,9 +585,11 @@ function updateSelectedExercisesList(): void {
     .map(
       (ex, i) => `
       <div class="flex items-center justify-between py-1.5 ${i > 0 ? 'border-t border-dark-border' : ''}">
-        <span class="text-sm text-text-primary">${ex.nombre}</span>
+        <span class="text-sm text-text-primary">${escapeHtml(ex.nombre)}</span>
         <button
-          onclick="window.toggleExerciseSelection('${ex.nombre}', '${ex.grupoMuscular}')"
+          data-remove-selected-exercise
+          data-nombre="${escapeHtml(ex.nombre)}"
+          data-grupo="${escapeHtml(ex.grupoMuscular)}"
           class="p-1 text-status-error hover:text-status-error/70"
         >
           <i data-lucide="x" class="w-3 h-3"></i>
@@ -597,6 +600,19 @@ function updateSelectedExercisesList(): void {
     .join('');
 
   container.innerHTML = html;
+
+  // Nombre/grupo van como data-* (no interpolados en un string JS de onclick)
+  // para no ser explotables por una comilla dentro del nombre del ejercicio.
+  container.querySelectorAll<HTMLElement>('[data-remove-selected-exercise]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const nombre = btn.dataset.nombre;
+      const grupo = btn.dataset.grupo;
+      if (nombre && grupo) {
+        toggleExerciseSelection(nombre, grupo);
+      }
+    });
+  });
+
   refreshIcons();
 }
 
@@ -786,15 +802,19 @@ function renderCustomExercisesList(): void {
     return `
       <div class="flex items-center gap-1">
         <button
-          onclick="window.toggleExerciseSelection('${exercise.nombre}', '${exercise.grupoMuscular}')"
+          data-toggle-custom-exercise
+          data-nombre="${escapeHtml(exercise.nombre)}"
+          data-grupo="${escapeHtml(exercise.grupoMuscular)}"
           class="flex-1 flex items-center gap-2 p-2 rounded-lg border ${bgClass} transition-all active:scale-[0.98]"
         >
           <i data-lucide="${isSelected ? 'check-circle' : 'circle'}" class="w-4 h-4 ${checkClass} flex-shrink-0"></i>
-          <span class="text-sm text-text-primary text-left flex-1 truncate">${exercise.nombre}${dumbbellTag}</span>
-          <span class="text-[10px] text-text-muted flex-shrink-0">${exercise.grupoMuscular}</span>
+          <span class="text-sm text-text-primary text-left flex-1 truncate">${escapeHtml(exercise.nombre)}${dumbbellTag}</span>
+          <span class="text-[10px] text-text-muted flex-shrink-0">${escapeHtml(exercise.grupoMuscular)}</span>
         </button>
         <button
-          onclick="window.removeCustomExercise('${exercise.id}', '${exercise.nombre}')"
+          data-remove-custom-exercise
+          data-id="${escapeHtml(exercise.id)}"
+          data-nombre="${escapeHtml(exercise.nombre)}"
           class="p-2 text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-lg transition-all"
           title="Eliminar ejercicio"
         >
@@ -805,6 +825,28 @@ function renderCustomExercisesList(): void {
   }).join('');
 
   container.innerHTML = html;
+
+  // Nombre/grupo/id van como data-* (no interpolados en un string JS de onclick)
+  // para no ser explotables por una comilla dentro del nombre del ejercicio.
+  container.querySelectorAll<HTMLElement>('[data-toggle-custom-exercise]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const nombre = btn.dataset.nombre;
+      const grupo = btn.dataset.grupo;
+      if (nombre && grupo) {
+        toggleExerciseSelection(nombre, grupo);
+      }
+    });
+  });
+
+  container.querySelectorAll<HTMLElement>('[data-remove-custom-exercise]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const id = btn.dataset.id;
+      const nombre = btn.dataset.nombre;
+      if (id && nombre) {
+        removeCustomExercise(id, nombre);
+      }
+    });
+  });
 }
 
 // ==========================================
@@ -879,6 +921,26 @@ function initializeEventDelegation(): void {
 }
 
 // ==========================================
+// ATAJOS DEL MANIFEST PWA
+// ==========================================
+
+/**
+ * Lee ?action=... de la URL (los shortcuts declarados en el manifest PWA,
+ * ver vite.config.ts) y navega a la pestaña correspondiente. "workout" no
+ * tiene una pestaña propia sin una rutina ya cargada — el equivalente real
+ * de "empezar un entrenamiento nuevo" en esta app es Home (donde se elige
+ * la rutina), que ya es la vista por defecto.
+ */
+function applyManifestShortcut(): void {
+  const action = new URLSearchParams(window.location.search).get('action');
+  if (action === 'history') {
+    switchTab('history');
+  } else if (action === 'prs') {
+    switchTab('prs');
+  }
+}
+
+// ==========================================
 // INICIALIZACIÓN
 // ==========================================
 
@@ -915,6 +977,11 @@ function init(): void {
 
   // Mostrar home por defecto
   showHome();
+
+  // Atajos del manifest PWA (?action=workout|history|prs): antes no hacían
+  // nada — abrir la app desde el ícono largo-presionado en Android/desktop
+  // siempre caía en Home sin importar el atajo elegido.
+  applyManifestShortcut();
 
   // Ocultar bottom nav cuando el teclado virtual está activo
   initializeKeyboardHandler();

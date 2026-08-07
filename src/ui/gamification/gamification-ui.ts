@@ -18,38 +18,6 @@ import { renderAllRanksLegend } from './rank-emblem';
 import { icon, refreshIcons } from '@/utils/icons';
 
 /**
- * Renderiza el widget de gamificacion para el header
- */
-export function renderGamificationHeader(): string {
-  const stats = getPlayerStats();
-  const progress = getCurrentLevelProgress();
-  const streak = getStreakInfo();
-
-  return `
-    <div
-      class="gamification-header flex items-center gap-2 cursor-pointer"
-      onclick="window.showGamificationModal && window.showGamificationModal()"
-    >
-      <div class="w-9 h-9">
-        ${renderLevelBadge(stats.level, 36)}
-      </div>
-      <div class="hidden sm:flex flex-col">
-        <div class="flex items-center gap-1">
-          <span class="text-xs font-bold" style="color: ${stats.titleInfo.color}">${stats.level}</span>
-          ${streak.current >= 3 ? `<span class="flex items-center gap-0.5 text-[10px] text-orange-400">${icon('fire', 'sm')}${streak.current}</span>` : ''}
-        </div>
-        <div class="w-16 h-1 bg-dark-border rounded-full overflow-hidden">
-          <div
-            class="h-full rounded-full"
-            style="width: ${progress.percentage}%; background-color: ${stats.titleInfo.color}"
-          ></div>
-        </div>
-      </div>
-    </div>
-  `;
-}
-
-/**
  * Renderiza el hero card de gamificacion para la home
  */
 export function renderGamificationHeroCard(): string {

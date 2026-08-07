@@ -233,13 +233,6 @@ export function markAsInitialized(
   };
 }
 
-/**
- * Resetea el estado de gamificacion (para testing)
- */
-export function resetGamificationState(): void {
-  localStorage.removeItem(GAMIFICATION_STORAGE_KEYS.STATE);
-}
-
 // ==========================================
 // GETTERS
 // ==========================================

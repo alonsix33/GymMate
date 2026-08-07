@@ -144,18 +144,6 @@ export function icon(
 }
 
 // ==========================================
-// COMPONENTE DE ICONO INLINE
-// ==========================================
-
-export function iconInline(
-  name: keyof typeof ICON_MAP | string,
-  className: string = ''
-): string {
-  const iconName = ICON_MAP[name as keyof typeof ICON_MAP] || name;
-  return `<i data-lucide="${iconName}" class="inline-block w-4 h-4 ${className}" aria-hidden="true"></i>`;
-}
-
-// ==========================================
 // REFRESH ICONS DESPUÉS DE RENDER
 // ==========================================
 

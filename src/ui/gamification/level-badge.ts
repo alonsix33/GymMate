@@ -55,26 +55,6 @@ export function renderLevelBadge(level: number, size: number = 48): string {
 }
 
 /**
- * Genera un badge de nivel compacto para el header
- */
-export function renderLevelBadgeCompact(level: number): string {
-  const color = getLevelColor(level);
-  const titleInfo = getLevelTitle(level);
-
-  return `
-    <div class="flex items-center gap-2 bg-dark-surface/80 rounded-full px-3 py-1.5 border border-dark-border">
-      <div class="w-7 h-7">
-        ${renderLevelBadge(level, 28)}
-      </div>
-      <div class="flex flex-col leading-tight">
-        <span class="text-xs font-bold" style="color: ${color}">${level}</span>
-        <span class="text-[10px] text-gray-400">${titleInfo.base}</span>
-      </div>
-    </div>
-  `;
-}
-
-/**
  * Genera el badge con barra de progreso
  */
 export function renderLevelBadgeWithProgress(

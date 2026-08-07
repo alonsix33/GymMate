@@ -138,8 +138,8 @@ export function initGamification(): GamificationState {
       return migratedState;
     }
 
-    // Full migration from scratch
-    const migratedState = migrateExistingData();
+    // Full migration from scratch (preserva logros ya desbloqueados si los hubiera)
+    const migratedState = migrateExistingData(existingState.achievements);
     persistState(migratedState);
     return migratedState;
   }
@@ -151,7 +151,8 @@ export function initGamification(): GamificationState {
  * Fuerza reinicializacion (para cuando hay nuevos datos)
  */
 export function reinitGamification(): GamificationState {
-  const state = migrateExistingData();
+  const existingAchievements = getState().achievements;
+  const state = migrateExistingData(existingAchievements);
   persistState(state);
   return state;
 }

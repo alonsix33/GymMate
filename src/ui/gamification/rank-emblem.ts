@@ -135,33 +135,6 @@ export function renderRankEmblem(rank: StrengthRank, size: number = 48): string 
 }
 
 /**
- * Genera un emblema mini para listas
- */
-export function renderRankEmblemMini(rank: StrengthRank): string {
-  return renderRankEmblem(rank, 24);
-}
-
-/**
- * Genera el emblema con nombre del rango
- */
-export function renderRankWithLabel(rank: StrengthRank, size: number = 32): string {
-  const colors = RANK_COLORS[rank];
-  const displayName = RANK_DISPLAY_NAMES[rank];
-  const isSimetrico = rank === 'Simetrico';
-  const nameClass = isSimetrico ? 'text-shiny' : '';
-  const nameStyle = isSimetrico ? '' : `style="color: ${colors.fill}"`;
-
-  return `
-    <div class="flex items-center gap-2">
-      <div class="w-${size / 4} h-${size / 4}">
-        ${renderRankEmblem(rank, size)}
-      </div>
-      <span class="text-sm font-medium ${nameClass}" ${nameStyle}>${displayName}</span>
-    </div>
-  `;
-}
-
-/**
  * Renderiza todos los rangos en grid compacto (para leyenda)
  */
 export function renderAllRanksLegend(): string {

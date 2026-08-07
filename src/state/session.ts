@@ -1,5 +1,12 @@
 import type { SessionData, ExerciseData, CardioState, RPEData } from '@/types';
-import { DRAFT_SAVE_DELAY, DRAFT_MAX_AGE } from '@/constants';
+import {
+  DRAFT_SAVE_DELAY,
+  DRAFT_MAX_AGE,
+  PR_CHECK_DEBOUNCE_DELAY,
+  MAX_REASONABLE_PESO,
+  MAX_REASONABLE_SETS,
+  MAX_REASONABLE_REPS,
+} from '@/constants';
 import {
   saveDraft,
   clearDraft,
@@ -41,6 +48,7 @@ export function setOnDraftSavedCallback(callback: () => void): void {
 // ==========================================
 
 export function resetSession(): void {
+  clearPendingPRChecks();
   sessionData = {
     date: new Date().toISOString().split('T')[0],
     grupo: '',
@@ -90,8 +98,28 @@ export function updateExercise(
   updateSessionVolume();
   markAsChanged();
 
-  // Check for PR
-  checkAndUpdatePR(ejercicio);
+  // Verificar PR solo cuando el usuario termina de editar esta fila
+  // (no en cada onchange individual de sets/reps/peso mientras tabula entre campos)
+  schedulePRCheck(index, ejercicio);
+}
+
+const prCheckTimeouts: Record<number, ReturnType<typeof setTimeout>> = {};
+
+function schedulePRCheck(index: number, ejercicio: ExerciseData): void {
+  if (prCheckTimeouts[index]) {
+    clearTimeout(prCheckTimeouts[index]);
+  }
+  prCheckTimeouts[index] = setTimeout(() => {
+    delete prCheckTimeouts[index];
+    checkAndUpdatePR(ejercicio);
+  }, PR_CHECK_DEBOUNCE_DELAY);
+}
+
+function clearPendingPRChecks(): void {
+  Object.values(prCheckTimeouts).forEach((timeout) => clearTimeout(timeout));
+  for (const key of Object.keys(prCheckTimeouts)) {
+    delete prCheckTimeouts[Number(key)];
+  }
 }
 
 export function toggleExerciseCompleted(index: number, completed: boolean): void {
@@ -150,18 +178,6 @@ export function hasUnsavedData(): boolean {
   return false;
 }
 
-export function hasChangesToSave(): boolean {
-  if (!sessionSaved) {
-    return sessionData.ejercicios.some((ej) => ej.volumen > 0);
-  }
-
-  if (!lastSavedData) return false;
-
-  const currentData = JSON.stringify(sessionData.ejercicios);
-  const savedData = JSON.stringify(lastSavedData);
-  return currentData !== savedData;
-}
-
 // ==========================================
 // AUTO-GUARDADO (DRAFT)
 // ==========================================
@@ -198,6 +214,20 @@ export function checkForExistingDraft(): {
     return { hasDraft: false, draft: null, isStale: false };
   }
 
+  // Validar forma mínima antes de ofrecerlo como recuperable (CORE-02): un
+  // draftTimestamp faltante/corrupto da NaN, que nunca es "> DRAFT_MAX_AGE"
+  // (el draft jamás expiraría), y un ejercicios faltante rompe
+  // renderFromDraft() con un TypeError al pulsar "Continuar".
+  const hasValidShape =
+    typeof draft.draftTimestamp === 'number' &&
+    Number.isFinite(draft.draftTimestamp) &&
+    Array.isArray(draft.ejercicios);
+
+  if (!hasValidShape) {
+    clearDraft();
+    return { hasDraft: false, draft: null, isStale: false };
+  }
+
   const draftAge = Date.now() - draft.draftTimestamp;
   const isStale = draftAge > DRAFT_MAX_AGE;
 
@@ -205,6 +235,7 @@ export function checkForExistingDraft(): {
 }
 
 export function restoreFromDraft(draft: SessionData): void {
+  clearPendingPRChecks();
   sessionData = { ...draft };
   hasUnsavedChanges = false;
   sessionSaved = false;
@@ -216,7 +247,7 @@ export function restoreFromDraft(draft: SessionData): void {
 // GUARDAR SESIÓN
 // ==========================================
 
-export function saveCurrentSession(rpe?: RPEData): 'new' | 'updated' {
+export function saveCurrentSession(rpe?: RPEData): 'new' | 'updated' | 'failed' {
   // Generar sessionId único si no existe
   if (!sessionId) {
     sessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -236,8 +267,14 @@ export function saveCurrentSession(rpe?: RPEData): 'new' | 'updated' {
   // Guardar en history
   const isUpdate =
     sessionSaved && lastSavedData !== null && sessionId !== null;
-  addToHistory(sessionCopy);
-  saveSession(sessionCopy);
+  const historySaved = addToHistory(sessionCopy);
+  const sessionPersisted = saveSession(sessionCopy);
+
+  if (!historySaved || !sessionPersisted) {
+    // El guardado falló (p.ej. localStorage lleno): no marcar como guardado
+    // ni borrar el draft, para no perder los datos del usuario.
+    return 'failed';
+  }
 
   // Actualizar estado
   markAsSaved();
@@ -260,6 +297,19 @@ export function endSession(): void {
 function checkAndUpdatePR(ejercicioData: ExerciseData): void {
   if (ejercicioData.volumen === 0) return;
 
+  // Validación básica de rango: descarta valores fuera de un rango humano
+  // razonable antes de aceptarlos como PR real (evita fat-finger typos)
+  if (
+    ejercicioData.peso <= 0 ||
+    ejercicioData.peso > MAX_REASONABLE_PESO ||
+    ejercicioData.sets <= 0 ||
+    ejercicioData.sets > MAX_REASONABLE_SETS ||
+    ejercicioData.reps <= 0 ||
+    ejercicioData.reps > MAX_REASONABLE_REPS
+  ) {
+    return;
+  }
+
   const currentPR = getPR(ejercicioData.nombre);
 
   if (!currentPR || ejercicioData.peso > currentPR.peso) {
@@ -280,7 +330,6 @@ function checkAndUpdatePR(ejercicioData: ExerciseData): void {
 export const cardioState: CardioState = {
   mode: null,
   config: {},
-  timer: null,
   isPaused: false,
   currentPhase: 'work',
   currentRound: 1,
@@ -293,13 +342,8 @@ export const cardioState: CardioState = {
 };
 
 export function resetCardioState(): void {
-  if (cardioState.timer) {
-    clearInterval(cardioState.timer);
-  }
-
   cardioState.mode = null;
   cardioState.config = {};
-  cardioState.timer = null;
   cardioState.isPaused = false;
   cardioState.currentPhase = 'work';
   cardioState.currentRound = 1;

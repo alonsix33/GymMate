@@ -1,12 +1,14 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import {
   calculateVolume,
   calculateVolumenPorGrupo,
   calculateCalories,
+  calculate1RM,
   getWeekNumber,
   daysSince,
 } from '../utils/calculations';
-import type { ExerciseData, MuscleGroup } from '../types';
+import { saveHistory } from '../utils/storage';
+import type { ExerciseData, HistorySession, MuscleGroup } from '../types';
 
 // ==========================================
 // TESTS DE CÁLCULO DE VOLUMEN
@@ -225,5 +227,80 @@ describe('daysSince', () => {
     futureDate.setDate(futureDate.getDate() + 3);
     const result = daysSince(futureDate);
     expect(result).toBe(-3);
+  });
+});
+
+// ==========================================
+// TESTS DE CÁLCULO DE 1RM (WKT-04/HIST-06)
+// ==========================================
+
+describe('calculate1RM — fórmula de Brzycki con reps altas', () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  function seedSessionWithPerformance(reps: number, peso: number): void {
+    const session: HistorySession = {
+      date: new Date().toISOString(),
+      savedAt: new Date().toISOString(),
+      sessionId: 'test-session',
+      grupo: 'Piernas',
+      type: 'weights',
+      volumenTotal: reps * peso,
+      volumenPorGrupo: {},
+      ejercicios: [
+        {
+          nombre: 'Sentadilla',
+          sets: 1,
+          reps,
+          peso,
+          esMancuerna: false,
+          grupoMuscular: 'Piernas' as MuscleGroup,
+          volumen: reps * peso,
+          completado: true,
+        },
+      ],
+    };
+    saveHistory([session]);
+  }
+
+  it('nunca produce un resultado negativo o infinito con reps >= 37', () => {
+    seedSessionWithPerformance(40, 50);
+
+    const result = calculate1RM('Sentadilla');
+
+    expect(result).not.toBeNull();
+    const brzycki = parseFloat(result!.brzycki);
+    expect(Number.isFinite(brzycki)).toBe(true);
+    expect(brzycki).toBeGreaterThan(0);
+  });
+
+  it('el resultado con reps=37 exactamente (antes: división por cero) es finito', () => {
+    seedSessionWithPerformance(37, 50);
+
+    const result = calculate1RM('Sentadilla');
+
+    expect(result).not.toBeNull();
+    expect(Number.isFinite(parseFloat(result!.brzycki))).toBe(true);
+  });
+
+  it('el promedio de las 3 fórmulas también queda finito con reps altas', () => {
+    seedSessionWithPerformance(50, 60);
+
+    const result = calculate1RM('Sentadilla');
+
+    expect(result).not.toBeNull();
+    expect(Number.isFinite(parseFloat(result!.average))).toBe(true);
+    expect(parseFloat(result!.average)).toBeGreaterThan(0);
+  });
+
+  it('sigue calculando correctamente para reps normales (sin cambios de comportamiento)', () => {
+    seedSessionWithPerformance(5, 100);
+
+    const result = calculate1RM('Sentadilla');
+
+    expect(result).not.toBeNull();
+    // Brzycki: 100 * (36 / (37 - 5)) = 112.5
+    expect(result!.brzycki).toBe('112.5');
   });
 });

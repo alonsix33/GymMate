@@ -1,4 +1,4 @@
-import type { TabName, HistorySession } from '@/types';
+import type { TabName } from '@/types';
 import { hasUnsavedData, checkForExistingDraft, restoreFromDraft, endSession } from '@/state/session';
 import { loadHistory, loadPRs } from '@/features/history';
 import { initializeCharts } from '@/features/charts';
@@ -6,6 +6,15 @@ import { initializeCalculators } from '@/features/calculators';
 import { loadProfile } from '@/features/profile';
 import { refreshIcons, icon } from '@/utils/icons';
 import { generateInsight } from '@/utils/insights';
+import { escapeHtml } from '@/utils/sanitize';
+import { pauseCardioTimerOnNavigation } from '@/features/cardio';
+import { clearDraft, getHistory, getPRs } from '@/utils/storage';
+// Import estático: workout.ts ya se carga en el chunk principal vía main.ts,
+// así que el import() dinámico no lograba ningún code-splitting real (PWA-08).
+// Verificado que no hay dependencia circular real: ningún módulo que
+// features/workout.ts importa (directa o transitivamente) importa de vuelta
+// desde ui/navigation.ts.
+import { renderFromDraft, loadTrainingGroup } from '@/features/workout';
 
 // ==========================================
 // NAVEGACIÓN ENTRE TABS
@@ -97,6 +106,10 @@ function hideCardioViews(): void {
       view.classList.add('hidden');
     }
   });
+
+  // CARDIO-04: detener el timer de cardio al navegar fuera de su vista,
+  // para que no siga corriendo en segundo plano.
+  pauseCardioTimerOnNavigation();
 }
 
 function updateBottomNav(activeTab: TabName | 'home'): void {
@@ -203,7 +216,7 @@ function updateHeroSection(): void {
           <p class="text-[10px] text-yellow-400 font-bold uppercase tracking-wide truncate flex items-center gap-1">
             <i data-lucide="trophy" class="w-3 h-3"></i> PR Reciente!
           </p>
-          <p class="text-sm text-white font-bold truncate">${recentPR.exercise}</p>
+          <p class="text-sm text-white font-bold truncate">${escapeHtml(recentPR.exercise)}</p>
           <p class="text-xs text-yellow-300/80 font-semibold truncate">${recentPR.weight}kg x ${recentPR.reps} reps</p>
         </div>
       </div>
@@ -236,8 +249,8 @@ function updateHeroSection(): void {
               <i data-lucide="${insight.icon}" class="w-4 h-4 ${insight.textClass}"></i>
             </div>
             <div class="flex-1 min-w-0">
-              <p class="text-sm font-semibold text-white">${insight.message}</p>
-              ${insight.subtext ? `<p class="text-xs text-white/60 mt-0.5">${insight.subtext}</p>` : ''}
+              <p class="text-sm font-semibold text-white">${escapeHtml(insight.message)}</p>
+              ${insight.subtext ? `<p class="text-xs text-white/60 mt-0.5">${escapeHtml(insight.subtext)}</p>` : ''}
             </div>
           </div>
         </div>
@@ -253,7 +266,7 @@ function updateHeroSection(): void {
 
 function getRecentPR(): { exercise: string; weight: number; reps: number } | null {
   try {
-    const prs = JSON.parse(localStorage.getItem('gymmate_prs') || '{}');
+    const prs = getPRs();
     const entries = Object.entries(prs);
 
     if (entries.length === 0) return null;
@@ -293,7 +306,9 @@ function getRecentPR(): { exercise: string; weight: number; reps: number } | nul
 }
 
 function getWeeklyVolume(): number {
-  const history: HistorySession[] = JSON.parse(localStorage.getItem('gymmate_history') || '[]');
+  // CORE-06: usar el wrapper seguro en vez de leer/parsear localStorage
+  // directo — un JSON corrupto ya no rompe toda la pantalla de Home.
+  const history = getHistory();
   const oneWeekAgo = new Date();
   oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
 
@@ -321,6 +336,9 @@ function updateResumeWorkoutCard(): void {
   }
 
   if (isStale) {
+    // CORE-05: no solo ocultar la tarjeta — limpiar el draft huérfano de
+    // localStorage en vez de dejarlo ahí hasta que otra acción lo sobreescriba.
+    clearDraft();
     resumeCard.classList.add('hidden');
     return;
   }
@@ -342,7 +360,7 @@ function updateResumeWorkoutCard(): void {
           ${icon('close', 'sm')}
         </button>
       </div>
-      <h3 class="font-bold text-text-primary mb-1">${draft.grupo}</h3>
+      <h3 class="font-bold text-text-primary mb-1">${escapeHtml(draft.grupo)}</h3>
       <p class="text-xs text-text-muted mb-3">Guardado: ${draftDate}</p>
       <div class="flex gap-2">
         <button
@@ -373,7 +391,9 @@ function getQuickHomeStats(): {
   streak: number;
   daysSinceLastWorkout: number;
 } {
-  const history: HistorySession[] = JSON.parse(localStorage.getItem('gymmate_history') || '[]');
+  // CORE-06: usar el wrapper seguro en vez de leer/parsear localStorage
+  // directo — un JSON corrupto ya no rompe toda la pantalla de Home.
+  const history = getHistory();
   const weightSessions = history.filter((s) => s.type !== 'cardio');
 
   let streak = 0;
@@ -417,14 +437,24 @@ function getQuickHomeStats(): {
 // ==========================================
 
 export function resumeDraft(): void {
+  // CORE-03: a diferencia de loadTrainingGroup()/showHome(), esta función no
+  // verificaba cambios sin guardar antes de sobreescribir la sesión activa.
+  if (hasUnsavedData()) {
+    if (
+      !confirm(
+        'Tienes cambios sin guardar en la sesión actual. ¿Continuar con el entrenamiento guardado de todas formas?'
+      )
+    ) {
+      return;
+    }
+  }
+
   const { draft } = checkForExistingDraft();
   if (draft) {
     restoreFromDraft(draft);
     switchTab('workout');
     // Renderizar el workout con los datos del draft
-    import('@/features/workout').then(({ renderFromDraft }) => {
-      renderFromDraft();
-    });
+    renderFromDraft();
   }
 }
 
@@ -457,11 +487,8 @@ export function initializeNavigation(): void {
     card.addEventListener('click', function (this: HTMLElement) {
       const grupo = this.dataset.grupo;
       if (grupo) {
-        // Import dinámico para evitar dependencia circular
-        import('@/features/workout').then(({ loadTrainingGroup }) => {
-          loadTrainingGroup(grupo);
-          switchTab('workout');
-        });
+        loadTrainingGroup(grupo);
+        switchTab('workout');
       }
     });
   });

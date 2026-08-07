@@ -75,7 +75,12 @@ export function calculate1RM(exerciseName: string): OneRMResult | null {
 
   // Tres fórmulas de 1RM
   const epley = peso * (1 + reps / 30);
-  const brzycki = peso * (36 / (37 - reps));
+  // La fórmula de Brzycki solo está definida para reps < 37 (a partir de ahí
+  // el denominador llega a 0 o se vuelve negativo, dando Infinity o un
+  // resultado negativo sin sentido). Se acota al límite matemático de la
+  // fórmula en vez de dejarla romperse (WKT-04/HIST-06).
+  const brzyckiReps = Math.min(reps, 36);
+  const brzycki = peso * (36 / (37 - brzyckiReps));
   const lombardi = peso * Math.pow(reps, 0.1);
 
   return {
@@ -175,22 +180,6 @@ export function calculateProgressive(
     aggressive: aggressive.toFixed(1),
     exerciseType: isLowerBody ? 'Tren Inferior' : 'Tren Superior',
   };
-}
-
-// ==========================================
-// DETECCIÓN DE PR
-// ==========================================
-
-export function checkForPR(ejercicioData: ExerciseData): boolean {
-  if (ejercicioData.volumen === 0) return false;
-
-  const currentPR = getPR(ejercicioData.nombre);
-
-  if (!currentPR || ejercicioData.peso > currentPR.peso) {
-    return true;
-  }
-
-  return false;
 }
 
 // ==========================================

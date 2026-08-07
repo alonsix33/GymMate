@@ -167,39 +167,6 @@ export function initializeProfile(): void {
 }
 
 // ==========================================
-// OBTENER DATOS DEL PERFIL PARA CALCULADORAS
-// ==========================================
-
-export function getProfileForCalculators(): {
-  age: number | null;
-  gender: 'male' | 'female' | null;
-  weight: number | null;
-  height: number | null;
-  activity: number | null;
-} {
-  const profile = getProfile();
-
-  let age: number | null = null;
-  if (profile.birthdate) {
-    const birth = new Date(profile.birthdate);
-    const today = new Date();
-    age = today.getFullYear() - birth.getFullYear();
-    const monthDiff = today.getMonth() - birth.getMonth();
-    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) {
-      age--;
-    }
-  }
-
-  return {
-    age,
-    gender: profile.gender || null,
-    weight: profile.weight || null,
-    height: profile.height || null,
-    activity: profile.activity || null,
-  };
-}
-
-// ==========================================
 // BODY MEASUREMENTS
 // ==========================================
 

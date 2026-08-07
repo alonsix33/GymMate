@@ -183,22 +183,6 @@ export function calculateProgressive(
 }
 
 // ==========================================
-// DETECCIÓN DE PR
-// ==========================================
-
-export function checkForPR(ejercicioData: ExerciseData): boolean {
-  if (ejercicioData.volumen === 0) return false;
-
-  const currentPR = getPR(ejercicioData.nombre);
-
-  if (!currentPR || ejercicioData.peso > currentPR.peso) {
-    return true;
-  }
-
-  return false;
-}
-
-// ==========================================
 // UTILIDADES DE FECHA
 // ==========================================
 

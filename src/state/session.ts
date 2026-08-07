@@ -178,18 +178,6 @@ export function hasUnsavedData(): boolean {
   return false;
 }
 
-export function hasChangesToSave(): boolean {
-  if (!sessionSaved) {
-    return sessionData.ejercicios.some((ej) => ej.volumen > 0);
-  }
-
-  if (!lastSavedData) return false;
-
-  const currentData = JSON.stringify(sessionData.ejercicios);
-  const savedData = JSON.stringify(lastSavedData);
-  return currentData !== savedData;
-}
-
 // ==========================================
 // AUTO-GUARDADO (DRAFT)
 // ==========================================
@@ -342,7 +330,6 @@ function checkAndUpdatePR(ejercicioData: ExerciseData): void {
 export const cardioState: CardioState = {
   mode: null,
   config: {},
-  timer: null,
   isPaused: false,
   currentPhase: 'work',
   currentRound: 1,
@@ -355,13 +342,8 @@ export const cardioState: CardioState = {
 };
 
 export function resetCardioState(): void {
-  if (cardioState.timer) {
-    clearInterval(cardioState.timer);
-  }
-
   cardioState.mode = null;
   cardioState.config = {};
-  cardioState.timer = null;
   cardioState.isPaused = false;
   cardioState.currentPhase = 'work';
   cardioState.currentRound = 1;

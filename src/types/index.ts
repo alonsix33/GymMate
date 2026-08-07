@@ -78,7 +78,6 @@ export interface CardioSession {
 export interface CardioState {
   mode: CardioMode | null;
   config: CardioConfig;
-  timer: ReturnType<typeof setInterval> | null;
   isPaused: boolean;
   currentPhase: 'work' | 'rest' | 'roundRest' | 'emom';
   currentRound: number;

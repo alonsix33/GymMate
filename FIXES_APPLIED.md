@@ -460,6 +460,82 @@ este documento.
 
 ---
 
+# Fase 3: código muerto — evaluado individualmente, no borrado en bloque
+
+Fecha: 2026-08-07
+Alcance: las piezas de código muerto identificadas en `FULL_CODEBASE_AUDIT.md`
+(sección D) y en el propio grep hecho durante el fix de UI-01/UI-02 (Grupo B).
+Cada candidato se evaluó individualmente contra tres resultados posibles:
+**eliminar** (redundante o sin valor), **conectar más adelante** (tiene valor
+real pero quedó desconectado — documentado, no tocado), o **no es código
+muerto real** (ya resuelto o activamente usado — no tocado). Antes de
+eliminar cualquier cosa se confirmó con grep que no tenía call-sites en
+ningún archivo del repo, no solo en el archivo donde se encontró.
+
+## 1. Eliminado (confirmado sin call-sites, sin valor único que preservar)
+
+| ID | Qué se eliminó | Archivo | Razonamiento |
+|----|------------------|---------|----------------|
+| *(sin ID propio)* | 9 variantes de renderizado de gamificación nunca importadas fuera de `ui/gamification/`: `renderLevelBadgeCompact`, `renderRankEmblemMini`, `renderRankWithLabel`, `renderMuscleMapMini`, `renderMuscleMapWithLegend`, `renderMuscleProgress`, `renderGamificationHeader`, `renderLevelUpMessage`, `renderRankUpMessage` | `ui/gamification/{level-badge,rank-emblem,muscle-map,gamification-ui,session-summary}.ts` + re-exports en `index.ts` | Verificado con grep que cada una solo aparecía en su propia definición y en el barrel `index.ts` — cero consumidores reales. Se inspeccionó cada una individualmente (no una regla en bloque): ninguna contiene lógica de negocio única — son puro formateo de valores ya calculados en `features/gamification/*` (rank, ratio, XP), duplicando exactamente lo que ya hacen sus variantes "hermanas" que sí están en uso (`renderLevelBadge`, `renderLevelBadgeWithProgress`, `renderRankEmblem`, `renderMuscleMap`, `renderMuscleMapDual`). Son funciones de presentación atadas al enfoque actual de plantillas de string + `innerHTML`, que el propio `AUDIT.md` recomienda reemplazar por completo en el rediseño — no hay nada que "portar". |
+| **CORE-07** | `hasChangesToSave()` | `src/state/session.ts` | Sin consumidores; reimplementaba con ligeras diferencias el mismo diffing por `JSON.stringify` que ya hace `hasUnsavedData()` (la función real usada en toda la app). |
+| **CORE-08** (parcial) | `getSession()`, `clearSession()` | `src/utils/storage.ts` | Sin consumidores. **`saveSession()` no se tocó** — sigue activo, es parte de la cadena de guardado de CORE-01 (Grupo A). Solo se eliminó el lado de lectura/borrado, que nunca se usaba (el mecanismo real de recuperación es `gymmate_draft`, no `gymmate_session`). |
+| **CORE-09** | `resetGamificationState()` | `src/features/gamification/state.ts` | Sin consumidores (ni siquiera en los tests nuevos de Fase 1 — se consideró usarla pero se optó por `initGamification()`, que sí reinicializa correctamente el singleton en memoria). Además tenía un bug real si alguna vez se hubiera usado: hacía `removeItem` directo sin pasar por `persistState()`, así que el `_state` en memoria "resucitaría" el estado borrado en el siguiente guardado. |
+| **WKT-05** (parcial) | `checkForPR()` | `src/utils/calculations.ts` | Sin consumidores. Una de las 3 implementaciones divergentes de detección de PR que señalaba el audit; `checkAndUpdatePR()` en `state/session.ts` es la que realmente persiste y ya tiene tests (Fase 1/2). No se tocó la tercera (`updateCoachOnExerciseUpdate` en `coach.ts`, que reimplementa la comparación inline) porque unificar las 3 en una sola fuente de verdad es la recomendación completa de WKT-05 y excede "borrar código muerto" — queda como candidato para cuando se decida esa consolidación. |
+| **CARDIO-14** | Campo `timer` de `CardioState` | `src/types/index.ts`, `src/state/session.ts` | Confirmado que nunca se asignaba un valor real en ningún archivo (cardio.ts usa su propia variable de módulo privada `timerInterval` para el intervalo real) — el campo vivía siempre en `null`, y el `if (cardioState.timer) { clearInterval(...) }` en `resetCardioState()` nunca se ejecutaba. Coincide exactamente con lo que documentaba CARDIO-14. |
+| **HIST-04** | `getQuickStats()` | `src/features/history.ts` | Sin consumidores. Cuarta implementación divergente de racha (además de las 3 ya documentadas en `GAMIFICATION_DEEP_DIVE.md`), con el mismo tope de 7 días ya señalado como bug. Eliminarla reduce el riesgo de que alguien la conecte por error en el futuro y reintroduzca esa divergencia. |
+| **PROF-07** | `getProfileForCalculators()` | `src/features/profile.ts` | Sin consumidores; `calculators.ts` reimplementa la misma lógica de forma independiente y es la que realmente se usa. |
+| **UI-07** | `card()`, `buttonPrimary()`, `buttonSecondary()`, `statCard()`, `renderRoutineCard()` | `src/ui/components.ts` | Sin consumidores (verificado que `iconButton()`, que sí se usa 2 veces, no se tocó). `renderRoutineCard()` interpolaba `${name}` sin escapar en `innerHTML` — el mismo patrón de UI-01 — pero al no tener ningún call-site no representaba un vector real; se elimina en vez de arreglarse porque no hay nada que proteger. |
+| **UI-07** | `iconInline()` | `src/utils/icons.ts` | Sin consumidores. |
+| **UI-07** | `muscleIconImg()`, `getAvailableMuscleIcons()`, `getAvailableGroupIcons()`, `MUSCLE_SVG_ICONS`, `GROUP_SVG_ICONS` | `src/utils/muscle-icons.ts` | Sin consumidores. Las dos constantes llevaban el comentario "Para compatibilidad con código existente" — código de compatibilidad hacia atrás para algo que ya no existe en el repo. |
+| **PWA-06** | Regla `[[headers]] for = "/*.ts"` | `netlify.toml` | Confirmado inspeccionando `dist/`: el build de producción no genera ningún archivo `.ts` (Vite los compila a `.js`), así que esta regla nunca coincide con nada. |
+| *(mencionado en `AUDIT.md`/`FEATURES.md`, no tenía ID propio)* | Dependencia `react-body-highlighter` | `package.json` | `npm uninstall`. Confirmado que el único rastro en el código fuente era un comentario de crédito ("Based on react-body-highlighter (MIT License)") en `muscle-map.ts` — nunca se importa. Es una librería de React en una app 100% vanilla TS sin ningún componente React; quedó huérfana de una implementación anterior. |
+
+## 2. Evaluado y NO eliminado — tiene valor real, candidato a conectar
+
+| ID | Qué se evaluó | Por qué NO se borró | Dónde podría engancharse |
+|----|-----------------|----------------------|----------------------------|
+| **GAM2-11** | `xpHistory` (`GamificationState.xpHistory`) y `getXPHistory()` | No es código decorativo desconectado — es un ledger real de transacciones de XP, activamente calculado y persistido (capado a las últimas 100) en cada sesión, PR, racha y logro. Representa trabajo de cómputo genuino que ya existe y sería una lástima descartar. El propio audit lo lista explícitamente en la sección E ("¿se construye una pantalla de historial de XP, o se elimina el mecanismo?") como una decisión de producto, no un descarte automático. | Una pantalla de "Historial de XP" dentro del modal de gamificación (`ui/gamification/gamification-ui.ts`), listando las transacciones más recientes con su `source`/`description`/`amount` — el modelo de datos ya está completo para eso, solo falta la vista. |
+| **CARDIO-13** | Base de datos de ejercicios de cardio: `getCardioExerciseInfo()` y los campos `difficulty`/`calories`/`muscles`/`desc` en `data/cardio-exercises.ts` | Sin consumidores hoy (el usuario elige ejercicio de un `<select>` plano que no muestra nada de esto), pero es una base de datos curada con contenido real, no una función vacía. Conecta directamente con el ítem deferido CARDIO-10 de Fase 2 (calorías por tarifa fija en vez de por ejercicio real) — borrar esto ahora significaría tener que rehacer el trabajo si se decide arreglar CARDIO-10 más adelante. | El selector de ejercicio de cardio (mostrar dificultad/músculos al elegir) y `estimateCalories()` en `cardio.ts` (usar el campo `calories` real del ejercicio en vez de la tarifa fija de ~10 kcal/min) — exactamente lo que CARDIO-10 recomienda. |
+
+## 3. No es código muerto real — revisado, sin cambios
+
+Para que quede constancia de que se revisaron y no se pasaron por alto:
+
+- **`deleteCustomWorkout`/`renderExerciseItem`** (citados en el pedido de esta fase como ejemplo): ya evaluados durante UI-02 (Grupo B) — están en uso activo (`renderExerciseItem` recibe nombres de la base de datos estática de ejercicios; `deleteCustomWorkout` se invoca desde un `onclick` real). No son código muerto.
+- **GAM2-08/09/12** (switch sin `default`, colisión de IDs de gradiente SVG, `recalculateXP` sin manejo de errores): son bugs de comportamiento de severidad Baja, no código muerto — el audit los agrupa en la misma sección D por severidad, pero corregirlos no es "borrar algo sin uso", es un fix de lógica. Quedan fuera de esta fase (documentado también como deferido en Fase 2, sección 2b, ítem CORE-adjacente).
+- **PROF-08** (cálculo de edad triplicado): código activo y en uso en los 3 sitios, no código muerto — es duplicación, no algo para borrar.
+- **UI-08/UI-09** (tarjeta de rutina triplicada, tres patrones de mostrar/ocultar UI): inconsistencias arquitectónicas activas, no código sin uso.
+
+## 4. Confirmación de build/typecheck/test
+
+```
+$ npx tsc --noEmit
+(sin salida — limpio)
+
+$ npx vitest run
+Test Files  6 passed (6)
+     Tests  76 passed (76)
+
+$ npm run build
+✓ 1594 modules transformed
+✓ built in ~4s
+
+$ python3 -c "import tomllib; tomllib.load(open('netlify.toml','rb'))"
+TOML OK
+```
+
+Balance neto de la fase: **491 líneas eliminadas, 0 añadidas** (fuera de
+`FIXES_APPLIED.md` y `package-lock.json`) — reducción pura de superficie de
+código, sin ningún cambio de comportamiento (confirmado por los 76 tests
+existentes, que no requirieron ninguna modificación).
+
+## 5. Veredicto del subagente verificador (Fase 3)
+
+Ver sección **"Veredictos de los subagentes verificadores"** al final de
+este documento.
+
+---
+
 # Veredictos de los subagentes verificadores
 
 Cada fase se verificó con un subagente Haiku independiente, sin contexto
@@ -672,7 +748,119 @@ cada uno **tal cual lo entregó**, sin resumir ni reinterpretar.
 
 ## Fase 2
 
-*(pendiente — se agrega tras ejecutar la verificación independiente de esta fase)*
+> Perfecto. He completado mi análisis exhaustivo. Voy a generar el reporte final:
+>
+> ---
+>
+> # REPORTE DE REVISIÓN — COMMIT "Fase 2: fixes de Grupo C (paralelo, no bloqueante) + higiene de infra"
+>
+> ## EJECUCIÓN DE PRUEBAS BÁSICAS
+>
+> ✅ **TypeScript (tsc --noEmit)**: Sin errores de compilación
+> ✅ **npm test (76 tests en 6 archivos)**: Todos pasan
+> ✅ **npm run build**: Construcción exitosa (1594 módulos transformados)
+>
+> ---
+>
+> ## REVISIÓN POR CATEGORÍA
+>
+> ### **CARDIO — Timer de cardio y precisión (6 fixes)**
+>
+> | Fix | Veredicto | Detalles |
+> |-----|-----------|----------|
+> | **CARDIO-04** | OK | `pauseCardioTimerOnNavigation()` limpia intervalo sin finalizar. Invocado desde `hideCardioViews()` en `navigation.ts:112` ✓ |
+> | **CARDIO-05** | OK | Drift correction: bucle de catch-up (`startTimer()` línea 616-634) calcula ticks reales faltantes, capeados a 3600. Guard `if (!timerInterval) return` línea 632 previene procesamiento tras `finishCardioWorkout()`. Lógica correcta. |
+> | **CARDIO-06** | OK | `CONFIG_MIN_VALUES` con `rounds: 1` (línea 388). Verifica que Circuit a 3 rondas no salta a 5 al pulsar "−". Tests en `cardio.test.ts:140-153` comprueban esto. ✓ |
+> | **CARDIO-07** | OK | `CONFIG_MIN_VALUES` con `duration: 60` (línea 389). AMRAP nunca cae a valores no-múltiplos de 60. Tests en `cardio.test.ts:155-166` verifican. ✓ |
+> | **CARDIO-09** | OK | Altura de pirámide con `style="height: ${Math.round(l/10) * 0.25}rem"` (línea 806). Fórmula correcta (Tailwind: h-N = N × 0.25rem). Evita purga de Tailwind JIT. ✓ |
+> | **CARDIO-11** | OK | `finishCardioWorkout(completedNaturally = true)` (línea 937): parámetro new. AMRAP usa `amrapRounds` (línea 950). `stopCardioWorkout()` pasa `false` (línea 929). Llamadas desde `handlePhaseEnd()` (líneas 654, 661, 682, 703) usan default `true`. Tests en `cardio.test.ts:99-122` verifican `completedNaturally=false` resta 1 de `currentRound`. ✓ |
+>
+> ---
+>
+> ### **VALIDACIONES DE INPUT (5 fixes)**
+>
+> | Fix | Veredicto | Detalles |
+> |-----|-----------|----------|
+> | **WKT-03** | OK | `clampToRange()` nuevo helper (línea 259-261) aplicado en `updateEjercicio()` (líneas 197-199). Valores se reflejan en DOM (líneas 202-204). Usa constantes `MAX_REASONABLE_*` compartidas. ✓ |
+> | **WKT-04 / HIST-06** | OK | `calculate1RM()`: `brzyckiReps = Math.min(reps, 36)` (línea 82) acota reps SOLO para Brzycki (línea 83), no para Epley/Lombardi. Tests `calculations.test.ts:237-306` verifican reps=37/40/50 dan resultados finitos. ✓ |
+> | **PROF-02 / PROF-03** | OK | `parsePositiveMeasurement()` nuevo (línea 376-380) descarta valores ≤0 de forma consistente. Aplicado a 9 campos en `saveMeasurement()` (líneas 387-395). Unifica el bug anterior (negativo conservado, cero descartado). ✓ |
+> | **PROF-04** | OK | `calculateBodyFat()` (línea 324-368) distingue 3 casos: (1) sin género → "-%" + mensaje "Configura tu género..." (línea 339-345); (2) datos ingresados pero inválidos (cintura ≤ cuello) → "-%" + mensaje "Verifica las medidas..." (línea 353-365); (3) válido → muestra % (línea 349-352). Lógica exhaustiva. ✓ |
+> | **CORE-02** | OK | `checkForExistingDraft()` (línea 218-247): valida `typeof draft.draftTimestamp === 'number' && Number.isFinite(draft.draftTimestamp)` (línea 234-235) + `Array.isArray(draft.ejercicios)` (línea 236). Si no cumple, llama `clearDraft()` (línea 239). Tests `storage.test.ts:175-211` cubren draft sin draftTimestamp/sin ejercicios. ✓ |
+>
+> ---
+>
+> ### **INFRAESTRUCTURA Y HIGIENE (9 fixes)**
+>
+> | Fix | Veredicto | Detalles |
+> |-----|-----------|----------|
+> | **PWA-03** | OK | `package.json` línea 23-24: `@vitest/coverage-v8@^1.6.1` y `@vitest/ui@^1.6.1` instalados. `npm run test:coverage` ahora funciona. ✓ |
+> | **PWA-05** | OK | `public/_redirects` eliminado. Única fuente de verdad: regla `/*` en `netlify.toml` línea 10-13. ✓ |
+> | **PWA-08** | OK | Imports dinámicos → estáticos: `import { renderFromDraft, loadTrainingGroup } from '@/features/workout'` en `navigation.ts:17` (antes dinámicos). Grep verifica: `workout.ts` NO importa nada de `@/ui/navigation` (sin dependencia circular). Warnings de Vite desaparecieron. ✓ |
+> | **PWA-09** | OK | `netlify.toml` línea 8: `NODE_VERSION = "20"`. `.nvmrc` contiene `20`. `package.json` línea 7: `"engines": { "node": ">=20" }`. Coherente. ✓ |
+> | **Atajos PWA** | OK | `applyManifestShortcut()` en `main.ts:934-941` lee `?action=` URL, navega a tab si `history` o `prs`. Invocado después de `showHome()` en `init()` línea 984. `action=workout` no tiene manejo (es Home, default). ✓ |
+> | **CORE-03** | OK | `resumeDraft()` (línea 439-459) ahora aplica guard `hasUnsavedData()` + `confirm()` (línea 442-450). Previene sobrescritura silenciosa de sesión activa con cambios sin guardar. ✓ |
+> | **CORE-05** | OK | `updateResumeWorkoutCard()` (línea 327-387): cuando `isStale`, llama `clearDraft()` (línea 341) además de ocultar tarjeta. Draft huérfano ya no queda indefinidamente. ✓ |
+> | **CORE-06** | OK | `getWeeklyVolume()` (línea 308-318) y `getQuickHomeStats()` (línea 389-409) reemplazan acceso directo `localStorage.getItem()` con `getHistory()` (línea 311, 396). JSON corrupto ya no rompe Home. Lógica de cálculos sin cambios. ✓ |
+> | **CORE-11** | OK | `needsMigration()` (línea 425-429) usa `GAMIFICATION_STORAGE_KEYS.STATE` en vez de clave mágica `'gymmate_gamification'`. Una fuente de verdad. ✓ |
+>
+> ---
+>
+> ## REVISIÓN DE TESTS
+>
+> ✅ **cardio.test.ts**: 11 tests pasan. Cubren CARDIO-01/02/04/06/11. CARDIO-05/07/09 no tienen tests explícitos, pero la implementación es correcta y segura.
+> ✅ **calculations.test.ts**: 25 tests pasan. WKT-04/HIST-06 (Brzycki reps≥37) cubierto exhaustivamente (línea 237-306: reps=37/40/50 all finito, reps normales no regreasionan).
+> ✅ **storage.test.ts**: 10 tests pasan. CORE-02 (checkForExistingDraft) cubierto con casos límite (sin draftTimestamp, sin ejercicios, válido).
+> ✅ **sanitize.test.ts**: 9 tests (Grupo B, revisados en Fase 1).
+> ✅ **gamification.test.ts**: 5 tests (Grupo A, revisados en Fase 1).
+> ✅ **history.test.ts**: 16 tests (Grupo A, revisados en Fase 1).
+>
+> ---
+>
+> ## ANÁLISIS DE SCOPE
+>
+> ✅ Todos los archivos modificados están en scope de Fase 2:
+> - 16 archivos `.ts` (cardio, workout, profile, session, navigation, main, migration, calculations)
+> - 3 archivos de config (package.json, netlify.toml, .nvmrc)
+> - 1 documento (FIXES_APPLIED.md)
+>
+> ❌ Ningún refactor amplio no documentado.
+> ❌ Ningún cambio cosméticos fuera de scope.
+>
+> ---
+>
+> ## OBSERVACIONES MENORES (No bloqueantes)
+>
+> 1. **CARDIO-05 (drift)**: Código correcto (guard en línea 632, tope en 592), pero sin test explícito del bucle de catch-up. Suficiente en contexto de Fase 2.
+>
+> 2. **CARDIO-09 (altura de pirámide)**: Cálculo correcto, sin test de rendering. Verificable manualmente.
+>
+> 3. **WKT-03 (DOM update)**: Valores clampeados reflejados en DOM (líneas 202-204), pero sin test automatizado.
+>
+> 4. **Cobertura de integración**: No hay tests de flujos completos (ej. iniciar cardio → drift largo → finalizar), pero esto estaba explícitamente fuera de Fase 2.
+>
+> Todas estas observaciones son menores y no afectan la corrección de los fixes.
+>
+> ---
+>
+> ## SECCIÓN 3: Ítems deferidos de Grupo C
+>
+> Revisé la sección "2b. Ítems del Grupo C evaluados y deferidos" en FIXES_APPLIED.md (líneas 401-455). El razonamiento para cada ítem deferido es sólido y documentado:
+>
+> - **Cardio**: CARDIO-03 (draft para cardio = esfuerzo mediano nuevo), CARDIO-08 (rediseño del escalado), CARDIO-10 (calorías por tarifa), CARDIO-12+ (código muerto). Razonable deferirlos.
+> - **WKT**: WKT-05/06/07/08/09 todos Trivial/Pequeño individualmente, pero priorización válida de profundidad sobre cobertura. Candidatos claros para próxima pasada.
+> - **PROF**: PROF-05 (comportamiento a decidir), PROF-07 (código muerto), PROF-08/09 (consolidación futura), PROF-10 (feature, no fix), PROF-11 (Pequeño esfuerzo, quedaría para después).
+> - **CORE**: CORE-04 (esfuerzo mediano), CORE-07/08/09 (código muerto), CORE-10 (listener de evento, sin poder probar), CORE-12 (decisión de producto), CORE-13 (informativo).
+> - **PWA**: PWA-04 (ESLint 9, merece sesión propia), PWA-06 (informativo), PWA-07 (cambio de config deliberado), PWA-10+ (assets fuera del pedido).
+>
+> ✅ Todos los ítems deferidos tienen justificación válida y no representan gaps reales.
+>
+> ---
+>
+> ## VEREDICTO ÚNICO
+>
+> `APROBADO`
+>
+> Todos los ~19 fixes de Fase 2 están correctamente implementados. Los tests pasan (76/76), TypeScript está limpio, y el build es exitoso. La implementación es sólida, el scope es correcto, y la documentación en FIXES_APPLIED.md es completa. Las observaciones menores sobre cobertura de tests no bloquean — la cobertura es suficiente para el contexto de Fase 2, y el código es defensivo y correcto.
 
 ## Fase 3
 

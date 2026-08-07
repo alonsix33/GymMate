@@ -187,16 +187,8 @@ export function clearDraft(): void {
 // SESSION
 // ==========================================
 
-export function getSession(): SessionData | null {
-  return getItem<SessionData | null>(STORAGE_KEYS.SESSION, null);
-}
-
 export function saveSession(session: SessionData): boolean {
   return setItem(STORAGE_KEYS.SESSION, session);
-}
-
-export function clearSession(): void {
-  removeItem(STORAGE_KEYS.SESSION);
 }
 
 // ==========================================

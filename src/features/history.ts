@@ -92,7 +92,7 @@ export function loadPRs(): void {
 // EXPORTAR A CSV (reemplaza xlsx por seguridad)
 // ==========================================
 
-function escapeCSV(value: string | number): string {
+export function escapeCSV(value: string | number): string {
   let str = String(value);
 
   // Neutralizar CSV/Excel Formula Injection: si el valor empieza con un

@@ -13,7 +13,6 @@ import { getHistory, getPRs, getProfile } from '@/utils/storage';
 import { allExercises } from '@/data/exercises';
 import {
   XP_WORKOUT_COMPLETE,
-  PR_XP,
   DEFAULT_BODYWEIGHT,
   GAMIFICATION_SCHEMA_VERSION,
   ACHIEVEMENT_DEFINITIONS,
@@ -23,6 +22,7 @@ import {
 } from './constants';
 import {
   calculateVolumeXP,
+  calculatePRXP,
   generateTransactionId,
   calculateCurrentStreak,
   calculateCardioSessionXP,
@@ -78,7 +78,7 @@ export function migrateExistingData(existingAchievements?: Achievement[]): Gamif
   }
 
   // Calcular XP retroactivo (entrenamientos + volumen + PRs + cardio)
-  const { totalXP: baseXP, xpTransactions } = calculateRetroactiveXP(history, prs);
+  const { totalXP: baseXP, xpTransactions } = calculateRetroactiveXP(history);
 
   // Calcular rangos musculares (estado final)
   const { muscleRanks, exerciseStrengths } = prs && Object.keys(prs).length > 0
@@ -213,8 +213,7 @@ export function migrateExistingData(existingAchievements?: Achievement[]): Gamif
  * Calcula el XP retroactivo de todo el historial
  */
 function calculateRetroactiveXP(
-  history: HistorySession[],
-  prs: Record<string, PRData>
+  history: HistorySession[]
 ): {
   totalXP: number;
   xpTransactions: XPTransaction[];
@@ -274,22 +273,49 @@ function calculateRetroactiveXP(
     }
   }
 
-  // XP por PRs existentes (asumimos PR menor promedio)
-  const prCount = Object.keys(prs).length;
-  if (prCount > 0) {
-    const prXP = prCount * PR_XP.minor;
+  // XP por PRs: reconstruido cronológicamente (misma clasificación que usa
+  // getNewPRsInSession() en vivo), no una aproximación plana por conteo.
+  const prXP = calculateRetroactivePRXP(sortedHistory);
+  if (prXP > 0) {
     totalXP += prXP;
 
     transactions.push({
       id: generateTransactionId(),
       amount: prXP,
       source: 'migration',
-      description: `${prCount} PRs historicos`,
+      description: 'PRs históricos',
       timestamp: new Date().toISOString(),
     });
   }
 
   return { totalXP, xpTransactions: transactions };
+}
+
+/**
+ * Calcula el XP retroactivo de PRs recorriendo el historial cronológicamente
+ * y clasificando cada mejora (misma lógica que getNewPRsInSession() +
+ * calculatePRXP() en vivo), en vez de una aproximación plana por conteo de
+ * PRs vigentes que no reflejaba el tamaño real de cada mejora.
+ */
+function calculateRetroactivePRXP(sortedHistory: HistorySession[]): number {
+  const runningBest: Record<string, number> = {};
+  let totalXP = 0;
+
+  for (const session of sortedHistory) {
+    if (session.type === 'cardio' || !session.ejercicios) continue;
+
+    for (const ej of session.ejercicios) {
+      if (!ej.peso || ej.peso <= 0 || !ej.volumen) continue;
+      const previousBest = runningBest[ej.nombre] || 0;
+      if (ej.peso > previousBest) {
+        const improvement = ej.peso - previousBest;
+        totalXP += calculatePRXP(improvement).xp;
+        runningBest[ej.nombre] = ej.peso;
+      }
+    }
+  }
+
+  return totalXP;
 }
 
 /**

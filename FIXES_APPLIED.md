@@ -864,4 +864,117 @@ cada uno **tal cual lo entregó**, sin resumir ni reinterpretar.
 
 ## Fase 3
 
-*(pendiente — se agrega tras ejecutar la verificación independiente de esta fase)*
+> Perfecto. He completado mi auditoría exhaustiva. Presento mi veredicto:
+>
+> ---
+>
+> ## AUDITORÍA INDEPENDIENTE — FASE 3: ELIMINACIÓN DE CÓDIGO MUERTO
+>
+> ### 1. VERIFICACIÓN DE INFRAESTRUCTURA
+>
+> ✅ **TypeScript (`npx tsc --noEmit`)**: Limpio, sin errores
+> ✅ **Tests (`npx vitest run`)**: 76/76 pasan sin modificaciones
+> ✅ **Build (`npm run build`)**: Exitoso, sin warnings nuevos
+>
+> ---
+>
+> ### 2. VERIFICACIÓN POR ELIMINACIÓN
+>
+> #### **9 Render Variants de Gamificación**
+> - `renderLevelBadgeCompact`, `renderRankEmblemMini`, `renderRankWithLabel`, `renderMuscleMapMini`, `renderMuscleMapWithLegend`, `renderMuscleProgress`, `renderGamificationHeader`, `renderLevelUpMessage`, `renderRankUpMessage`
+> - **Veredicto: OK** — Grep exhaustivo: cero consumidores en el repo actual. El barrel `ui/gamification/index.ts` ya no las exporta. Solo fueron definidas y exportadas, nunca usadas.
+>
+> #### **`hasChangesToSave()` (CORE-07)**
+> - **Veredicto: OK** — Sin consumidores. Reimplementaba lógica ya cubierta por `hasUnsavedData()` que sí se usa activamente.
+>
+> #### **`getSession()`, `clearSession()` (CORE-08 parcial)**
+> - **Veredicto: OK** — Sin consumidores. `saveSession()` (diferente) sigue existiendo e intacto, usada en `state/session.ts:271`. La lectura/borrado nunca existió en ningún call-site.
+>
+> #### **`resetGamificationState()` (CORE-09)**
+> - **Veredicto: OK** — Sin consumidores. Los tests usan `initGamification()` que es la función correcta.
+>
+> #### **`checkForPR()` (WKT-05 parcial)**
+> - **Veredicto: OK** — Sin consumidores. La versión que persiste (`checkAndUpdatePR()` en `state/session.ts:297`) existe e intacta, llamada en línea 114 del mismo archivo.
+>
+> #### **Campo `timer` de `CardioState` (CARDIO-14)**
+> - **Veredicto: OK** — Sin referencias a `cardioState.timer` en ningún archivo.
+>   - El tipo `CardioState` anterior tenía: `timer: ReturnType<typeof setInterval> | null;`
+>   - El tipo actual no lo tiene (tipo correcto)
+>   - `resetCardioState()` antes intentaba `clearInterval(cardioState.timer)`, ahora no — correcto porque el campo no existe
+>   - El mecanismo real usa `let timerInterval` privado en `cardio.ts:11` — no roto
+>
+> #### **`getQuickStats()` (HIST-04)**
+> - **Veredicto: OK** — Sin consumidores. Duplicada con `calculateCurrentStreak()`, eliminación correcta.
+>
+> #### **`getProfileForCalculators()` (PROF-07)**
+> - **Veredicto: OK** — Sin consumidores. Su equivalente `calculators.ts` reimplementa la lógica independientemente.
+>
+> #### **`card()`, `buttonPrimary()`, `buttonSecondary()`, `statCard()`, `renderRoutineCard()` (UI-07)**
+> - **Veredicto: OK** — Sin consumidores. Imports en `components.ts` vienen solo de `renderExercise`, `renderHistoryItem`, `renderPRItem`, que sí existen.
+>
+> #### **`iconInline()` (UI-07)**
+> - **Veredicto: OK** — Sin consumidores en el repo.
+>
+> #### **`muscleIconImg()`, `getAvailableMuscleIcons()`, `getAvailableGroupIcons()`, `MUSCLE_SVG_ICONS`, `GROUP_SVG_ICONS` (UI-07)**
+> - **Veredicto: OK** — Sin consumidores. Las constantes llevaban comentario "Para compatibilidad con código existente" — código de compatibilidad hacia atrás para algo ya desaparecido.
+>
+> #### **Regla `for = "/*.ts"` en `netlify.toml` (PWA-06)**
+> - **Veredicto: OK** — Eliminada. Verificado: el build de Vite no genera archivos `.ts` en producción (solo `.js`), así que la regla nunca coincidía con nada.
+>
+> #### **Dependencia `react-body-highlighter` (package.json)**
+> - **Veredicto: OK** — Desinstalada. Único rastro en código: un comentario de crédito en `muscle-map.ts`. Nunca se importa. Librería de React en app vanilla.
+>
+> ---
+>
+> ### 3. VERIFICACIÓN DE EXCLUSIONES ("NO ELIMINADO")
+>
+> #### **GAM2-11: `xpHistory` + `getXPHistory()`**
+> - Existe: ✅ (`GamificationState.xpHistory` en types, `state.ts`)
+> - Se calcula: ✅ (`migration.ts:107-108`, `state.ts`)
+> - Se persiste: ✅ (capado a últimas 100 transacciones)
+> - **Razonamiento**: Ledger real, cálculo activo, decide el audit que es "decisión de producto". **SÓLIDO**
+>
+> #### **CARDIO-13: Base de datos ejercicios cardio (`getCardioExerciseInfo()` + campos en `cardio-exercises.ts`)**
+> - Existe: ✅ (funciones y data en `data/cardio-exercises.ts`)
+> - Datos curados: ✅ (`difficulty`, `calories`, `muscles`, `desc` para 30+ ejercicios)
+> - Conexión real: ✅ CARDIO-10 (calorías por tarifa variable, no fija) usaría esta data
+> - **Razonamiento**: Data lista para cuando se implemente CARDIO-10. **SÓLIDO**
+>
+> ---
+>
+> ### 4. VERIFICACIÓN DE SCOPE (¿Hubo cambios fuera de las eliminaciones documentadas?)
+>
+> **Análisis de diff**:
+> - 20 archivos modificados
+> - 192 líneas añadidas (FIXES_APPLIED.md: +190, package-lock.json: +2)
+> - 517 líneas eliminadas (código muerto)
+> - **Cambios que NO son pura eliminación**:
+>   - FIXES_APPLIED.md: +190 (documentación)
+>   - package-lock.json: cambios por desinstalación de `react-body-highlighter`
+>   - **Ningún cambio de lógica o comportamiento fuera de las eliminaciones documentadas**
+>
+> ---
+>
+> ### 5. VERIFICACIÓN DE COHERENCIA DE TIPOS
+>
+> - Importes de `ui/gamification`: Solo `renderGamificationHeroCard`, `showGamificationModal`, `hideGamificationModal` en `main.ts` ✅ (todas existen)
+> - Uso de `cardioState` en tests: Accede solo a campos que siguen existiendo ✅
+> - TypeScript compila sin errores ✅
+>
+> ---
+>
+> ### 6. HALLAZGOS ESPECIALES
+>
+> Ninguno. No se encontró:
+> - ❌ Consumidores ocultos de funciones eliminadas
+> - ❌ Cambios silenciosos de comportamiento
+> - ❌ Tipos rotos o referencias circulares nuevas
+> - ❌ Tests que ahora son inválidos (los 76 pasan sin cambios)
+>
+> ---
+>
+> ## VEREDICTO ÚNICO
+>
+> `APROBADO`
+>
+> La eliminación de código muerto es exhaustiva, correctamente documentada, verificada sin consumidores ocultos, y sin cambios de comportamiento. Las dos decisiones de conservar `xpHistory` (GAM2-11) y base de datos de cardio (CARDIO-13) están bien razonadas — no son código muerto, sino mecanismos desconectados que esperan a features futuras. El balance neto (-325 líneas, cero regresos) es limpio. Listo para merge.

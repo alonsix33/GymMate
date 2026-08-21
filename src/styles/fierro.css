@@ -1080,8 +1080,10 @@ body.f-sin-tabbar {
 /* Las pantallas legacy conservan el padding que tenia <main> hasta que su
    fase las reemplace. Las cuatro vistas de cardio no son .tab-content: son
    hijas directas de <main>, asi que al retirar su padding quedaron de borde a
-   borde. Se listan aparte hasta que la fase 6 las rehaga. */
-.tab-content,
+   borde. Se listan aparte hasta que la fase 6 las rehaga.
+   #workoutTab queda FUERA: ya es una pantalla FIERRO y trae su propio padding
+   de 20px; sumarle el legacy dejaba la card en 310px en vez de 350. */
+.tab-content:not(#workoutTab),
 #cardioSelectorView,
 #cardioConfigView,
 #cardioTimerView,
@@ -1170,10 +1172,826 @@ body.f-sin-tabbar {
   flex: none;
 }
 
+/* W-01 y W-04 declaran su propia medida de badge: 10px con padding 5x8 y
+   radio 5. La del sistema (11px, 6x10, r6) es la de la galeria.
+   [REF Pantallas:184,255,240] */
+.f-badge--sesion {
+  font-size: var(--fs-10);
+  padding: 5px 8px;
+  border-radius: var(--r-chip-s);
+}
+
 /* H-01 declara su propia medida de badge, distinta de la del sistema.
    [REF Pantallas:122] font:700 10.5px/1, padding 6px 9px, sin letter-spacing */
 .f-badge--h01 {
   font-size: var(--fs-10_5);
   padding: 6px 9px;
   letter-spacing: normal;
+}
+
+/* --------------------------------------------------------------------------
+   11 · W-01 — Sesion activa  [REF Pantallas:151-243]
+   -------------------------------------------------------------------------- */
+.f-sesion {
+  padding: 10px var(--pad-screen-l) 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.f-sesion__cabecera {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-card-l);
+}
+.f-sesion__volver {
+  color: var(--text-secondary);
+  font-size: var(--fs-20);
+  line-height: var(--lh-1);
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+.f-sesion__titulos {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.f-sesion__titulo {
+  font-family: var(--font-display);
+  font-stretch: var(--stretch-115);
+  font-weight: var(--w-900);
+  font-size: var(--fs-22);
+  line-height: var(--lh-1);
+}
+.f-sesion__sub {
+  font-size: var(--fs-12);
+  color: var(--text-secondary);
+}
+.f-sesion__crono {
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-weight: var(--w-700);
+  font-size: var(--fs-11);
+  line-height: var(--lh-1);
+  padding: 7px 10px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-card-active);
+  border-radius: var(--r-chip);
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+  flex: none;
+}
+
+/* Nota del coach de la sesion: el dato en negrita, nada mas. */
+.f-sesion__coach {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-card-active);
+  border-radius: var(--r-row-l);
+  padding: 12px 16px;
+  font-size: var(--fs-13_5);
+  line-height: var(--lh-1_45);
+}
+.f-sesion__dato {
+  font-weight: var(--w-700);
+}
+/* Subtexto del coach de sesion: segunda linea, mismo bloque. */
+.f-sesion__coach-sub {
+  display: block;
+  margin-top: 2px;
+  font-size: var(--fs-12);
+  color: var(--text-secondary);
+}
+
+.f-sesion__metricas {
+  display: flex;
+  gap: var(--gap-card);
+}
+.f-metrica {
+  flex: 1;
+  min-width: 0;
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--r-card);
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+/* VOLUMEN es el dato protagonista: mas ancho y con el borde de card activa. */
+.f-metrica--protagonista {
+  flex: 1.4;
+  border-color: var(--border-card-active);
+}
+.f-metrica__label {
+  font-family: var(--font-mono);
+  font-weight: var(--label-weight);
+  font-size: var(--fs-9_5);
+  line-height: var(--lh-1);
+  letter-spacing: var(--ls-_08);
+  color: var(--text-secondary);
+}
+.f-metrica__cifra {
+  font-family: var(--font-display);
+  font-stretch: var(--stretch-110);
+  font-weight: var(--w-800);
+  font-size: var(--fs-20);
+  font-variant-numeric: tabular-nums;
+}
+.f-metrica--protagonista .f-metrica__cifra {
+  font-stretch: var(--stretch-112);
+  font-weight: var(--w-900);
+  font-size: var(--fs-24);
+}
+.f-metrica__unidad {
+  font-size: var(--fs-12);
+  font-weight: var(--w-600);
+  color: var(--text-secondary);
+}
+.f-metrica__total {
+  color: var(--text-secondary);
+}
+
+/* Card del ejercicio en curso */
+.f-ejercicio {
+  background: var(--bg-card);
+  border: 1px solid var(--border-card-active);
+  border-radius: var(--r-card-l);
+  overflow: hidden;
+}
+.f-ejercicio__cuerpo {
+  padding: var(--pad-card);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.f-ejercicio__cabecera {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-card);
+}
+.f-ejercicio__identidad {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.f-ejercicio__nombre-fila {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.f-ejercicio__nombre {
+  font-weight: var(--w-700);
+  font-size: var(--fs-16_5);
+  background: none;
+  border: none;
+  padding: 0;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  font-family: inherit;
+}
+/* La "ⓘ" del README no existe en Archivo ni en Instrument Sans; el mockup la
+   dibuja como una "i" mono dentro de un circulo. Se reproduce igual. */
+.f-ejercicio__info {
+  width: 17px;
+  height: 17px;
+  border-radius: var(--r-pill);
+  border: 1.5px solid var(--border-secondary-btn);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-mono);
+  font-weight: var(--w-600);
+  font-size: var(--fs-10);
+  line-height: var(--lh-1);
+  color: var(--text-secondary);
+  flex: none;
+  background: none;
+  padding: 0;
+  cursor: pointer;
+}
+.f-ejercicio__meta {
+  font-size: var(--fs-12);
+  color: var(--text-secondary);
+}
+.f-ejercicio__check {
+  width: 30px;
+  height: 30px;
+  border-radius: var(--r-pill);
+  border: 2px solid var(--border-secondary-btn);
+  background: none;
+  flex: none;
+  cursor: pointer;
+  padding: 0;
+}
+
+/* Steppers de la sesion: mas bajos que los del sistema (30x46 frente a
+   52x56), porque van tres en una fila. [REF Pantallas:191-196] */
+.f-steppers {
+  display: flex;
+  gap: var(--gap-card-s);
+}
+.f-stepper-campo {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.f-stepper-campo__label {
+  font-family: var(--font-mono);
+  font-weight: var(--label-weight);
+  font-size: var(--fs-9_5);
+  line-height: var(--lh-1);
+  letter-spacing: var(--ls-_08);
+  color: var(--text-secondary);
+  text-align: center;
+}
+.f-stepper--sesion {
+  gap: 4px;
+}
+.f-stepper--sesion .f-stepper__btn {
+  width: 30px;
+  height: var(--stepper-h-s);
+  background: var(--bg-elevated);
+  color: var(--text-tertiary);
+  font-size: var(--fs-16);
+}
+.f-stepper--sesion .f-stepper__valor {
+  background: var(--bg-app);
+  font-size: var(--fs-18);
+  height: var(--stepper-h-s);
+  border-radius: var(--r-btn-s);
+  /* Es un <input>: el navegador le pone su propio aspecto y sus flechas. */
+  width: 100%;
+  min-width: 0;
+  text-align: center;
+  padding: 0;
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+.f-stepper--sesion .f-stepper__btn {
+  border-radius: var(--r-btn-s);
+}
+.f-stepper--sesion .f-stepper__valor::-webkit-outer-spin-button,
+.f-stepper--sesion .f-stepper__valor::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.f-stepper--sesion .f-stepper__valor:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.f-ejercicio__pie {
+  display: flex;
+  justify-content: space-between;
+  border-top: 1px solid var(--border-subtle);
+  padding-top: var(--gap-card-l);
+  font-size: var(--fs-13);
+}
+.f-ejercicio__pie-label {
+  color: var(--text-secondary);
+}
+.f-ejercicio__pie-cifra {
+  font-weight: var(--w-700);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Ejercicio ya completado — fila compacta con su RPE */
+.f-hecho {
+  background: var(--bg-card);
+  border: 1px solid var(--border-card-active);
+  border-radius: var(--r-row-l);
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+}
+.f-hecho__fila {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-card-l);
+}
+.f-hecho__check {
+  width: 26px;
+  height: 26px;
+  border-radius: var(--r-pill);
+  background: var(--accent);
+  color: var(--on-fragua);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: var(--w-800);
+  font-size: var(--fs-14);
+  flex: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+}
+.f-hecho__textos {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.f-hecho__nombre {
+  font-weight: var(--w-600);
+  font-size: var(--fs-14_5);
+  background: none;
+  border: none;
+  padding: 0;
+  color: inherit;
+  text-align: left;
+  font-family: inherit;
+  cursor: pointer;
+}
+.f-hecho__detalle {
+  font-size: var(--fs-12);
+  color: var(--text-disabled);
+}
+
+/* RPE por ejercicio: chips, nunca slider mientras se levanta. */
+.f-rpe-fila {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.f-rpe-fila__label {
+  font-family: var(--font-mono);
+  font-weight: var(--label-weight);
+  font-size: var(--fs-9_5);
+  line-height: var(--lh-1);
+  letter-spacing: var(--ls-_06);
+  color: var(--text-secondary);
+  flex: 1;
+}
+.f-rpe-chip {
+  width: 30px;
+  height: 30px;
+  border-radius: var(--r-btn-s);
+  border: 1px solid var(--border-card-active);
+  background: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--fs-12_5);
+  font-weight: var(--w-600);
+  color: var(--text-tertiary);
+  flex: none;
+  cursor: pointer;
+  padding: 0;
+  font-family: inherit;
+}
+/* El activo va SIN borde, como el mockup: mide 30 donde los inactivos miden
+   32 (1px de borde a cada lado en content-box). [REF Pantallas:225-226] */
+.f-rpe-chip[aria-pressed='true'] {
+  background: var(--accent);
+  border: none;
+  color: var(--on-fragua);
+  font-weight: var(--w-800);
+}
+.f-rpe-omitir {
+  font-size: var(--fs-11_5);
+  color: var(--text-disabled);
+  padding-left: 2px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+  flex: none;
+}
+
+/* Separador de opcionales */
+.f-separador {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-card);
+}
+.f-separador__label {
+  font-family: var(--font-mono);
+  font-weight: var(--label-weight);
+  font-size: var(--fs-10);
+  line-height: var(--lh-1);
+  letter-spacing: var(--ls-_1);
+  color: var(--text-secondary);
+}
+.f-separador__linea {
+  flex: 1;
+  height: 1px;
+  background: var(--border-subtle);
+}
+
+/* Ejercicio opcional: mismo peso visual, borde discontinuo. */
+.f-opcional {
+  border: 1px dashed var(--border-card-active);
+  border-radius: var(--r-row-l);
+  padding: 14px 16px;
+  display: flex;
+  align-items: center;
+  gap: var(--gap-card-l);
+}
+.f-opcional__check {
+  width: 26px;
+  height: 26px;
+  border-radius: var(--r-pill);
+  border: 2px solid var(--border-secondary-btn);
+  background: none;
+  flex: none;
+  cursor: pointer;
+  padding: 0;
+}
+.f-opcional__nombre {
+  flex: 1;
+  min-width: 0;
+  font-weight: var(--w-600);
+  font-size: var(--fs-14_5);
+  background: none;
+  border: none;
+  padding: 0;
+  color: inherit;
+  text-align: left;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+/* Barra de descanso */
+.f-descanso {
+  background: var(--bg-elevated);
+  border: 1px solid var(--accent);
+  border-radius: var(--r-row-l);
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  gap: var(--gap-card-l);
+}
+.f-descanso__label {
+  font-family: var(--font-mono);
+  font-weight: var(--label-weight);
+  font-size: var(--fs-10);
+  line-height: var(--lh-1);
+  letter-spacing: var(--ls-_08);
+  color: var(--accent);
+  flex: none;
+}
+.f-descanso__tiempo {
+  flex: 1;
+  font-family: var(--font-display);
+  font-stretch: var(--stretch-112);
+  font-weight: var(--w-900);
+  font-size: var(--fs-22);
+  font-variant-numeric: tabular-nums;
+}
+.f-descanso__accion {
+  font-size: var(--fs-12_5);
+  color: var(--text-tertiary);
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font-family: inherit;
+  flex: none;
+}
+.f-descanso__accion--detener {
+  color: var(--zona-roja);
+}
+
+/* Volumen por musculo */
+.f-volumen {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-card-s);
+}
+.f-volumen__fila {
+  display: flex;
+  justify-content: space-between;
+  font-size: var(--fs-12);
+}
+.f-volumen__musculo {
+  color: var(--text-secondary);
+}
+.f-volumen__kg {
+  font-variant-numeric: tabular-nums;
+  font-weight: var(--w-600);
+}
+.f-volumen__pista {
+  height: 6px;
+  border-radius: var(--r-bar);
+  background: var(--border-subtle);
+  overflow: hidden;
+}
+.f-volumen__relleno {
+  height: 100%;
+  border-radius: var(--r-bar);
+  background: var(--barra-musculo-secundaria);
+}
+.f-volumen__relleno--mayor {
+  background: var(--accent);
+}
+
+/* Pie de la sesion */
+.f-sesion__autosave {
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: var(--fs-11_5);
+  color: var(--text-secondary);
+}
+
+/* --------------------------------------------------------------------------
+   12 · W-04 — Guia de ejercicio (bottom sheet)  [REF Pantallas:248-274]
+   -------------------------------------------------------------------------- */
+.f-guia__cabecera {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--gap-card-l);
+}
+.f-guia__identidad {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.f-guia__nombre {
+  font-family: var(--font-display);
+  font-stretch: var(--stretch-display-m);
+  font-weight: var(--w-800);
+  font-size: var(--fs-21);
+}
+.f-guia__musculos {
+  font-family: var(--font-mono);
+  font-weight: var(--label-weight);
+  font-size: var(--fs-10);
+  line-height: var(--lh-1);
+  letter-spacing: var(--ls-_08);
+  color: var(--text-secondary);
+}
+/* La foto solo existe si el ejercicio la tiene: sin foto no se pinta el
+   bloque, nunca un hueco vacio. */
+.f-guia__foto {
+  height: 150px;
+  border-radius: var(--r-row-l);
+  object-fit: cover;
+  width: 100%;
+  display: block;
+  background: var(--bg-elevated);
+}
+.f-guia__texto {
+  font-size: var(--fs-14);
+  line-height: var(--body-line-loose);
+  color: var(--text-tertiary);
+}
+.f-guia__datos {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-card-s);
+  border-top: 1px solid var(--border-subtle);
+  padding-top: 14px;
+  font-size: var(--fs-13);
+  font-variant-numeric: tabular-nums;
+}
+.f-guia__fila {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--gap-card-l);
+}
+.f-guia__label {
+  color: var(--text-secondary);
+}
+.f-guia__valor {
+  font-weight: var(--w-600);
+}
+.f-guia__valor--pr {
+  font-weight: var(--w-700);
+}
+
+/* --------------------------------------------------------------------------
+   13 · W-02 — RPE de sesion (slider, solo al terminar)
+        [REF Pantallas:274-296]
+   -------------------------------------------------------------------------- */
+.f-rpe-hoja {
+  gap: 20px; /* [REF Pantallas:277] esta hoja usa 20, no 18 */
+}
+.f-rpe-hoja__encabezado {
+  display: flex;
+  flex-direction: column;
+  gap: 4px; /* [REF Pantallas:278] */
+}
+.f-rpe-hoja__sub {
+  font-size: var(--fs-13);
+  color: var(--text-secondary);
+}
+.f-rpe-bloque {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-card);
+}
+.f-rpe-bloque__fila {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--gap-card-l);
+}
+.f-rpe-bloque__cifra {
+  font-family: var(--font-display);
+  font-stretch: var(--stretch-115);
+  font-weight: var(--w-900);
+  font-size: var(--fs-44);
+  font-variant-numeric: tabular-nums;
+}
+.f-rpe-bloque__etiqueta {
+  font-weight: var(--w-700);
+  font-size: var(--fs-15);
+}
+/* El unico gradiente permitido en todo el sistema: es semantico. */
+.f-rpe-pista {
+  position: relative;
+  height: 10px;
+  border-radius: var(--r-5);
+  margin: 8px 0;
+  background: linear-gradient(90deg, var(--zona-verde), var(--zona-ambar) 55%, var(--zona-roja));
+}
+/* El recorrido de la bola se acota para que nunca sobresalga de la pista:
+   left = 12px + (100% - 24px) x t, con t en [0,1]. [README 4] */
+.f-rpe-bola {
+  position: absolute;
+  top: 50%;
+  left: calc(12px + (100% - 24px) * var(--t));
+  transform: translate(-50%, -50%);
+  width: 24px;
+  height: 24px;
+  border-radius: var(--r-pill);
+  background: var(--text-primary);
+  border: 5px solid var(--bg-sheet);
+  box-shadow: 0 0 0 1px var(--border-secondary-btn);
+  pointer-events: none;
+}
+.f-rpe-rango {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+.f-rpe-pista__extremos {
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--font-mono);
+  font-weight: var(--label-weight);
+  font-size: var(--fs-10_5);
+  line-height: var(--lh-1);
+  color: var(--text-disabled);
+}
+.f-rpe-hoja__omitir {
+  text-align: center;
+  font-size: var(--fs-13_5);
+  color: var(--text-secondary);
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+  padding: 0;
+}
+
+/* --------------------------------------------------------------------------
+   14 · W-03 — Resumen de XP  [REF Pantallas:301-340]
+   -------------------------------------------------------------------------- */
+/* Pantalla completa, no hoja: el mockup la dibuja como pantalla. Va por
+   encima de la tab bar y de los toasts, y por debajo de nada. */
+.f-capa-xp {
+  position: fixed;
+  inset: 0;
+  z-index: 970;
+  background: var(--bg-app);
+  overflow-y: auto;
+}
+@media (min-width: 640px) {
+  .f-capa-xp {
+    left: 50%;
+    right: auto;
+    width: var(--ancho-app);
+    transform: translateX(-50%);
+  }
+}
+
+.f-xp {
+  padding: 40px 22px 30px;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+.f-xp__cabecera {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: center;
+  text-align: center;
+}
+.f-xp__label {
+  font-family: var(--font-mono);
+  font-weight: var(--label-weight);
+  font-size: var(--fs-10);
+  line-height: var(--lh-1);
+  letter-spacing: var(--ls-_12);
+  color: var(--text-secondary);
+}
+.f-xp__cifra {
+  font-family: var(--font-display);
+  font-stretch: var(--stretch-118);
+  font-weight: var(--w-900);
+  font-size: var(--fs-58);
+  line-height: var(--lh-1);
+  color: var(--accent);
+}
+.f-xp__sub {
+  font-size: var(--fs-13_5);
+  color: var(--text-tertiary);
+}
+.f-xp__desglose {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--r-card);
+  overflow: hidden;
+}
+.f-xp__fila {
+  display: flex;
+  justify-content: space-between;
+  padding: 13px 16px;
+  border-bottom: 1px solid var(--bg-elevated);
+  font-size: var(--fs-13_5);
+}
+.f-xp__concepto {
+  color: var(--text-tertiary);
+}
+.f-xp__valor {
+  font-weight: var(--w-700);
+  font-variant-numeric: tabular-nums;
+}
+.f-xp__ascenso {
+  background: var(--bg-elevated);
+  border: 1px solid var(--rango);
+  border-radius: var(--r-card);
+  padding: var(--pad-card);
+  display: flex;
+  align-items: center;
+  gap: var(--gap-card-l);
+}
+.f-xp__ascenso-cuadro {
+  width: 34px;
+  height: 34px;
+  border-radius: var(--r-btn-s);
+  background: var(--rango);
+  flex: none;
+}
+.f-xp__ascenso-textos {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.f-xp__ascenso-titulo {
+  font-weight: var(--w-700);
+  font-size: var(--fs-14_5);
+}
+.f-xp__ascenso-rango {
+  color: var(--rango);
+}
+.f-xp__ascenso-detalle {
+  font-size: var(--fs-12);
+  color: var(--text-secondary);
+}
+.f-xp__nivel {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.f-xp__nivel-fila {
+  display: flex;
+  justify-content: space-between;
+  font-size: var(--fs-12);
+  color: var(--text-secondary);
+}
+.f-xp__nivel-xp {
+  font-variant-numeric: tabular-nums;
+}
+.f-xp__pista {
+  height: 6px;
+  border-radius: var(--r-bar);
+  background: var(--border-subtle);
+  overflow: hidden;
+}
+.f-xp__relleno {
+  height: 100%;
+  border-radius: var(--r-bar);
+  background: var(--accent);
 }

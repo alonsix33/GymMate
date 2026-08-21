@@ -59,6 +59,20 @@ export function resetSession(): void {
 export function setSessionGroup(groupName: string): void {
   sessionData.grupo = groupName;
   sessionData.date = claveDia(new Date());
+  sessionData.startedAt = new Date().toISOString();
+}
+
+/**
+ * RPE por ejercicio (README 3): chips 5-9 al marcar ✓, o `null` para omitir.
+ * Se guarda en el borrador al instante: es un dato que se pierde si la app se
+ * cierra entre series.
+ */
+export function setExerciseRPE(index: number, valor: number | null): void {
+  const ejercicio = sessionData.ejercicios[index];
+  if (!ejercicio) return;
+  if (valor === null) delete ejercicio.rpe;
+  else ejercicio.rpe = valor;
+  saveDraftNow();
 }
 
 export function setSessionExercises(ejercicios: ExerciseData[]): void {

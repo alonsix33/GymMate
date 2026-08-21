@@ -1,5 +1,35 @@
 import { icon, refreshIcons } from '@/utils/icons';
 
+/**
+ * La barra de DESCANSO de W-01 vive DENTRO de la sesion [REF Pantallas:233].
+ * El banner flotante legacy se conserva para las pantallas que la fase 4 aun
+ * no ha rehecho; cuando la sesion esta en pantalla manda la barra FIERRO.
+ */
+function barraFierro(): HTMLElement | null {
+  return document.getElementById('fierroDescanso');
+}
+
+function pintarBarraFierro(): void {
+  const hueco = barraFierro();
+  if (!hueco) return;
+  if (restTimer === null && restTimeRemaining <= 0) {
+    hueco.innerHTML = '';
+    return;
+  }
+  const minutos = Math.floor(restTimeRemaining / 60);
+  const segundos = restTimeRemaining % 60;
+  hueco.innerHTML = `
+    <div class="f-descanso" role="timer" aria-label="Tiempo de descanso">
+      <span class="f-descanso__label">DESCANSO</span>
+      <span class="f-descanso__tiempo" id="fierroDescansoTiempo">${minutos}:${String(segundos).padStart(2, '0')}</span>
+      <button type="button" class="f-descanso__accion" id="fierroDescansoPausa">${isPaused ? 'Reanudar' : 'Pausar'}</button>
+      <button type="button" class="f-descanso__accion f-descanso__accion--detener" id="fierroDescansoDetener">Detener</button>
+    </div>
+  `;
+  hueco.querySelector('#fierroDescansoPausa')?.addEventListener('click', () => pauseTimer());
+  hueco.querySelector('#fierroDescansoDetener')?.addEventListener('click', () => stopTimer());
+}
+
 // ==========================================
 // ESTADO DEL TIMER
 // ==========================================
@@ -42,6 +72,7 @@ export function initializeTimer(seconds: number): void {
     banner.classList.add('active');
   }
 
+  pintarBarraFierro();
   updateTimerDisplay();
   updatePauseButtonText();
 
@@ -69,12 +100,15 @@ export function initializeTimer(seconds: number): void {
 // ==========================================
 
 function updateTimerDisplay(): void {
+  const minutes = Math.floor(restTimeRemaining / 60);
+  const seconds = restTimeRemaining % 60;
   const display = document.getElementById('timerDisplay');
   if (display) {
-    const minutes = Math.floor(restTimeRemaining / 60);
-    const seconds = restTimeRemaining % 60;
     display.textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
   }
+  // El mockup no rellena con cero el minuto: "1:24", no "01:24".
+  const fierro = document.getElementById('fierroDescansoTiempo');
+  if (fierro) fierro.textContent = `${minutes}:${String(seconds).padStart(2, '0')}`;
 }
 
 function updatePauseButtonText(): void {
@@ -96,6 +130,8 @@ function updatePauseButtonText(): void {
 export function pauseTimer(): void {
   isPaused = !isPaused;
   updatePauseButtonText();
+  const boton = document.getElementById('fierroDescansoPausa');
+  if (boton) boton.textContent = isPaused ? 'Reanudar' : 'Pausar';
 }
 
 export function stopTimer(): void {
@@ -110,6 +146,7 @@ export function stopTimer(): void {
   }
 
   restTimeRemaining = 0;
+  pintarBarraFierro();
 }
 
 // ==========================================
@@ -134,6 +171,8 @@ function onTimerComplete(): void {
     if (banner) {
       banner.classList.remove('active');
     }
+    restTimeRemaining = 0;
+    pintarBarraFierro();
   }, 2000);
 }
 

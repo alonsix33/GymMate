@@ -507,6 +507,11 @@ export function triggerCSVImport(): void {
       // Recargar historial si estamos en esa pestaña
       loadHistory();
       loadPRs();
+      // Y la home: la accion de importar vive EN la home (H-01/O-01). Sin
+      // esto, importar 2 sesiones dejaba la pantalla diciendo "SESIÓN 0 · tu
+      // primera sesión enciende la primera celda".
+      const { renderizarHome } = await import('@/ui/navigation');
+      renderizarHome();
     } catch (error) {
       mostrarToast({
         tipo: 'aviso',

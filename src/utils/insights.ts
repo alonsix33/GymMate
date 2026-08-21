@@ -54,7 +54,7 @@ function saltoDe(pico: number, esMancuerna: boolean): number {
   return pico < 10 ? 1 : 2;
 }
 
-function siguienteCarga(pico: number, esMancuerna = false): number {
+export function siguienteCarga(pico: number, esMancuerna = false): number {
   const salto = saltoDe(pico, esMancuerna);
   const siguiente = Math.floor(pico / salto) * salto + salto;
   // Redondeo a 2 decimales: 0.1+0.2 no puede colarse en un peso.
@@ -62,7 +62,7 @@ function siguienteCarga(pico: number, esMancuerna = false): number {
 }
 
 /** 50 -> "50", 47.5 -> "47.5". Sin decimales de adorno. */
-function formatearPeso(kg: number): string {
+export function formatearPeso(kg: number): string {
   return Number.isInteger(kg) ? String(kg) : kg.toFixed(1);
 }
 

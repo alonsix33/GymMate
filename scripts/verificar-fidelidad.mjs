@@ -78,6 +78,13 @@ const hexARgb = (h) => {
 };
 const norm = (v) => (v.startsWith('#') ? hexARgb(v) : v.replace(/\s+/g, ' ').trim());
 
+/** ".06em" con font-size 10px -> "0.6px". El navegador siempre devuelve px. */
+function emAPx(valor, fontSizePx) {
+  const m = /^([\d.]+)em$/.exec(valor.trim());
+  if (!m) return valor;
+  return `${+(parseFloat(m[1]) * fontSizePx).toFixed(4)}px`;
+}
+
 // --------------------------------------------------------------------------
 // Servidor de dist
 // --------------------------------------------------------------------------
@@ -153,9 +160,9 @@ async function cajaDelMockup(fragmento, contenedor = '') {
 }
 
 /** Caja del componente real de la app. */
-async function cajaDeLaApp(html, selector) {
+async function cajaDeLaApp(html, selector, contenedor = '') {
   return pagina.evaluate(
-    ({ html, selector }) => {
+    ({ html, selector, contenedor }) => {
       let host = document.getElementById('__fidelidadCaja');
       if (!host) {
         host = document.createElement('div');
@@ -164,13 +171,15 @@ async function cajaDeLaApp(html, selector) {
         host.style.cssText = 'position:fixed;left:-9999px;top:0;width:390px';
         document.body.appendChild(host);
       }
-      host.innerHTML = html;
+      // El mismo contexto de padre que se le da al mockup: sin el, un hijo
+      // flex se mide contra 390px y el mockup contra 350.
+      host.innerHTML = contenedor ? `<div style="${contenedor}">${html}</div>` : html;
       const el = host.querySelector(selector);
       if (!el) return null;
       const c = el.getBoundingClientRect();
       return { width: +c.width.toFixed(2), height: +c.height.toFixed(2) };
     },
-    { html, selector }
+    { html, selector, contenedor }
   );
 }
 
@@ -215,7 +224,7 @@ async function compararCaja(nombre, fragmento, htmlApp, selector, opciones = {})
   // de las metricas de la fuente; dentro de un flex se blockifica y sale del
   // line-height. Medirlo fuera de su contenedor da un numero que no existe.
   const esperada = await cajaDelMockup(fragmento, contenedor);
-  const obtenida = await cajaDeLaApp(htmlApp, selector);
+  const obtenida = await cajaDeLaApp(htmlApp, selector, contenedor);
   for (const eje of ['width', 'height']) {
     const dif = Math.abs(esperada[eje] - (obtenida?.[eje] ?? 0));
     chk(
@@ -589,6 +598,158 @@ console.log('\n--- H-01 en su pagina real ---');
   chk('el aire sobre el saludo es el del mockup', Math.abs((medido.aireArriba ?? 0) - 14) < 0.5,
     `${medido.aireArriba}px | mockup 14`);
   chk('la pantalla no desborda en horizontal', !medido.desbordaX);
+}
+
+// --------------------------------------------------------------------------
+// W-01 — Sesion activa. Cajas y estilos contra el mockup.
+// --------------------------------------------------------------------------
+const w01 = bloquePantalla('W-01 Sesión activa');
+
+console.log('\n--- W-01 · componentes ---');
+
+await compararCaja(
+  'metrica VOLUMEN',
+  fragmentoDe(w01, (f) => estiloAbertura(f).includes('flex:1.4')),
+  `<div class="f-metrica f-metrica--protagonista">
+     <span class="f-metrica__label">VOLUMEN</span>
+     <span class="f-metrica__cifra">1,240 <span class="f-metrica__unidad">kg</span></span>
+   </div>`,
+  '.f-metrica--protagonista',
+  { contenedor: 'display:flex;gap:10px;width:350px' }
+);
+
+await compararCaja(
+  'boton de stepper',
+  fragmentoDe(w01, (f) => estiloAbertura(f).includes('width:30px;height:46px')),
+  `<div class="f-stepper f-stepper--sesion"><button class="f-stepper__btn">−</button></div>`,
+  '.f-stepper__btn'
+);
+
+// Dos chips distintos: el inactivo lleva borde de 1px (y en content-box mide
+// 32), el activo va relleno y mide 30. Se comparan por separado, o el gate
+// medía el activo del mockup contra el inactivo de la app.
+await compararCaja(
+  'chip de RPE inactivo',
+  fragmentoDe(w01, (f) => estiloAbertura(f).includes('border:1px solid #2C323D') && /">[5-9]</.test(f)),
+  `<div class="f-rpe-fila"><button class="f-rpe-chip" aria-pressed="false">5</button></div>`,
+  '.f-rpe-chip'
+);
+
+await compararCaja(
+  'chip de RPE activo',
+  fragmentoDe(w01, (f) => estiloAbertura(f).includes('border-radius:8px;background:#FF6317')),
+  `<div class="f-rpe-fila"><button class="f-rpe-chip" aria-pressed="true">6</button></div>`,
+  '.f-rpe-chip'
+);
+
+await compararCaja(
+  'check del ejercicio hecho',
+  fragmentoDe(w01, (f) => estiloAbertura(f).includes('width:26px;height:26px;border-radius:50%;background:#FF6317')),
+  `<div class="f-hecho__fila"><button class="f-hecho__check">✓</button></div>`,
+  '.f-hecho__check'
+);
+
+{
+  const declCrono = [...w01.matchAll(/style="([^"]*)"/g)]
+    .map((m) => m[1])
+    .find((d) => d.includes('font:700 11px/1 ui-monospace'));
+  if (declCrono) {
+    const esperado = Object.fromEntries(
+      declCrono.split(';').filter(Boolean).map((d) => {
+        const c = d.indexOf(':');
+        return [d.slice(0, c).trim(), d.slice(c + 1).trim()];
+      })
+    );
+    comparar(
+      'cronometro',
+      { ...esperado, 'font-size': '11px', 'font-weight': '700' },
+      await computar('<button class="f-sesion__crono">42:10</button>', '.f-sesion__crono', [
+        'background-color', 'border-radius', 'color', 'padding', 'font-size', 'font-weight',
+      ]),
+      {
+        background: 'background-color', 'border-radius': 'border-radius', color: 'color',
+        padding: 'padding', 'font-size': 'font-size', 'font-weight': 'font-weight',
+      }
+    );
+  }
+}
+
+{
+  const declBadge = [...w01.matchAll(/style="([^"]*)"[^>]*>INTENSA</g)].map((m) => m[1])[0];
+  if (declBadge) {
+    const esperado = Object.fromEntries(
+      declBadge.split(';').filter(Boolean).map((d) => {
+        const c = d.indexOf(':');
+        return [d.slice(0, c).trim(), d.slice(c + 1).trim()];
+      })
+    );
+    comparar(
+      'badge INTENSA',
+      {
+        ...esperado,
+        'font-size': '10px',
+        'font-weight': '700',
+        'letter-spacing': emAPx(esperado['letter-spacing'] ?? '0', 10),
+      },
+      await computar('<span class="f-badge f-badge--sesion f-badge--intensa">INTENSA</span>', '.f-badge--intensa', [
+        'background-color', 'color', 'border-radius', 'padding', 'letter-spacing',
+      ]),
+      {
+        background: 'background-color', color: 'color', 'border-radius': 'border-radius',
+        padding: 'padding', 'letter-spacing': 'letter-spacing',
+      }
+    );
+  }
+}
+
+// --------------------------------------------------------------------------
+// W-01 en su pagina real: la sesion entera, con datos, en 390px.
+// --------------------------------------------------------------------------
+console.log('\n--- W-01 en su pagina real ---');
+{
+  const anchoPantalla = 390;
+  const paginaW = await navegador.newPage({ viewport: { width: anchoPantalla, height: 900 } });
+  await paginaW.goto(URL_APP, { waitUntil: 'networkidle', timeout: 60000 });
+  await paginaW.waitForTimeout(1000);
+  await paginaW.locator('[data-grupo]').first().click();
+  await paginaW.waitForTimeout(600);
+  await paginaW.fill('#sets-0', '4');
+  await paginaW.dispatchEvent('#sets-0', 'change');
+  await paginaW.fill('#reps-0', '12');
+  await paginaW.dispatchEvent('#reps-0', 'change');
+  await paginaW.fill('#peso-0', '120');
+  await paginaW.dispatchEvent('#peso-0', 'change');
+  await paginaW.waitForTimeout(300);
+
+  const m = await paginaW.evaluate(() => {
+    const r = (s) => document.querySelector(s)?.getBoundingClientRect();
+    const card = r('.f-ejercicio');
+    const stepperFila = document.querySelector('.f-steppers');
+    return {
+      card: card ? +card.width.toFixed(2) : null,
+      cardIzq: card ? +card.left.toFixed(2) : null,
+      pantalla: document.querySelector('.f-sesion')
+        ? +document.querySelector('.f-sesion').getBoundingClientRect().width.toFixed(2)
+        : null,
+      steppers: stepperFila ? stepperFila.querySelectorAll('.f-stepper-campo').length : 0,
+      desbordaX: document.documentElement.scrollWidth > window.innerWidth,
+      aireArriba: r('.f-sesion__cabecera') ? +r('.f-sesion__cabecera').top.toFixed(2) : null,
+      volumen: document.getElementById('volumen-0')?.textContent,
+      metrica: document.getElementById('fierroVolumenTotal')?.textContent.trim(),
+    };
+  });
+  await paginaW.close();
+
+  const cardEsperada = anchoPantalla - 20 * 2;
+  chk('la card del ejercicio ocupa el ancho del mockup',
+    Math.abs((m.card ?? 0) - cardEsperada) < 0.5, `real ${m.card} | mockup ${cardEsperada}`);
+  chk('el margen izquierdo es el del mockup', Math.abs((m.cardIzq ?? 0) - 20) < 0.5, `${m.cardIzq}px | mockup 20`);
+  chk('la fila tiene los tres steppers', m.steppers === 3, String(m.steppers));
+  chk('el aire sobre la cabecera es el del mockup', Math.abs((m.aireArriba ?? 0) - 10) < 0.5,
+    `${m.aireArriba}px | mockup 10`);
+  chk('la sesion no desborda en horizontal', !m.desbordaX);
+  chk('el volumen del ejercicio se calcula y se pinta', m.volumen === '5,760 kg', String(m.volumen));
+  chk('la metrica de volumen total cuadra', m.metrica === '5,760 kg', String(m.metrica));
 }
 
 await navegador.close();

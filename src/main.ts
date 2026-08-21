@@ -13,7 +13,7 @@ import {
   confirmarDestructivo,
 } from '@/ui/feedback';
 import { initializeNavigation, showHome, switchTab, resumeDraft, dismissDraft, renderizarHome } from '@/ui/navigation';
-import { initializeModals, showAnimation, closeAnimationModal, type GuidanceType } from '@/ui/modals';
+import { initializeModals } from '@/ui/modals';
 import { initializeTimerListeners, openRestTimerModal } from '@/features/timer';
 import { initializeProfile, openMeasurementsModal, closeMeasurementsModal, showMeasurementsHistory, closeMeasurementsHistoryModal, deleteMeasurementEntry, updateMeasurementPreview } from '@/features/profile';
 import { loadHistory, loadPRs, exportToExcel, deleteHistoryItem, triggerCSVImport } from '@/features/history';
@@ -25,7 +25,10 @@ import {
   toggleCompletado,
   saveWorkout,
   finishWorkout,
-  selectRPE,
+  activarEjercicioOpcional,
+  abrirGuia,
+  responderRPE,
+  reabrirRPE,
   confirmRPE,
   skipRPE,
 } from '@/features/workout';
@@ -93,13 +96,10 @@ declare global {
     finishWorkout: typeof finishWorkout;
 
     // RPE
-    selectRPE: typeof selectRPE;
     confirmRPE: typeof confirmRPE;
     skipRPE: typeof skipRPE;
 
     // Modals
-    showAnimation: typeof showAnimation;
-    closeAnimationModal: typeof closeAnimationModal;
 
     // Timer
     openRestTimerModal: typeof openRestTimerModal;
@@ -185,11 +185,8 @@ window.decrementInput = decrementInput;
 window.toggleCompletado = toggleCompletado;
 window.saveWorkout = saveWorkout;
 window.finishWorkout = finishWorkout;
-window.selectRPE = selectRPE;
 window.confirmRPE = confirmRPE;
 window.skipRPE = skipRPE;
-window.showAnimation = showAnimation;
-window.closeAnimationModal = closeAnimationModal;
 window.openRestTimerModal = openRestTimerModal;
 window.deleteHistoryItem = deleteHistoryItem;
 window.exportToExcel = exportToExcel;
@@ -680,43 +677,52 @@ function renderCustomExercisesList(): void {
 // MANEJO DEL TECLADO VIRTUAL
 // ==========================================
 
+/**
+ * Con el teclado virtual abierto, la tab bar taparia los campos de sets, reps
+ * y peso: se oculta mientras el foco este en un campo numerico.
+ *
+ * No basta con escuchar `focusout` sobre inputs. Chrome NO desenfoca un
+ * elemento que pasa a `opacity:0`, asi que al cerrar un modal con la tecla
+ * "Listo" del teclado numerico el evento no llegaba nunca y el usuario se
+ * quedaba sin barra inferior hasta tocar la pantalla. Aqui se decide siempre
+ * desde el estado real: si el elemento con el foco es un campo numerico
+ * VISIBLE, la barra se esconde; en cualquier otro caso, vuelve.
+ */
 function initializeKeyboardHandler(): void {
-  // La barra legacy `.bottom-nav` ya no existe: la sustituyo la tab bar
-  // FIERRO. Sin actualizar el selector, la barra se quedaba encima de los
-  // campos de sets/reps/peso con el teclado abierto.
-  const bottomNav = document.querySelector('.f-tabbar') as HTMLElement | null;
-  if (!bottomNav) return;
+  const barra = document.querySelector('.f-tabbar') as HTMLElement | null;
+  if (!barra) return;
 
-  // Detectar focus en inputs numéricos para ocultar bottom nav
-  document.addEventListener('focusin', (e) => {
-    const target = e.target as HTMLElement;
-    if (target.tagName === 'INPUT' &&
-        (target.getAttribute('type') === 'number' ||
-         target.getAttribute('inputmode') === 'numeric' ||
-         target.getAttribute('inputmode') === 'decimal')) {
-      bottomNav.style.display = 'none';
-      // El body reserva el alto de la tab bar; oculta la barra sin soltar la
-      // reserva dejaba 81px muertos bajo el campo con el teclado abierto.
-      document.body.classList.add('f-sin-tabbar');
-    }
-  });
+  const esCampoNumericoVisible = (el: Element | null): boolean => {
+    if (!(el instanceof HTMLInputElement)) return false;
+    const tipo = el.getAttribute('type');
+    const modo = el.getAttribute('inputmode');
+    if (tipo !== 'number' && modo !== 'numeric' && modo !== 'decimal') return false;
+    // offsetParent nulo = display:none o fuera del flujo; el modal cerrado se
+    // queda con opacity 0 y pointer-events none, asi que tambien se comprueba.
+    if (!el.offsetParent) return false;
+    const cs = getComputedStyle(el);
+    return cs.visibility !== 'hidden' && cs.opacity !== '0' && cs.pointerEvents !== 'none';
+  };
 
-  document.addEventListener('focusout', (e) => {
-    const target = e.target as HTMLElement;
-    if (target.tagName === 'INPUT') {
-      // Pequeño delay para evitar parpadeo al cambiar entre inputs
-      setTimeout(() => {
-        const activeElement = document.activeElement as HTMLElement;
-        if (!activeElement ||
-            activeElement.tagName !== 'INPUT' ||
-            (activeElement.getAttribute('type') !== 'number' &&
-             activeElement.getAttribute('inputmode') !== 'numeric' &&
-             activeElement.getAttribute('inputmode') !== 'decimal')) {
-          bottomNav.style.display = '';
-          document.body.classList.remove('f-sin-tabbar');
-        }
-      }, 100);
-    }
+  const sincronizar = () => {
+    const ocultar = esCampoNumericoVisible(document.activeElement);
+    barra.style.display = ocultar ? 'none' : '';
+    // El body reserva el alto de la barra; ocultarla sin soltar la reserva
+    // dejaba 81px muertos bajo el campo con el teclado abierto.
+    document.body.classList.toggle('f-sin-tabbar', ocultar);
+  };
+
+  // `focusout` llega antes de que el foco cambie: se difiere un tick.
+  const sincronizarDiferido = () => setTimeout(sincronizar, 0);
+
+  document.addEventListener('focusin', sincronizar);
+  document.addEventListener('focusout', sincronizarDiferido);
+  // Redes de seguridad para los casos en que el foco NO se mueve: cerrar un
+  // modal con Enter, o tocar fuera.
+  document.addEventListener('click', sincronizarDiferido);
+  document.addEventListener('submit', sincronizarDiferido);
+  document.addEventListener('keyup', (e) => {
+    if (e.key === 'Enter' || e.key === 'Escape') sincronizarDiferido();
   });
 }
 
@@ -728,30 +734,71 @@ function initializeEventDelegation(): void {
   document.addEventListener('click', (e) => {
     const target = e.target as HTMLElement;
 
-    // RPE buttons
-    const rpeBtn = target.closest('[data-rpe]') as HTMLElement;
-    if (rpeBtn) {
-      const rpe = parseInt(rpeBtn.dataset.rpe || '0', 10);
-      if (rpe >= 1 && rpe <= 10) {
-        selectRPE(rpe);
-      }
-      return;
-    }
-
-    // Exercise guidance buttons
-    const guidanceBtn = target.closest('[data-guidance-btn]') as HTMLElement;
-    if (guidanceBtn) {
-      const nombre = guidanceBtn.dataset.exerciseName || '';
-      const type = guidanceBtn.dataset.guidanceType as GuidanceType;
-      const content = guidanceBtn.dataset.guidanceContent || '';
-      const fallback = guidanceBtn.dataset.guidanceFallback;
-
-      if (nombre && type && content) {
-        showAnimation(nombre, { type, content, fallback });
-      }
+    // W-01: toda la pantalla de sesion pasa por aqui. Delegacion, no un
+    // listener por boton: la pantalla se repinta entera en cada cambio
+    // estructural y los listeners directos se perderian con ella.
+    const accion = target.closest<HTMLElement>('[data-sesion]');
+    if (accion) {
+      manejarAccionDeSesion(accion);
       return;
     }
   });
+
+  // Los steppers escriben en un <input>: hay que escuchar el teclado tambien,
+  // no solo los botones.
+  document.addEventListener('change', (e) => {
+    const campo = (e.target as HTMLElement)?.closest<HTMLElement>('[data-sesion="valor"]');
+    if (campo) updateEjercicio(Number(campo.dataset.indice));
+  });
+}
+
+const PASO_STEPPER: Record<string, number> = { sets: 1, reps: 1, peso: 1 };
+
+function manejarAccionDeSesion(el: HTMLElement): void {
+  const indice = Number(el.dataset.indice);
+  switch (el.dataset.sesion) {
+    case 'volver':
+      void showHome();
+      break;
+    case 'descanso':
+      openRestTimerModal();
+      break;
+    case 'menos':
+    case 'mas': {
+      const campo = el.dataset.campo ?? 'sets';
+      const input = document.getElementById(`${campo}-${indice}`) as HTMLInputElement | null;
+      if (!input) break;
+      const paso = PASO_STEPPER[campo] ?? 1;
+      const actual = parseFloat(input.value) || 0;
+      input.value = String(Math.max(0, el.dataset.sesion === 'mas' ? actual + paso : actual - paso));
+      updateEjercicio(indice);
+      break;
+    }
+    case 'completar':
+      toggleCompletado(indice);
+      break;
+    case 'activar-opcional':
+      activarEjercicioOpcional(indice);
+      break;
+    case 'guia':
+      abrirGuia(indice);
+      break;
+    case 'rpe':
+      responderRPE(indice, Number(el.dataset.valor));
+      break;
+    case 'rpe-omitir':
+      responderRPE(indice, null);
+      break;
+    case 'rpe-abrir':
+      reabrirRPE(indice);
+      break;
+    case 'guardar':
+      saveWorkout();
+      break;
+    case 'terminar':
+      void finishWorkout();
+      break;
+  }
 }
 
 // ==========================================

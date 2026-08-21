@@ -29,7 +29,6 @@ export {
 // Main UI components
 export {
   renderGamificationHeader,
-  renderGamificationHeroCard,
   renderGamificationModal,
   showGamificationModal,
   hideGamificationModal,

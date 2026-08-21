@@ -1,136 +1,8 @@
 import { icon, refreshIcons } from '@/utils/icons';
 
-// ==========================================
-// MODAL DE ANIMACIÓN DE EJERCICIO
-// ==========================================
-
-export type GuidanceType = 'image' | 'text';
-
-export interface ExerciseGuidance {
-  type: GuidanceType;
-  content: string;
-  fallback?: string; // Description fallback if image fails to load
-}
-
-// Overload for backwards compatibility
-export function showAnimation(nombre: string, gifUrl: string): void;
-export function showAnimation(nombre: string, guidance: ExerciseGuidance): void;
-export function showAnimation(nombre: string, guidanceOrUrl: string | ExerciseGuidance): void {
-  const modal = document.getElementById('animationModal');
-  const title = document.getElementById('modalTitle');
-  const container = document.getElementById('animationContainer');
-
-  if (!modal || !title || !container) return;
-
-  title.textContent = nombre;
-
-  // Normalize input to guidance object
-  const guidance: ExerciseGuidance | null =
-    typeof guidanceOrUrl === 'string'
-      ? guidanceOrUrl
-        ? { type: 'image', content: guidanceOrUrl }
-        : null
-      : guidanceOrUrl;
-
-  if (!guidance) {
-    container.innerHTML = `
-      <div class="flex flex-col items-center gap-3 text-center p-4">
-        ${icon('info', 'xl', 'text-text-muted')}
-        <p class="text-text-secondary">Referencia visual no disponible para este ejercicio.</p>
-      </div>
-    `;
-    refreshIcons();
-    modal.classList.add('active');
-    return;
-  }
-
-  if (guidance.type === 'text') {
-    // Show text description
-    container.innerHTML = `
-      <div class="flex flex-col items-start gap-4 p-4 max-w-md">
-        <div class="flex items-center gap-3">
-          ${icon('info', 'lg', 'text-accent')}
-          <h4 class="text-lg font-semibold text-text-primary">Cómo realizar el ejercicio</h4>
-        </div>
-        <p class="text-text-secondary leading-relaxed text-left">${guidance.content}</p>
-        <div class="flex items-center gap-2 mt-2 text-sm text-text-muted">
-          ${icon('target', 'sm', 'text-status-success')}
-          <span>Mantén la técnica correcta para evitar lesiones</span>
-        </div>
-      </div>
-    `;
-    refreshIcons();
-  } else {
-    // Show image
-    container.innerHTML = `
-      <div class="flex flex-col items-center gap-3">
-        <div class="animate-spin">
-          ${icon('loading', 'xl', 'text-accent')}
-        </div>
-        <p class="text-text-secondary">Cargando imagen...</p>
-      </div>
-    `;
-    refreshIcons();
-
-    const img = new Image();
-    img.className = 'w-full max-w-md rounded-lg shadow-lg';
-    img.alt = nombre;
-    img.loading = 'lazy';
-    img.decoding = 'async';
-
-    img.onload = () => {
-      container.innerHTML = '';
-      container.appendChild(img);
-    };
-
-    img.onerror = () => {
-      // If there's a fallback description, show it instead of error
-      if (guidance.fallback) {
-        container.innerHTML = `
-          <div class="flex flex-col items-start gap-4 p-4 max-w-md">
-            <div class="flex items-center gap-3">
-              ${icon('info', 'lg', 'text-accent')}
-              <h4 class="text-lg font-semibold text-text-primary">Cómo realizar el ejercicio</h4>
-            </div>
-            <p class="text-text-secondary leading-relaxed text-left">${guidance.fallback}</p>
-            <div class="flex items-center gap-2 mt-2 text-sm text-text-muted">
-              ${icon('target', 'sm', 'text-status-success')}
-              <span>Mantén la técnica correcta para evitar lesiones</span>
-            </div>
-          </div>
-        `;
-      } else {
-        container.innerHTML = `
-          <div class="flex flex-col items-center gap-3 text-center p-4">
-            ${icon('error', 'xl', 'text-status-error')}
-            <p class="text-text-primary font-semibold">Error al cargar la imagen</p>
-            <p class="text-text-secondary text-sm">La imagen de referencia no está disponible en este momento.</p>
-          </div>
-        `;
-      }
-      refreshIcons();
-    };
-
-    img.src = guidance.content;
-  }
-
-  modal.classList.add('active');
-}
-
-export function closeAnimationModal(): void {
-  const modal = document.getElementById('animationModal');
-  const container = document.getElementById('animationContainer');
-
-  if (modal) {
-    modal.classList.remove('active');
-  }
-
-  if (container) {
-    container.innerHTML = `
-      <p class="text-text-secondary">Cargando imagen de referencia...</p>
-    `;
-  }
-}
+/* El modal de animacion de ejercicio se retiro con FIERRO: la guia del
+   ejercicio es ahora la hoja W-04 (src/ui/session-screens.ts), que ademas
+   trae PR y ultima vez. */
 
 // ==========================================
 // MODAL DE CONFIRMACIÓN
@@ -298,22 +170,8 @@ export function showSavedIndicator(): void {
 // ==========================================
 
 export function initializeModals(): void {
-  // Cerrar modal de animación
-  const closeModal = document.getElementById('closeModal');
-  closeModal?.addEventListener('click', closeAnimationModal);
-
-  // Cerrar al hacer clic fuera
-  const animationModal = document.getElementById('animationModal');
-  animationModal?.addEventListener('click', (e) => {
-    if (e.target === animationModal) {
-      closeAnimationModal();
-    }
-  });
-
-  // Escape key
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
-      closeAnimationModal();
       document.getElementById('confirmModal')?.remove();
     }
   });

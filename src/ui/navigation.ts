@@ -87,7 +87,9 @@ export function renderizarHome(): void {
   const teniaFoco = contenedor.contains(document.activeElement);
   renderHome(contenedor);
   if (teniaFoco && (document.activeElement === document.body || !document.activeElement)) {
-    document.getElementById('main-content')?.focus?.();
+    // Sin preventScroll el navegador lleva el foco a la vista y la lista da
+    // un salto de 81px bajo el dedo justo despues de borrar.
+    document.getElementById('main-content')?.focus?.({ preventScroll: true });
   }
   if (contenedor.dataset.enganchado !== 'si') {
     // Delegacion: un solo listener que sobrevive a cada repintado.

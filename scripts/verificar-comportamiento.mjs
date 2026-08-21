@@ -99,6 +99,13 @@ function historialDePrueba(dias = [1, 3, 5, 8, 12]) {
   });
 }
 
+/** CSV con las 11 columnas y la fecha DD/MM/YYYY que exporta la propia app. */
+const CSV_DE_PRUEBA = [
+  'Fecha,Grupo,Ejercicio,Sets,Reps,Peso (kg),Es Mancuerna,Grupo Muscular,Volumen,Completado,Volumen Total Sesión',
+  '10/08/2026,GRUPO 1 - Piernas + Glúteos,Prensa de Piernas,4,12,120,No,Piernas,5760,Sí,5760',
+  '12/08/2026,GRUPO 1 - Piernas + Glúteos,Prensa de Piernas,4,12,125,No,Piernas,6000,Sí,6000',
+].join('\n');
+
 const borradorDePrueba = {
   date: new Date().toISOString().split('T')[0],
   grupo: 'GRUPO 1 - Piernas + Glúteos',
@@ -530,20 +537,318 @@ const borradorDePrueba = {
   const r = await pagina.evaluate(async () => {
     window.showCardioSelector?.();
     await new Promise((r) => setTimeout(r, 300));
+    // Las CUATRO, no solo la primera: medir una sola dejaba pasar tres
+    // cuartas partes de la regresion que este caso dice vigilar.
+    const vistas = ['cardioSelectorView', 'cardioConfigView', 'cardioTimerView', 'cardioSummaryView'];
     const medir = (id) => {
       const el = document.getElementById(id);
-      if (!el || el.classList.contains('hidden')) return null;
+      if (!el) return null;
+      // Se mide aunque este oculta: el padding es de la regla CSS, no del
+      // estado. Ocultarla no cambia getComputedStyle del padding.
       const p = getComputedStyle(el);
       return { izq: parseFloat(p.paddingLeft), der: parseFloat(p.paddingRight) };
     };
-    return { cardio: medir('cardioSelectorView'), ancho: document.documentElement.scrollWidth };
+    return {
+      cardio: Object.fromEntries(vistas.map((v) => [v, medir(v)])),
+      ancho: document.documentElement.scrollWidth,
+    };
   });
-  chk(
-    'el selector de cardio conserva su margen lateral',
-    r.cardio !== null && r.cardio.izq >= 16 && r.cardio.der >= 16,
-    r.cardio ? `izq ${r.cardio.izq} / der ${r.cardio.der}` : 'la vista no se abrio'
-  );
+  for (const [id, caja] of Object.entries(r.cardio)) {
+    chk(
+      `#${id} conserva su margen lateral`,
+      caja !== null && caja.izq >= 16 && caja.der >= 16,
+      caja ? `izq ${caja.izq} / der ${caja.der}` : 'la vista no existe'
+    );
+  }
   chk('sin desbordamiento horizontal en cardio', r.ancho <= 390, `scrollWidth ${r.ancho}`);
+  await ctx.close();
+}
+
+// --------------------------------------------------------------------------
+// 11. W-01: escribir NO repinta la pantalla. Si repintase, el <input> se
+//     destruiria a media pulsacion y el usuario perderia el foco y el cursor.
+// --------------------------------------------------------------------------
+{
+  const { ctx, pagina } = await abrir({ gymmate_history: historialDePrueba() });
+  await pagina.locator('[data-grupo]').first().click();
+  await pagina.waitForTimeout(500);
+  await pagina.focus('#sets-0');
+  const r = await pagina.evaluate(async () => {
+    const input = document.getElementById('sets-0');
+    input.value = '4';
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+    await new Promise((r) => setTimeout(r, 200));
+    return {
+      mismoNodo: document.getElementById('sets-0') === input,
+      foco: document.activeElement?.id ?? '',
+      volumen: document.getElementById('volumen-0')?.textContent ?? '',
+    };
+  });
+  chk('escribir no destruye el input', r.mismoNodo, r.mismoNodo ? '' : 'la card se repinto');
+  chk('el foco sigue en el campo', r.foco === 'sets-0', r.foco || '(ninguno)');
+  await ctx.close();
+}
+
+// --------------------------------------------------------------------------
+// 12. W-01: marcar ✓ abre la fila de RPE con chips 5-9; NUNCA un slider.
+//     Un tap y se colapsa (README 3).
+// --------------------------------------------------------------------------
+{
+  const { ctx, pagina } = await abrir({ gymmate_history: historialDePrueba() });
+  await pagina.locator('[data-grupo]').first().click();
+  await pagina.waitForTimeout(500);
+  await pagina.fill('#sets-0', '3');
+  await pagina.dispatchEvent('#sets-0', 'change');
+  await pagina.fill('#reps-0', '12');
+  await pagina.dispatchEvent('#reps-0', 'change');
+  await pagina.fill('#peso-0', '60');
+  await pagina.dispatchEvent('#peso-0', 'change');
+  await pagina.locator('[data-sesion="completar"][data-indice="0"]').click();
+  await pagina.waitForTimeout(300);
+  const abierto = await pagina.evaluate(() => ({
+    chips: [...document.querySelectorAll('#fierroWorkout .f-rpe-chip')].map((c) => c.textContent),
+    sliders: document.querySelectorAll('#fierroWorkout input[type="range"]').length,
+    omitir: !!document.querySelector('[data-sesion="rpe-omitir"]'),
+    detalle: document.querySelector('.f-hecho__detalle')?.textContent ?? '',
+  }));
+  chk('los chips de RPE por ejercicio son 5..9', JSON.stringify(abierto.chips) === JSON.stringify(['5', '6', '7', '8', '9']), abierto.chips.join(','));
+  chk('no hay slider durante la sesion', abierto.sliders === 0, String(abierto.sliders));
+  chk('hay "omitir"', abierto.omitir);
+  chk('el detalle del ejercicio hecho cuadra', abierto.detalle === '3×12 · 60 kg · 2,160 kg', abierto.detalle);
+
+  await pagina.locator('.f-rpe-chip', { hasText: '7' }).first().click();
+  await pagina.waitForTimeout(300);
+  const colapsado = await pagina.evaluate(() => ({
+    chips: document.querySelectorAll('#fierroWorkout .f-rpe-chip').length,
+    guardado: JSON.parse(localStorage.getItem('gymmate_draft') || '{}').ejercicios?.[0]?.rpe ?? null,
+  }));
+  chk('un tap colapsa la fila de RPE', colapsado.chips === 1, `${colapsado.chips} chips`);
+  chk('el RPE queda guardado en el borrador', colapsado.guardado === 7, String(colapsado.guardado));
+  await ctx.close();
+}
+
+// --------------------------------------------------------------------------
+// 13. W-04: la guia sale del nombre y de la "i", y sin foto NO deja hueco.
+// --------------------------------------------------------------------------
+{
+  const { ctx, pagina } = await abrir({ gymmate_history: historialDePrueba() });
+  await pagina.locator('[data-grupo]').first().click();
+  await pagina.waitForTimeout(500);
+  for (const selector of ['.f-ejercicio__nombre', '.f-ejercicio__info']) {
+    await pagina.locator(selector).first().click();
+    await pagina.waitForTimeout(300);
+    const abierta = await pagina.evaluate(() => !!document.querySelector('.f-guia__nombre'));
+    chk(`la guia se abre desde ${selector}`, abierta);
+    await pagina.keyboard.press('Escape');
+    await pagina.waitForTimeout(250);
+  }
+  const sinFoto = await pagina.evaluate(async () => {
+    // Un ejercicio sin imageUrl no debe dejar un bloque de foto vacio.
+    const nombres = [...document.querySelectorAll('.f-ejercicio__nombre')].map((b) => b.textContent);
+    document.querySelector('.f-ejercicio__nombre')?.click();
+    await new Promise((r) => setTimeout(r, 250));
+    const img = document.querySelector('.f-guia__foto');
+    return { nombres, tieneImg: !!img, srcVacio: img ? !img.getAttribute('src') : false };
+  });
+  chk('la guia nunca pinta una foto sin src', !sinFoto.srcVacio, JSON.stringify(sinFoto));
+  await ctx.close();
+}
+
+// --------------------------------------------------------------------------
+// 14. Terminar sin datos abre W-02 (hoja de RPE) sin pasar por confirmacion,
+//     y "Omitir" no bloquea nada. El slider de W-02 se queda dentro de su
+//     pista en los dos extremos.
+// --------------------------------------------------------------------------
+{
+  const { ctx, pagina } = await abrir({ gymmate_history: historialDePrueba() });
+  await pagina.locator('[data-grupo]').first().click();
+  await pagina.waitForTimeout(500);
+  await pagina.locator('[data-sesion="terminar"]').click();
+  await pagina.waitForTimeout(500);
+  const w02 = await pagina.evaluate(() => {
+    const pista = document.getElementById('rpePista');
+    const bola = document.getElementById('rpeBola');
+    if (!pista || !bola) return { hoja: false };
+    const medir = (v) => {
+      const r = document.getElementById('rpeRango');
+      r.value = String(v);
+      r.dispatchEvent(new Event('input'));
+      const b = bola.getBoundingClientRect();
+      const p = pista.getBoundingClientRect();
+      // El disco visible mide 24; el borde de 5px es del color de la hoja.
+      return {
+        izq: +(b.left + 5 - p.left).toFixed(2),
+        der: +(p.right - (b.right - 5)).toFixed(2),
+        cifra: document.getElementById('rpeCifra').textContent,
+      };
+    };
+    return { hoja: true, min: medir(1), max: medir(10), medio: medir(5) };
+  });
+  chk('terminar abre la hoja de RPE (W-02)', w02.hoja);
+  if (w02.hoja) {
+    chk('en el minimo el disco no se sale por la izquierda', w02.min.izq >= -0.5, `${w02.min.izq}px`);
+    chk('en el maximo el disco no se sale por la derecha', w02.max.der >= -0.5, `${w02.max.der}px`);
+    chk('el numero sigue al slider', w02.min.cifra === '1' && w02.max.cifra === '10' && w02.medio.cifra === '5',
+      `${w02.min.cifra}/${w02.medio.cifra}/${w02.max.cifra}`);
+  }
+  await ctx.close();
+}
+
+// --------------------------------------------------------------------------
+// 15. Cero emojis y cero dobles exclamaciones en lo que se ve. El coach los
+//     tenia: "🔥 Racha de N días".
+// --------------------------------------------------------------------------
+{
+  const { ctx, pagina } = await abrir({ gymmate_history: historialDePrueba() });
+  await pagina.locator('[data-grupo]').first().click();
+  await pagina.waitForTimeout(500);
+  const r = await pagina.evaluate(() => {
+    const texto = document.body.innerText;
+    const emojis = texto.match(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}]/gu) ?? [];
+    return { emojis: [...new Set(emojis)], dobles: /!.*!/.test(texto) };
+  });
+  chk('la sesion no muestra emojis', r.emojis.length === 0, r.emojis.join(' '));
+  chk('la sesion no usa exclamaciones dobles', !r.dobles);
+  await ctx.close();
+}
+
+// --------------------------------------------------------------------------
+// 16. Crear una rutina propia la pinta en la home. Era el tercer punto que
+//     paso de renderCustomWorkoutsInHome a renderizarHome y el unico sin
+//     puerta: quitarlo dejaba la puerta verde y la rutina invisible.
+// --------------------------------------------------------------------------
+{
+  const { ctx, pagina } = await abrir({ gymmate_history: historialDePrueba() });
+  const r = await pagina.evaluate(async () => {
+    window.openWorkoutBuilder?.();
+    await new Promise((r) => setTimeout(r, 300));
+    const nombre = document.getElementById('customWorkoutName');
+    if (nombre) {
+      nombre.value = 'Rutina de prueba';
+      nombre.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+    // Se toca el primer ejercicio de la lista tal cual lo hace el usuario.
+    document.querySelector('#exerciseGroupsList [onclick*="toggleExerciseSelection"]')?.click();
+    await new Promise((r) => setTimeout(r, 150));
+    window.saveCustomWorkout?.();
+    await new Promise((r) => setTimeout(r, 400));
+    return {
+      guardadas: JSON.parse(localStorage.getItem('gymmate_custom_workouts') || '[]').map((w) => w.nombre),
+      enPantalla: [...document.querySelectorAll('#fierroHome [data-custom-workout]')].map(
+        (el) => el.textContent.trim().split('\n')[0].trim()
+      ),
+    };
+  });
+  chk('la rutina nueva se guarda', r.guardadas.includes('Rutina de prueba'), r.guardadas.join(',') || '(ninguna)');
+  chk('la rutina nueva aparece en la home sin recargar', r.enPantalla.length === r.guardadas.length && r.enPantalla.length > 0,
+    `guardadas ${r.guardadas.length} | en pantalla ${r.enPantalla.length}`);
+  await ctx.close();
+}
+
+// --------------------------------------------------------------------------
+// 17. Cerrar PROGRESO dos veces seguidas no puede dejar DOS pestanas activas.
+// --------------------------------------------------------------------------
+{
+  const { ctx, pagina } = await abrir({ gymmate_history: historialDePrueba() });
+  const r = await pagina.evaluate(async () => {
+    const activas = () => [...document.querySelectorAll('[data-nav][aria-current]')].map((e) => e.dataset.nav);
+    const esperar = (ms) => new Promise((r) => setTimeout(r, ms));
+    document.querySelector('[data-nav="history"]').click();
+    await esperar(150);
+    document.querySelector('[data-nav="progress"]').click();
+    await esperar(150);
+    const conModal = activas();
+    window.hideGamificationModal?.();
+    window.hideGamificationModal?.();
+    await esperar(300);
+    const tras = activas();
+    // Y una llamada suelta sin modal abierto tampoco debe mover nada.
+    window.hideGamificationModal?.();
+    await esperar(150);
+    return { conModal, tras, suelta: activas() };
+  });
+  chk('con PROGRESO abierto hay UNA activa y es progress',
+    r.conModal.length === 1 && r.conModal[0] === 'progress', r.conModal.join(','));
+  chk('cerrar dos veces deja UNA sola activa', r.tras.length === 1, r.tras.join(',') || '(ninguna)');
+  chk('al cerrar se vuelve a la pestana de la que se vino', r.tras[0] === 'history', r.tras.join(','));
+  chk('cerrar sin modal abierto no mueve la barra', r.suelta.length === 1 && r.suelta[0] === 'history', r.suelta.join(','));
+  await ctx.close();
+}
+
+// --------------------------------------------------------------------------
+// 18. La tab bar vuelve SIEMPRE. Chrome no desenfoca un input que pasa a
+//     opacity:0, asi que cerrar un modal con Enter la dejaba oculta para
+//     siempre: el usuario se quedaba sin barra inferior.
+// --------------------------------------------------------------------------
+{
+  const { ctx, pagina } = await abrir({ gymmate_history: historialDePrueba() });
+  const estado = () =>
+    pagina.evaluate(() => {
+      const b = document.querySelector('.f-tabbar');
+      return {
+        alto: +b.getBoundingClientRect().height.toFixed(1),
+        display: getComputedStyle(b).display,
+        reserva: getComputedStyle(document.body).paddingBottom,
+      };
+    });
+
+  await pagina.locator('[data-nav="profile"]').click();
+  await pagina.waitForTimeout(250);
+  await pagina.evaluate(() => window.openMeasurementsModal?.());
+  await pagina.waitForTimeout(300);
+  const hayCampo = await pagina.locator('#measureWeight').count();
+  if (!hayCampo) {
+    chk('el modal de medidas expone su campo de peso', false, 'no se encontro #measureWeight');
+  } else {
+    await pagina.focus('#measureWeight');
+    await pagina.waitForTimeout(200);
+    const conFoco = await estado();
+    chk('con el teclado abierto la barra se oculta y suelta su reserva',
+      conFoco.display === 'none' && conFoco.reserva === '0px',
+      `display ${conFoco.display} | reserva ${conFoco.reserva}`);
+
+    await pagina.locator('#measureWeight').press('Enter');
+    await pagina.waitForTimeout(400);
+    const tras = await estado();
+    chk('tras cerrar el modal con Enter la barra VUELVE',
+      tras.display !== 'none' && tras.alto > 40,
+      `display ${tras.display} | alto ${tras.alto}px | reserva ${tras.reserva}`);
+  }
+  await ctx.close();
+}
+
+// --------------------------------------------------------------------------
+// 19. Importar CSV desde la home repinta la home. La accion vive AHI: dejarla
+//     sin repintar decia "SESIÓN 0" con dos sesiones ya dentro.
+// --------------------------------------------------------------------------
+{
+  const { ctx, pagina } = await abrir();
+  const antes = await pagina.evaluate(() => document.getElementById('fierroHome')?.innerText ?? '');
+  // El <input type=file> lo crea el codigo al vuelo y no llega al DOM: la
+  // unica forma de conducirlo es interceptar el dialogo del navegador.
+  const esperaDialogo = pagina.waitForEvent('filechooser', { timeout: 5000 }).catch(() => null);
+  await pagina.locator('[data-accion="importar"]').first().click();
+  const dialogo = await esperaDialogo;
+  if (!dialogo) {
+    chk('la accion importar abre el selector de fichero', false, 'no llego el filechooser');
+  } else {
+    await dialogo.setFiles({
+      name: 'historial.csv',
+      mimeType: 'text/csv',
+      buffer: Buffer.from(CSV_DE_PRUEBA, 'utf-8'),
+    });
+    await pagina.waitForTimeout(1200);
+    const r = await pagina.evaluate(() => ({
+      despues: document.getElementById('fierroHome')?.innerText ?? '',
+      historial: JSON.parse(localStorage.getItem('gymmate_history') || '[]').length,
+    }));
+    chk('el CSV entra al historial', r.historial >= 1, `${r.historial} sesiones`);
+    chk(
+      'la home se repinta tras importar',
+      antes !== r.despues,
+      antes === r.despues ? 'texto identico: la home no se entero' : 'cambio'
+    );
+  }
   await ctx.close();
 }
 

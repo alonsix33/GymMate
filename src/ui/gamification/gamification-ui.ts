@@ -13,7 +13,7 @@ import {
   RANK_DISPLAY_NAMES,
 } from '@/features/gamification';
 import { renderLevelBadge, renderLevelBadgeWithProgress } from './level-badge';
-import { renderMuscleMap, renderMuscleMapDual } from './muscle-map';
+import { renderMuscleMapDual } from './muscle-map';
 import { renderAllRanksLegend } from './rank-emblem';
 import { icon, refreshIcons } from '@/utils/icons';
 
@@ -49,72 +49,9 @@ export function renderGamificationHeader(): string {
   `;
 }
 
-/**
- * Renderiza el hero card de gamificacion para la home
- */
-export function renderGamificationHeroCard(): string {
-  const stats = getPlayerStats();
-  const muscleRanks = getMuscleRanks();
-  const progress = getCurrentLevelProgress();
-  const streak = getStreakInfo();
-
-  return `
-    <div
-      class="gamification-hero bg-gradient-to-br from-dark-surface to-dark-bg p-4 rounded-2xl border border-dark-border cursor-pointer"
-      onclick="window.showGamificationModal && window.showGamificationModal()"
-    >
-      <div class="flex items-center gap-4">
-        <!-- Mapa corporal mini -->
-        <div class="w-20 h-32 flex-shrink-0">
-          ${renderMuscleMap(muscleRanks, 80, 128)}
-        </div>
-
-        <!-- Info de nivel -->
-        <div class="flex-1">
-          <div class="flex items-center gap-2 mb-2">
-            <div class="w-10 h-10">
-              ${renderLevelBadge(stats.level, 40)}
-            </div>
-            <div>
-              <div class="text-lg font-bold" style="color: ${stats.titleInfo.color}">
-                Nivel ${stats.level}
-              </div>
-              <div class="text-sm text-gray-400">${stats.titleInfo.full}</div>
-            </div>
-          </div>
-
-          <!-- Barra de XP -->
-          <div class="mb-2">
-            <div class="h-2 bg-dark-border rounded-full overflow-hidden">
-              <div
-                class="h-full rounded-full transition-all duration-500"
-                style="width: ${progress.percentage}%; background-color: ${stats.titleInfo.color}"
-              ></div>
-            </div>
-            <div class="flex justify-between text-xs text-gray-500 mt-1">
-              <span>${progress.currentXP.toLocaleString()} XP</span>
-              <span>${progress.maxXP.toLocaleString()} XP</span>
-            </div>
-          </div>
-
-          <!-- Stats rapidos -->
-          <div class="flex gap-4 text-xs">
-            ${streak.current > 0 ? `
-              <div class="flex items-center gap-1 text-orange-400">
-                ${icon('fire', 'sm')}
-                <span>${streak.current} días</span>
-              </div>
-            ` : ''}
-            <div class="flex items-center gap-1 text-gray-400">
-              ${icon('stats', 'sm')}
-              <span>Toca para ver más</span>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  `;
-}
+/* renderGamificationHeroCard se retiro con FIERRO: su unico consumidor era
+   renderGamificationInHome, y la card de nivel de H-01 la pinta ahora
+   src/ui/home.ts. */
 
 /**
  * Renderiza el modal completo de gamificacion
@@ -480,27 +417,37 @@ function toggleSection(sectionId: string): void {
  * label en acento cuelgan de ese atributo). PROGRESO abre un modal, no un
  * tab, asi que sin esto la pestana se quedaba siempre apagada aunque su
  * pantalla estuviese delante.
+ *
+ * La pestana anterior se recuerda en una variable de modulo, no en un
+ * data-* del DOM: con el marcador en el DOM, cerrar dos veces seguidas (un
+ * doble toque cae dentro de los 200ms de la animacion de salida) borraba el
+ * marcador en la primera pasada y la segunda caia a un "vuelve a INICIO"
+ * incondicional, dejando DOS pestanas encendidas a la vez. Aqui la funcion es
+ * idempotente: al salir siempre queda exactamente un aria-current.
  */
+let pestanaPrevia: string | null = null;
+
 function marcarPestanaProgreso(activa: boolean): void {
-  const item = document.querySelector('[data-nav="progress"]');
-  const inicio = document.querySelector('[data-nav="home"]');
-  if (!item) return;
+  const items = [...document.querySelectorAll<HTMLElement>('[data-nav]')];
+  const progreso = items.find((i) => i.dataset.nav === 'progress');
+  if (!progreso) return;
+
   if (activa) {
-    document.querySelectorAll('[data-nav][aria-current]').forEach((otro) => {
-      if (otro !== item) {
-        (otro as HTMLElement).dataset.previo = 'si';
-        otro.removeAttribute('aria-current');
-      }
-    });
-    item.setAttribute('aria-current', 'page');
+    if (progreso.getAttribute('aria-current') !== 'page') {
+      pestanaPrevia = items.find((i) => i.hasAttribute('aria-current'))?.dataset.nav ?? 'home';
+    }
+    items.forEach((i) => i.removeAttribute('aria-current'));
+    progreso.setAttribute('aria-current', 'page');
     return;
   }
-  item.removeAttribute('aria-current');
-  const previo = document.querySelector<HTMLElement>('[data-nav][data-previo="si"]') ?? (inicio as HTMLElement | null);
-  if (previo) {
-    previo.setAttribute('aria-current', 'page');
-    delete previo.dataset.previo;
-  }
+
+  // Salir solo tiene efecto si PROGRESO era la activa. Si no, la barra ya
+  // esta donde debe y tocarla solo puede estropearla.
+  if (progreso.getAttribute('aria-current') !== 'page') return;
+  const destino = items.find((i) => i.dataset.nav === (pestanaPrevia ?? 'home')) ?? items[0];
+  items.forEach((i) => i.removeAttribute('aria-current'));
+  destino?.setAttribute('aria-current', 'page');
+  pestanaPrevia = null;
 }
 
 export function showGamificationModal(): void {
@@ -529,12 +476,15 @@ export function showGamificationModal(): void {
  * Oculta el modal de gamificacion
  */
 export function hideGamificationModal(): void {
-  marcarPestanaProgreso(false);
   const modal = document.getElementById('gamification-modal');
-  if (modal) {
-    modal.classList.add('animate-fade-out');
-    setTimeout(() => modal.remove(), 200);
-  }
+  // Sin modal no hay nada que cerrar: llamar igualmente movia la tab bar.
+  if (!modal) return;
+  marcarPestanaProgreso(false);
+  modal.classList.add('animate-fade-out');
+  // Se saca del DOM al instante para que un segundo cierre no lo encuentre;
+  // la animacion la hace el nodo ya desconectado del arbol de la barra.
+  modal.id = '';
+  setTimeout(() => modal.remove(), 200);
 }
 
 // Exponer funciones globalmente para onclick handlers

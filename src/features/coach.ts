@@ -1,7 +1,7 @@
 import type { ExerciseData, HistorySession } from '@/types';
 import { getHistory, getPR } from '@/utils/storage';
-import { refreshIcons } from '@/utils/icons';
 import { getStreakInfo, getCurrentLevelProgress } from '@/features/gamification';
+import { siguienteCarga, formatearPeso } from '@/utils/insights';
 
 // ==========================================
 // COACH MESSAGE TYPES
@@ -13,11 +13,6 @@ interface CoachMessage {
   type: CoachMessageType;
   message: string;
   subtext?: string;
-  icon: string;
-  bgClass: string;
-  borderClass: string;
-  textClass: string;
-  iconBgClass: string;
 }
 
 // ==========================================
@@ -69,73 +64,13 @@ const TIPS = [
 // MESSAGE BUILDERS
 // ==========================================
 
+/**
+ * El sistema prohibe el color por categoria y la iconografia en cuadros de
+ * color, asi que del "config" de cada tipo solo sobrevive el tipo: sirve para
+ * la prioridad y la caducidad, no para pintar.
+ */
 function getMessageConfig(type: CoachMessageType): Omit<CoachMessage, 'message' | 'subtext'> {
-  switch (type) {
-    case 'pr-alert':
-      return {
-        type,
-        icon: 'trophy',
-        bgClass: 'bg-gradient-to-r from-yellow-500/20 via-amber-500/15 to-orange-500/20',
-        borderClass: 'border-yellow-500/40',
-        textClass: 'text-yellow-400',
-        iconBgClass: 'bg-gradient-to-br from-yellow-500 to-orange-500',
-      };
-    case 'pr-close':
-      return {
-        type,
-        icon: 'target',
-        bgClass: 'bg-gradient-to-r from-amber-500/15 to-yellow-500/15',
-        borderClass: 'border-amber-500/30',
-        textClass: 'text-amber-400',
-        iconBgClass: 'bg-amber-500/20',
-      };
-    case 'success':
-      return {
-        type,
-        icon: 'check-circle',
-        bgClass: 'bg-emerald-500/10',
-        borderClass: 'border-emerald-500/30',
-        textClass: 'text-emerald-400',
-        iconBgClass: 'bg-emerald-500/20',
-      };
-    case 'motivation':
-      return {
-        type,
-        icon: 'flame',
-        bgClass: 'bg-gradient-to-r from-orange-500/15 to-red-500/15',
-        borderClass: 'border-orange-500/30',
-        textClass: 'text-orange-400',
-        iconBgClass: 'bg-orange-500/20',
-      };
-    case 'streak':
-      return {
-        type,
-        icon: 'zap',
-        bgClass: 'bg-gradient-to-r from-orange-500/15 to-yellow-500/15',
-        borderClass: 'border-orange-500/30',
-        textClass: 'text-orange-400',
-        iconBgClass: 'bg-gradient-to-br from-orange-500 to-yellow-500',
-      };
-    case 'tip':
-      return {
-        type,
-        icon: 'lightbulb',
-        bgClass: 'bg-purple-500/10',
-        borderClass: 'border-purple-500/30',
-        textClass: 'text-purple-400',
-        iconBgClass: 'bg-purple-500/20',
-      };
-    case 'info':
-    default:
-      return {
-        type,
-        icon: 'bot',
-        bgClass: 'bg-accent/10',
-        borderClass: 'border-accent/20',
-        textClass: 'text-accent',
-        iconBgClass: 'bg-accent/20',
-      };
-  }
+  return { type };
 }
 
 // ==========================================
@@ -160,37 +95,25 @@ export function updateCoachOnSessionLoad(groupName: string, ejercicios: Exercise
   if (streak.current >= 3) {
     showCoachMessage({
       ...getMessageConfig('streak'),
-      message: `🔥 Racha de ${streak.current} días consecutivos`,
-      subtext: `Nivel ${levelProgress.level} • ${Math.round(levelProgress.percentage)}% hacia el siguiente`,
+      message: `Racha de ${streak.current} días seguidos.`,
+      subtext: `Nivel ${levelProgress.level} · ${Math.round(levelProgress.percentage)}% hacia el siguiente`,
     });
     return;
   }
 
+  // "Última sesión de este grupo: N kg. ¿Lo superamos hoy?" ya la escribe la
+  // propia pantalla al pintarse [REF Pantallas:162]. Repetirla aqui la pisaba
+  // con una version peor (nombre completo del grupo, "kg" pegado al numero).
   const history = getHistory();
-  const groupHistory = history.filter(
-    (s: HistorySession) => s.type !== 'cardio' && s.grupo === groupName
+  const tieneHistorialDelGrupo = history.some(
+    (s: HistorySession) => s.type !== 'cardio' && s.grupo === groupName && (s.volumenTotal || 0) > 0
   );
+  if (tieneHistorialDelGrupo) return;
 
-  if (groupHistory.length > 0) {
-    const lastSession = groupHistory[0];
-    const lastVolume = lastSession.volumenTotal || 0;
-
-    if (lastVolume > 0) {
-      showCoachMessage({
-        ...getMessageConfig('info'),
-        message: `Última sesión de ${groupName}: ${lastVolume.toLocaleString()}kg de volumen.`,
-        subtext: '¿Lo superamos hoy?',
-      });
-      return;
-    }
-  }
-
-  // Default message for new groups or no history
   const exerciseCount = ejercicios.length;
   showCoachMessage({
     ...getMessageConfig('info'),
-    message: `${exerciseCount} ejercicios listos. Ingresa tus datos.`,
-    subtext: 'El coach te guiará durante la sesión.',
+    message: `${exerciseCount} ejercicios en esta rutina. Registra sets, reps y peso.`,
   });
 }
 
@@ -211,19 +134,20 @@ export function updateCoachOnExerciseUpdate(
     if (currentWeight > prWeight) {
       showCoachMessage({
         ...getMessageConfig('pr-alert'),
-        message: `¡NUEVO PR en ${ejercicio.nombre}!`,
-        subtext: `Anterior: ${prWeight}kg → Nuevo: ${currentWeight}kg (+${(currentWeight - prWeight).toFixed(1)}kg)`,
+        message: `PR nuevo en ${ejercicio.nombre}: ${formatearPeso(currentWeight)} kg.`,
+        subtext: `Tu marca anterior: ${formatearPeso(prWeight)} kg`,
       });
       return;
     }
 
     // Close to PR (90% or more)
     if (percentage >= 90 && percentage < 100) {
-      const diff = prWeight - currentWeight;
+      // La voz dice el peso objetivo, nunca cuanto falta.
+      const objetivo = siguienteCarga(prWeight, ejercicio.esMancuerna);
       showCoachMessage({
         ...getMessageConfig('pr-close'),
-        message: `Estás a ${diff.toFixed(1)}kg de tu PR en ${ejercicio.nombre}`,
-        subtext: `PR actual: ${prWeight}kg (${ejercicio.sets}x${pr.reps})`,
+        message: `Levanta ${formatearPeso(objetivo)} kg en ${ejercicio.nombre} y es PR nuevo.`,
+        subtext: `Tu mejor marca: ${formatearPeso(prWeight)} kg`,
       });
       return;
     }
@@ -241,8 +165,10 @@ export function updateCoachOnExerciseUpdate(
     if (histExercise) {
       showCoachMessage({
         ...getMessageConfig('info'),
-        message: `${ejercicio.nombre}: Última vez ${histExercise.sets}x${histExercise.reps} a ${histExercise.peso}kg`,
-        subtext: pr ? `Tu PR: ${pr.peso}kg` : undefined,
+        message: `${ejercicio.nombre}: última vez ${histExercise.sets}×${histExercise.reps} con ${formatearPeso(
+          histExercise.peso
+        )} kg.`,
+        subtext: pr ? `Tu mejor marca: ${formatearPeso(pr.peso)} kg` : undefined,
       });
       return;
     }
@@ -262,20 +188,19 @@ export function updateCoachOnExerciseComplete(
   if (remaining === 0) {
     showCoachMessage({
       ...getMessageConfig('success'),
-      message: '¡Todos los ejercicios completados!',
-      subtext: 'Guarda tu entrenamiento para registrar tu progreso.',
+      message: 'Todos los ejercicios completados.',
+      subtext: 'Guarda la sesión para que cuente.',
     });
   } else if (remaining <= 2) {
     showCoachMessage({
       ...getMessageConfig('motivation'),
-      message: `¡Solo ${remaining === 1 ? 'queda 1 ejercicio' : `quedan ${remaining} ejercicios`}!`,
-      subtext: 'Termina fuerte, ya casi lo logras.',
+      message: remaining === 1 ? 'Queda 1 ejercicio.' : `Quedan ${remaining} ejercicios.`,
     });
   } else {
     showCoachMessage({
       ...getMessageConfig('success'),
       message: `${ejercicio.nombre} completado.`,
-      subtext: `${completedCount}/${totalCount} ejercicios • ${remaining} restantes`,
+      subtext: `${completedCount} de ${totalCount} ejercicios`,
     });
   }
 }
@@ -294,15 +219,16 @@ function maybeShowTip(): void {
   }
 }
 
+/**
+ * El mockup de W-01 deja UN solo hueco para el coach: la nota bajo la
+ * cabecera. Ahi escribe esto. Sin iconos, sin colores por tipo y sin
+ * animacion de pulso: el sistema no los permite. La prioridad y la caducidad
+ * de los mensajes se conservan tal cual estaban.
+ */
 export function showCoachMessage(config: CoachMessage): void {
-  const banner = document.getElementById('coachBanner');
-  const iconContainer = document.getElementById('coachIcon');
-  const messageEl = document.getElementById('coachMessage');
-  const subtextEl = document.getElementById('coachSubtext');
+  const nota = document.querySelector<HTMLElement>('.f-sesion__coach');
+  if (!nota) return;
 
-  if (!banner || !iconContainer || !messageEl || !subtextEl) return;
-
-  // Check if current message has higher priority and hasn't expired
   const now = Date.now();
   const newPriority = MESSAGE_PRIORITY[config.type];
 
@@ -311,42 +237,23 @@ export function showCoachMessage(config: CoachMessage): void {
     const currentDisplayTime = MESSAGE_DISPLAY_TIME[currentMessageType];
     const timeSinceLastMessage = now - currentMessageTimestamp;
 
-    // Don't overwrite higher priority messages until they expire
+    // No pisar un mensaje de mas prioridad hasta que caduque.
     if (currentPriority > newPriority && timeSinceLastMessage < currentDisplayTime) {
       return;
     }
   }
 
-  // Update current message tracking
   currentMessageType = config.type;
   currentMessageTimestamp = now;
 
-  // Update banner styles
-  banner.className = `rounded-xl p-4 mb-4 transition-all duration-300 ${config.bgClass} border ${config.borderClass}`;
-
-  // Update icon
-  iconContainer.className = `w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${config.iconBgClass}`;
-  iconContainer.innerHTML = `<i data-lucide="${config.icon}" class="w-4 h-4 ${config.type === 'pr-alert' ? 'text-white' : config.textClass}" aria-hidden="true"></i>`;
-
-  // Update message
-  messageEl.className = `text-sm font-medium ${config.textClass}`;
-  messageEl.textContent = config.message;
-
-  // Update subtext
+  nota.hidden = false;
+  nota.textContent = config.message;
   if (config.subtext) {
-    subtextEl.className = `text-xs mt-0.5 ${config.textClass} opacity-70`;
-    subtextEl.textContent = config.subtext;
-    subtextEl.classList.remove('hidden');
-  } else {
-    subtextEl.classList.add('hidden');
+    const sub = document.createElement('span');
+    sub.className = 'f-sesion__coach-sub';
+    sub.textContent = config.subtext;
+    nota.appendChild(sub);
   }
-
-  // Add animation
-  banner.classList.add('animate-pulse-once');
-  setTimeout(() => banner.classList.remove('animate-pulse-once'), 500);
-
-  // Refresh icons
-  refreshIcons();
 }
 
 // ==========================================

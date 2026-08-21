@@ -1,4 +1,5 @@
-import { confirmarDestructivo, preguntar } from '@/ui/feedback';
+import { confirmarDestructivo, preguntar, mostrarToast } from '@/ui/feedback';
+import { cifra } from '@/utils/formato';
 import type { ExerciseData, Exercise, RPEData, PRData, HistorySession } from '@/types';
 import { getTrainingGroup } from '@/data/training-groups';
 import {
@@ -13,16 +14,28 @@ import {
   hasUnsavedChanges,
   setOnDraftSavedCallback,
 } from '@/state/session';
-import { renderExercise, refreshIcons } from '@/ui/components';
-import { icon } from '@/utils/icons';
+import {
+  renderSesion,
+  fijarObligatorios,
+  activarOpcional,
+  reiniciarOpcionales,
+  segundosDeSesion,
+  refrescarIntensidad,
+  reloj,
+} from '@/ui/workout-view';
+import {
+  mostrarGuiaEjercicio,
+  preguntarRPEDeSesion,
+  mostrarResumenXP,
+} from '@/ui/session-screens';
 import {
   updateCoachOnSessionLoad,
   updateCoachOnExerciseUpdate,
   updateCoachOnExerciseComplete,
 } from '@/features/coach';
 import { getPRs } from '@/utils/storage';
+import { setExerciseRPE } from '@/state/session';
 import { processCompletedSession } from '@/features/gamification';
-import { showSessionSummary } from '@/ui/gamification';
 
 // ==========================================
 // CARGAR GRUPO DE ENTRENAMIENTO
@@ -90,80 +103,52 @@ export async function loadTrainingGroup(grupoId: string): Promise<boolean> {
 }
 
 // ==========================================
-// RENDERIZAR UI DE WORKOUT
+// PINTAR W-01
 // ==========================================
 
+/** El cronometro corre aparte: repintar la pantalla entera cada segundo le
+ *  quitaria el foco al usuario a mitad de escribir un peso. */
+let latido: ReturnType<typeof setInterval> | null = null;
+
+function contenedorSesion(): HTMLElement | null {
+  return document.getElementById('fierroWorkout');
+}
+
+function refrescarCrono(): void {
+  const el = document.getElementById('fierroCrono');
+  if (!el) return;
+  el.textContent = reloj(segundosDeSesion());
+}
+
+function arrancarCrono(): void {
+  if (latido) clearInterval(latido);
+  latido = setInterval(refrescarCrono, 1000);
+}
+
+export function pararCrono(): void {
+  if (latido) clearInterval(latido);
+  latido = null;
+}
+
+/** Repinta W-01 entera. Solo para cambios estructurales. */
+export function pintarSesion(): void {
+  const contenedor = contenedorSesion();
+  if (!contenedor) return;
+  renderSesion(contenedor);
+  if (sessionData.ejercicios.length > 0) arrancarCrono();
+  else pararCrono();
+  actualizarAutosave();
+}
+
 function renderWorkoutUI(
-  groupName: string,
-  ejercicios: ExerciseData[],
+  _groupName: string,
+  _ejercicios: ExerciseData[],
   obligatoriosCount: number
 ): void {
-  // Mostrar info del entrenamiento
-  const trainingInfo = document.getElementById('trainingInfo');
-  if (trainingInfo) {
-    trainingInfo.classList.remove('hidden');
-  }
-
-  const currentTraining = document.getElementById('currentTraining');
-  if (currentTraining) {
-    currentTraining.textContent = groupName;
-  }
-
-  const currentDate = document.getElementById('currentDate');
-  if (currentDate) {
-    currentDate.textContent = new Date().toLocaleDateString('es-ES');
-  }
-
-  // Renderizar ejercicios obligatorios
-  const ejerciciosList = document.getElementById('ejerciciosList');
-  if (ejerciciosList) {
-    let html = '';
-    for (let i = 0; i < obligatoriosCount; i++) {
-      html += renderExercise(ejercicios[i], i, false);
-    }
-    ejerciciosList.innerHTML = html;
-  }
-
-  // Renderizar ejercicios opcionales
-  const opcionalesList = document.getElementById('opcionalesList');
-  if (opcionalesList) {
-    let html = '';
-    if (ejercicios.length > obligatoriosCount) {
-      html = `
-        <div class="mb-3 flex items-center gap-2">
-          ${icon('bookmark', 'md', 'text-status-warning')}
-          <span class="text-sm font-semibold text-status-warning">Ejercicios Opcionales</span>
-        </div>
-      `;
-      for (let i = obligatoriosCount; i < ejercicios.length; i++) {
-        html += renderExercise(ejercicios[i], i, true);
-      }
-    }
-    opcionalesList.innerHTML = html;
-  }
-
-  // Mostrar secciones
-  const containers = [
-    'ejerciciosContainer',
-    'volumeSummary',
-    'saveSection',
-    'quickStats',
-  ];
-  containers.forEach((id) => {
-    const el = document.getElementById(id);
-    if (el) el.classList.remove('hidden');
-  });
-
-  // Actualizar displays
-  updateVolumeDisplay();
-  updateQuickStats();
-  updateSaveButtonState();
-
-  // Refrescar iconos
-  refreshIcons();
-
-  // Initialize coach
-  updateCoachOnSessionLoad(groupName, ejercicios);
+  fijarObligatorios(obligatoriosCount);
+  reiniciarOpcionales();
+  pintarSesion();
+  updateCoachOnSessionLoad(sessionData.grupo, sessionData.ejercicios);
 }
 
 // ==========================================
@@ -171,12 +156,15 @@ function renderWorkoutUI(
 // ==========================================
 
 export function renderFromDraft(): void {
-  // sessionData ya debe estar restaurado por restoreFromDraft
   if (sessionData.ejercicios.length === 0) return;
-
-  // Renderizar UI usando todos los ejercicios como obligatorios
-  // (ya que no tenemos la info original del grupo)
-  renderWorkoutUI(sessionData.grupo, sessionData.ejercicios, sessionData.ejercicios.length);
+  // El borrador guarda la lista ya fusionada y no marca cuales eran
+  // opcionales. Se recupera del grupo original cuando existe; si es una rutina
+  // propia (sin opcionales) el limite es la lista entera.
+  const grupo = getTrainingGroup(sessionData.grupo);
+  fijarObligatorios(grupo ? grupo.ejercicios.length : sessionData.ejercicios.length);
+  reiniciarOpcionales();
+  pintarSesion();
+  updateCoachOnSessionLoad(sessionData.grupo, sessionData.ejercicios);
 }
 
 // ==========================================
@@ -197,23 +185,21 @@ export function updateEjercicio(index: number): void {
   const reps = parseFloat(repsInput.value) || 0;
   const peso = parseFloat(pesoInput.value) || 0;
 
-  // Actualizar estado
   updateExerciseState(index, sets, reps, peso);
 
-  // Actualizar UI de volumen
+  // Parcheo quirurgico: el usuario esta escribiendo dentro de esta card.
   const volumenEl = document.getElementById(`volumen-${index}`);
-  if (volumenEl) {
-    volumenEl.textContent = `${sessionData.ejercicios[index].volumen.toLocaleString()} kg`;
+  const ejercicio = sessionData.ejercicios[index];
+  if (volumenEl && ejercicio) {
+    volumenEl.textContent = ejercicio.volumen > 0 ? `${cifra(ejercicio.volumen)} kg` : '—';
   }
+  if (ejercicio) refrescarIntensidad(index, ejercicio);
 
-  // Actualizar displays
   updateVolumeDisplay();
   updateQuickStats();
   updateSaveButtonState();
   updateUnsavedIndicator();
 
-  // Update coach with exercise data
-  const ejercicio = sessionData.ejercicios[index];
   if (ejercicio && ejercicio.peso > 0) {
     updateCoachOnExerciseUpdate(ejercicio, index, sessionData.ejercicios);
   }
@@ -243,8 +229,6 @@ export function decrementInput(inputId: string): void {
 function validateDecimalInput(input: HTMLInputElement): boolean {
   if (input.value.includes(',')) {
     input.value = input.value.replace(',', '.');
-    input.classList.add('animate-shake');
-    setTimeout(() => input.classList.remove('animate-shake'), 300);
   }
   return true;
 }
@@ -254,205 +238,136 @@ function validateDecimalInput(input: HTMLInputElement): boolean {
 // ==========================================
 
 export function toggleCompletado(index: number): void {
-  const button = document.getElementById(`completado-${index}`) as HTMLButtonElement;
-  const nombreEl = document.getElementById(`nombre-${index}`) as HTMLElement;
+  const ejercicio = sessionData.ejercicios[index];
+  if (!ejercicio) return;
 
-  if (!button) return;
+  const nuevoEstado = !ejercicio.completado;
+  toggleExerciseCompleted(index, nuevoEstado);
+  // Al desmarcar, el RPE que se contesto deja de tener sujeto.
+  if (!nuevoEstado && ejercicio.rpe !== undefined) setExerciseRPE(index, null);
 
-  // Get current state and toggle it
-  const currentState = sessionData.ejercicios[index]?.completado || false;
-  const newState = !currentState;
+  // La card cambia de forma (activa <-> completada con su fila de RPE):
+  // esto si es un cambio estructural.
+  pintarSesion();
 
-  // Update state
-  toggleExerciseCompleted(index, newState);
-
-  // Update button visual
-  const checkIcon = button.querySelector('i');
-
-  if (newState) {
-    // Completed state - green filled circle with white check
-    button.classList.remove('bg-transparent', 'border-slate-500', 'hover:border-emerald-400', 'scale-90');
-    button.classList.add('bg-emerald-500', 'border-emerald-500', 'scale-100');
-    if (checkIcon) {
-      checkIcon.classList.remove('text-slate-600');
-      checkIcon.classList.add('text-white');
-    }
-    // Exercise name - green with strikethrough
-    if (nombreEl) {
-      nombreEl.classList.remove('text-white');
-      nombreEl.classList.add('text-emerald-400', 'line-through', 'decoration-emerald-400', 'decoration-2');
-    }
-  } else {
-    // Uncompleted state - transparent circle with gray check
-    button.classList.remove('bg-emerald-500', 'border-emerald-500', 'scale-100');
-    button.classList.add('bg-transparent', 'border-slate-500', 'hover:border-emerald-400', 'scale-90');
-    if (checkIcon) {
-      checkIcon.classList.remove('text-white');
-      checkIcon.classList.add('text-slate-600');
-    }
-    // Exercise name - white without strikethrough
-    if (nombreEl) {
-      nombreEl.classList.remove('text-emerald-400', 'line-through', 'decoration-emerald-400', 'decoration-2');
-      nombreEl.classList.add('text-white');
-    }
+  if (nuevoEstado) {
+    const completados = sessionData.ejercicios.filter((e) => e.completado).length;
+    updateCoachOnExerciseComplete(ejercicio, completados, sessionData.ejercicios.length);
   }
+}
 
-  updateQuickStats();
-  updateSaveButtonState();
+/** RPE por ejercicio (README 3). `null` = omitir. */
+export function responderRPE(index: number, valor: number | null): void {
+  setExerciseRPE(index, valor);
+  pintarSesion();
+}
 
-  // Update coach on completion
-  if (newState) {
-    const ejercicio = sessionData.ejercicios[index];
-    const completedCount = sessionData.ejercicios.filter(e => e.completado).length;
-    const totalCount = sessionData.ejercicios.length;
-    updateCoachOnExerciseComplete(ejercicio, completedCount, totalCount);
-  }
+/** Vuelve a abrir la fila de chips de un ejercicio ya contestado. */
+export function reabrirRPE(index: number): void {
+  setExerciseRPE(index, null);
+  pintarSesion();
+}
+
+/** Saca un opcional de su lista y lo pone en juego con sus steppers. */
+export function activarEjercicioOpcional(index: number): void {
+  activarOpcional(index);
+  pintarSesion();
+}
+
+export function abrirGuia(index: number): void {
+  const ejercicio = sessionData.ejercicios[index];
+  if (ejercicio) mostrarGuiaEjercicio(ejercicio.nombre);
 }
 
 // ==========================================
 // ACTUALIZAR DISPLAYS
 // ==========================================
 
+/**
+ * Volumen por musculo. Se parchean los anchos y las cifras en vez de repintar,
+ * para no tocar la card en la que el usuario esta escribiendo. Si el conjunto
+ * de musculos cambia (el primer set de un grupo nuevo), hay que repintar: eso
+ * si es estructural.
+ */
 export function updateVolumeDisplay(): void {
-  const volumeBars = document.getElementById('volumeBars');
-  if (!volumeBars) return;
+  const bloque = document.querySelector('.f-volumen');
+  const filas = Object.entries(sessionData.volumenPorGrupo ?? {})
+    .filter(([, kg]) => kg > 0)
+    .sort((a, b) => b[1] - a[1]);
 
-  const volumenPorGrupo = sessionData.volumenPorGrupo;
-  const grupos = Object.keys(volumenPorGrupo);
-
-  if (grupos.length === 0) {
-    volumeBars.innerHTML = `
-      <p class="text-text-secondary text-center py-4">
-        Ingresa datos para ver el resumen de volumen
-      </p>
-    `;
+  const pintadas = bloque ? bloque.querySelectorAll('.f-volumen__fila').length : 0;
+  if (filas.length !== pintadas) {
+    pintarSesion();
     return;
   }
+  if (!bloque || filas.length === 0) return;
 
-  const totalVolumen = sessionData.volumenTotal;
-
-  let html = '';
-  grupos.forEach((grupo) => {
-    const volumen = volumenPorGrupo[grupo];
-    const percentage = totalVolumen > 0 ? (volumen / totalVolumen) * 100 : 0;
-
-    html += `
-      <div class="mb-3">
-        <div class="flex justify-between text-sm mb-1">
-          <span class="text-text-secondary">${grupo}</span>
-          <span class="text-accent font-semibold">${volumen.toLocaleString()} kg</span>
-        </div>
-        <div class="h-2 bg-dark-bg rounded-full overflow-hidden">
-          <div
-            class="h-full bg-accent rounded-full transition-all duration-300"
-            style="width: ${percentage}%"
-          ></div>
-        </div>
-      </div>
-    `;
+  const mayor = filas[0][1];
+  const nombres = bloque.querySelectorAll<HTMLElement>('.f-volumen__musculo');
+  const cifras = bloque.querySelectorAll<HTMLElement>('.f-volumen__kg');
+  const rellenos = bloque.querySelectorAll<HTMLElement>('.f-volumen__relleno');
+  filas.forEach(([musculo, kg], i) => {
+    if (nombres[i]) nombres[i].textContent = musculo;
+    if (cifras[i]) cifras[i].textContent = `${cifra(kg)} kg`;
+    if (rellenos[i]) {
+      rellenos[i].style.width = `${Math.round((kg / mayor) * 100)}%`;
+      rellenos[i].classList.toggle('f-volumen__relleno--mayor', i === 0);
+    }
   });
-
-  // Total
-  html += `
-    <div class="mt-4 pt-3 border-t border-dark-border">
-      <div class="flex justify-between items-center">
-        <span class="text-text-primary font-semibold">Volumen Total</span>
-        <span class="text-xl font-bold text-accent">${sessionData.volumenTotal.toLocaleString()} kg</span>
-      </div>
-    </div>
-  `;
-
-  volumeBars.innerHTML = html;
 }
 
 export function updateQuickStats(): void {
   const ejercicios = sessionData.ejercicios;
-  const completados = ejercicios.filter((ej) => ej.completado).length;
-  const conDatos = ejercicios.filter((ej) => ej.volumen > 0).length;
-
-  // Volumen
-  const volumenStat = document.getElementById('statVolumen');
-  if (volumenStat) {
-    volumenStat.textContent = sessionData.volumenTotal.toLocaleString();
+  const total = document.getElementById('fierroVolumenTotal');
+  if (total) {
+    total.innerHTML = `${cifra(sessionData.volumenTotal)} <span class="f-metrica__unidad">kg</span>`;
   }
-
-  // Ejercicios
-  const ejerciciosStat = document.getElementById('statEjercicios');
-  if (ejerciciosStat) {
-    ejerciciosStat.textContent = String(conDatos);
+  const metricas = document.querySelectorAll<HTMLElement>('.f-sesion__metricas .f-metrica__cifra');
+  // [0] es VOLUMEN, ya parcheado arriba.
+  if (metricas[1]) {
+    const completados = ejercicios.filter((ej) => ej.completado).length;
+    metricas[1].innerHTML = `${completados}<span class="f-metrica__total">/${ejercicios.length}</span>`;
   }
-
-  // Completados
-  const completadosStat = document.getElementById('statCompletados');
-  if (completadosStat) {
-    completadosStat.textContent = `${completados}/${ejercicios.length}`;
-  }
-
-  // Sets totales
-  const setsStat = document.getElementById('statSets');
-  if (setsStat) {
-    const totalSets = ejercicios.reduce((sum, ej) => sum + ej.sets, 0);
-    setsStat.textContent = String(totalSets);
+  if (metricas[2]) {
+    metricas[2].textContent = String(ejercicios.reduce((suma, ej) => suma + (ej.sets || 0), 0));
   }
 }
 
 export function updateSaveButtonState(): void {
-  const saveButton = document.getElementById('saveButton') as HTMLButtonElement;
-  if (!saveButton) return;
-
-  const hasData = sessionData.ejercicios.some((ej) => ej.volumen > 0);
-  saveButton.disabled = !hasData;
-
-  if (hasData) {
-    saveButton.classList.remove('opacity-50', 'cursor-not-allowed');
-  } else {
-    saveButton.classList.add('opacity-50', 'cursor-not-allowed');
-  }
+  const boton = document.querySelector<HTMLButtonElement>('[data-sesion="guardar"]');
+  if (!boton) return;
+  boton.disabled = !sessionData.ejercicios.some((ej) => ej.volumen > 0);
 }
-
-let savedIndicatorTimeout: ReturnType<typeof setTimeout> | null = null;
 
 export function updateUnsavedIndicator(): void {
   const indicator = document.getElementById('unsavedIndicator');
   if (!indicator) return;
 
-  // Only show indicator when there are actual pending changes (before auto-save)
-  // hasUnsavedChanges is false after draft auto-save, so indicator hides
   if (hasUnsavedChanges) {
-    // Clear any pending "saved" timeout
-    if (savedIndicatorTimeout) {
-      clearTimeout(savedIndicatorTimeout);
-      savedIndicatorTimeout = null;
-    }
     indicator.textContent = 'Cambios sin guardar';
     indicator.classList.remove('hidden', 'saved');
-    indicator.classList.add('animate-slide-down');
   } else {
     indicator.classList.add('hidden');
-    indicator.classList.remove('animate-slide-down', 'saved');
+    indicator.classList.remove('saved');
   }
 }
 
+/** "CAMBIOS GUARDADOS · HH:MM" — el autosave visible del mockup. */
+let horaDelAutosave: string | null = null;
+
+function actualizarAutosave(): void {
+  const el = document.getElementById('fierroAutosave');
+  if (!el) return;
+  el.textContent = horaDelAutosave ? `CAMBIOS GUARDADOS · ${horaDelAutosave}` : '';
+}
+
 export function showSavedIndicator(): void {
-  const indicator = document.getElementById('unsavedIndicator');
-  if (!indicator) return;
-
-  // Clear any pending timeout
-  if (savedIndicatorTimeout) {
-    clearTimeout(savedIndicatorTimeout);
-  }
-
-  // Show green "saved" indicator
-  indicator.textContent = 'Cambios guardados';
-  indicator.classList.remove('hidden');
-  indicator.classList.add('saved', 'animate-slide-down');
-
-  // Hide after 3 seconds
-  savedIndicatorTimeout = setTimeout(() => {
-    indicator.classList.add('hidden');
-    indicator.classList.remove('animate-slide-down', 'saved');
-    savedIndicatorTimeout = null;
-  }, 3000);
+  const ahora = new Date();
+  horaDelAutosave = `${String(ahora.getHours()).padStart(2, '0')}:${String(
+    ahora.getMinutes()
+  ).padStart(2, '0')}`;
+  actualizarAutosave();
+  updateUnsavedIndicator();
 }
 
 // ==========================================
@@ -461,21 +376,11 @@ export function showSavedIndicator(): void {
 
 export function saveWorkout(): void {
   const result = saveCurrentSession();
-
-  const saveMessage = document.getElementById('saveMessage');
-  if (saveMessage) {
-    saveMessage.textContent =
-      result === 'updated'
-        ? 'Entrenamiento actualizado correctamente'
-        : 'Entrenamiento guardado correctamente';
-    saveMessage.classList.remove('hidden');
-
-    setTimeout(() => {
-      saveMessage.classList.add('hidden');
-    }, 3000);
-  }
-
-  updateUnsavedIndicator();
+  mostrarToast({
+    tipo: 'exito',
+    titulo: result === 'updated' ? 'Entrenamiento actualizado' : 'Entrenamiento guardado',
+  });
+  showSavedIndicator();
   updateSaveButtonState();
 }
 
@@ -483,7 +388,8 @@ export function saveWorkout(): void {
 // RPE STATE
 // ==========================================
 
-let selectedRPE: number | null = null;
+/** Punto de partida del slider: el centro de la escala 1-10. */
+const RPE_INICIAL = 5;
 let pendingSaveBeforeRPE = false;
 let hasSessionData = false; // Track if session has data for gamification
 
@@ -555,143 +461,44 @@ export async function finishWorkout(): Promise<void> {
     pendingSaveBeforeRPE = true;
   }
 
-  // Show RPE modal
-  showRPEModal();
+  await preguntarRPEYCerrar();
 }
 
-function showRPEModal(): void {
-  const modal = document.getElementById('rpeModal');
-  if (modal) {
-    // Reset state
-    selectedRPE = null;
-    updateRPEDisplay();
-    resetRPEButtons();
-
-    // Show modal
-    modal.classList.add('active');
-
-    // Refresh icons
-    import('@/utils/icons').then(({ refreshIcons }) => refreshIcons());
-  }
-}
-
-function closeRPEModal(): void {
-  const modal = document.getElementById('rpeModal');
-  if (modal) {
-    modal.classList.remove('active');
-  }
-}
-
-function resetRPEButtons(): void {
-  const buttons = document.querySelectorAll('.rpe-btn');
-  buttons.forEach((btn) => {
-    btn.classList.remove('ring-2', 'ring-white', 'scale-110');
+/**
+ * W-02 · RPE de la sesion. Hoja FIERRO con el slider de gradiente semantico —
+ * el unico slider de RPE de la app.
+ */
+async function preguntarRPEYCerrar(): Promise<void> {
+  const elegido = await preguntarRPEDeSesion({
+    inicial: RPE_INICIAL,
+    etiqueta: (v) => RPE_LABELS[v] ?? '',
   });
+  const rpeData: RPEData | undefined =
+    elegido === null ? undefined : { value: elegido, label: RPE_LABELS[elegido] ?? '' };
 
-  const confirmBtn = document.getElementById('confirmRPEBtn') as HTMLButtonElement;
-  if (confirmBtn) {
-    confirmBtn.disabled = true;
-  }
-}
-
-function updateRPEDisplay(): void {
-  const valueEl = document.getElementById('rpeValue');
-  const labelEl = document.getElementById('rpeLabel');
-
-  if (valueEl && labelEl) {
-    if (selectedRPE !== null) {
-      valueEl.textContent = String(selectedRPE);
-      labelEl.textContent = RPE_LABELS[selectedRPE] || '';
-
-      // Update color based on RPE
-      valueEl.className = 'text-4xl font-bold mb-1 ';
-      if (selectedRPE <= 3) {
-        valueEl.classList.add('text-emerald-400');
-      } else if (selectedRPE <= 5) {
-        valueEl.classList.add('text-yellow-400');
-      } else if (selectedRPE <= 8) {
-        valueEl.classList.add('text-orange-400');
-      } else {
-        valueEl.classList.add('text-red-400');
-      }
-    } else {
-      valueEl.textContent = '-';
-      valueEl.className = 'text-4xl font-bold text-white mb-1';
-      labelEl.textContent = 'Selecciona un nivel';
-    }
-  }
-}
-
-export function selectRPE(value: number): void {
-  selectedRPE = value;
-
-  // Update button styles
-  const buttons = document.querySelectorAll('.rpe-btn');
-  buttons.forEach((btn) => {
-    const btnValue = parseInt(btn.getAttribute('data-rpe') || '0');
-    if (btnValue === value) {
-      btn.classList.add('ring-2', 'ring-white', 'scale-110');
-    } else {
-      btn.classList.remove('ring-2', 'ring-white', 'scale-110');
-    }
-  });
-
-  // Enable confirm button
-  const confirmBtn = document.getElementById('confirmRPEBtn') as HTMLButtonElement;
-  if (confirmBtn) {
-    confirmBtn.disabled = false;
-  }
-
-  // Update display
-  updateRPEDisplay();
-}
-
-export async function confirmRPE(): Promise<void> {
-  if (selectedRPE === null) return;
-
-  const rpeData: RPEData = {
-    value: selectedRPE,
-    label: RPE_LABELS[selectedRPE] || '',
-  };
-
-  // Save session with RPE if there are pending changes
   if (pendingSaveBeforeRPE) {
     saveCurrentSession(rpeData);
   }
-
-  // Process gamification if session has data (always process even if already saved)
   if (hasSessionData) {
     await processAndShowGamification(rpeData);
   }
 
-  // Close modal and finish
-  closeRPEModal();
   pendingSaveBeforeRPE = false;
   hasSessionData = false;
-  selectedRPE = null;
+  pararCrono();
   endSession();
   window.location.reload();
+}
+
+/** Compatibilidad: los globales antiguos siguen apuntando al flujo nuevo. */
+export async function confirmRPE(): Promise<void> {
+  await preguntarRPEYCerrar();
 }
 
 export async function skipRPE(): Promise<void> {
-  // Save session without RPE if there are pending changes
-  if (pendingSaveBeforeRPE) {
-    saveCurrentSession();
-  }
-
-  // Process gamification if session has data (always process even if already saved)
-  if (hasSessionData) {
-    await processAndShowGamification();
-  }
-
-  // Close modal and finish
-  closeRPEModal();
-  pendingSaveBeforeRPE = false;
-  hasSessionData = false;
-  selectedRPE = null;
-  endSession();
-  window.location.reload();
+  await preguntarRPEYCerrar();
 }
+
 
 /**
  * Process gamification and show XP summary
@@ -711,8 +518,12 @@ async function processAndShowGamification(rpe?: RPEData): Promise<void> {
     // Process gamification
     const summary = processCompletedSession(session, newPRs);
 
-    // Show XP summary popup and wait for user to close it
-    await showSessionSummary(summary);
+    // W-03: pantalla completa con el desglose real, no un popup generico.
+    await mostrarResumenXP(summary, {
+      duracion: segundosDeSesion(),
+      grupo: sessionData.grupo,
+      volumen: sessionData.volumenTotal,
+    });
   } catch (error) {
     console.error('Error processing gamification:', error);
     // Continue even if gamification fails

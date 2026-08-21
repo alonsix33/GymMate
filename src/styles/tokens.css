@@ -83,6 +83,11 @@
      intensidad le falta un peldaño Fragua propio? [REF Sistema:181] */
   --intensidad-moderada-bg: #52290f;
   --fragua-border-tint: #3e2a1e; /* borde de botón terciario Fragua  [REF] */
+  /* Barra de volumen del musculo que NO es el mayor de la sesion. Mismo hex
+     que --heat-q3, pero otro rol: aqui no hay cuartiles, solo "el principal y
+     el resto". Compartir token soldaria la barra a la escala del heatmap.
+     PREGUNTA ABIERTA: ¿el hex compartido es intencional? [REF Pantallas:238] */
+  --barra-musculo-secundaria: #c85510;
   --brasa: #3a1f0c; /* nivel de pirámide ya superado              [README] */
 
   /* ======================================================================
@@ -333,6 +338,7 @@
   --r-row: var(--r-10); /* fila de dato */
   --r-btn-l: var(--r-12);
   --r-btn: var(--r-10);
+  --r-btn-s: var(--r-8); /* stepper y chips de RPE de W-01 [REF Pantallas:191] */
   --r-chip: var(--r-6); /* chips / badges */
   --r-chip-s: var(--r-5);
   --r-bar: var(--r-3); /* barra de progreso de 6px de alto (62 usos) */

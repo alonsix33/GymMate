@@ -17,6 +17,8 @@ export interface ExerciseData extends Exercise {
   peso: number;
   volumen: number;
   completado: boolean;
+  /** RPE del ejercicio (5-9), elegido con los chips al marcar ✓ (W-01). */
+  rpe?: number;
 }
 
 export interface SessionData {
@@ -27,6 +29,13 @@ export interface SessionData {
   volumenPorGrupo: Record<string, number>;
   savedAt?: string;
   sessionId?: string;
+  /**
+   * Instante ISO en que empezo la sesion. W-01 muestra un cronometro y W-03
+   * "SESIÓN COMPLETADA · 52:40": sin esto no hay duracion que enseñar, y el
+   * mockup la enseña. Sobrevive al borrador para que reanudar no reinicie el
+   * reloj.
+   */
+  startedAt?: string;
 }
 
 export interface TrainingGroup {

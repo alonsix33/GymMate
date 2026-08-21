@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-  <meta name="theme-color" content="#000000" />
+  <meta name="theme-color" content="#08090B" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="description" content="GymMate - Tu compañero de entrenamiento personal. Tracking de volumen, PRs y progreso." />
@@ -21,27 +21,35 @@
 
   <!-- PWA Manifest is injected by vite-plugin-pwa -->
 
-  <!-- Critical inline CSS for fallback -->
+  <!-- Fuentes FIERRO self-hosted: precarga para el primer render -->
+  <link rel="preload" as="font" type="font/woff2" href="/fonts/archivo-latin.woff2" crossorigin />
+  <link rel="preload" as="font" type="font/woff2" href="/fonts/instrument-sans-latin.woff2" crossorigin />
+
+  <!-- Critical inline CSS for fallback (colores y tipografia: src/styles/tokens.css) -->
   <style>
     .hidden { display: none !important; }
-    body { background-color: #000000; color: #f1f5f9; font-family: Inter, system-ui, sans-serif; }
+    body {
+      background-color: var(--page-bg);
+      color: var(--text-primary);
+      font-family: var(--font-ui);
+    }
     /* Skip Link - visible on focus */
     .skip-link {
       position: absolute;
       top: -100%;
       left: 50%;
       transform: translateX(-50%);
-      background: #06b6d4;
-      color: #0f172a;
+      background: var(--fragua-500);
+      color: var(--on-fragua);
       padding: 0.75rem 1.5rem;
-      border-radius: 0 0 0.5rem 0.5rem;
-      font-weight: 600;
+      border-radius: 0 0 var(--r-btn) var(--r-btn);
+      font-weight: 700;
       z-index: 9999;
       transition: top 0.2s;
     }
     .skip-link:focus {
       top: 0;
-      outline: 3px solid #fff;
+      outline: 3px solid var(--carbon-50);
       outline-offset: 2px;
     }
   </style>

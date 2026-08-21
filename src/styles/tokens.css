@@ -1,0 +1,282 @@
+/* ==========================================================================
+   FIERRO — Design tokens
+   Fuente única de color, tipografía, forma, espacio y movimiento.
+   Ningún hex puede vivir fuera de este archivo.
+
+   Procedencia de cada valor:
+     [README]  design_handoff_fierro/README.md — sección "Design Tokens"
+     [REF]     Sistema Fierro.dc.html / Pantallas Fierro.dc.html (valor no
+               listado en el README, tomado literal del HTML de referencia)
+   ========================================================================== */
+
+:root {
+  /* ======================================================================
+     01 · COLOR — Carbón (estructura)                              [README]
+     ====================================================================== */
+  --carbon-950: #0b0c0f; /* fondo de app */
+  --carbon-900: #111318; /* cards */
+  --carbon-800: #171a20; /* superficies elevadas / inputs */
+  --carbon-700: #20242d; /* bordes sutiles */
+  --carbon-600: #2c323d; /* bordes de cards activas */
+  --carbon-500: #3e4552; /* bordes de botón secundario */
+  --carbon-400: #5a6270; /* texto deshabilitado */
+  --carbon-300: #7e8694; /* texto secundario */
+  --carbon-200: #a8aeb9; /* texto terciario claro */
+  --carbon-100: #cdd1d9;
+  --carbon-50: #ebedf0; /* texto principal */
+
+  /* Superficies fuera de rampa */
+  --page-bg: #08090b; /*                                          [README] */
+  --divider-hairline: #1c2027; /* divisor fino                    [README] */
+  --divider-soft: var(--carbon-800); /* divisor fino alterno      [README] */
+  --frame-border: #262b34; /* marco de pantalla / partes neutras  [README] */
+  --tabbar-bg: #0e1013; /* fondo de la tab bar                       [REF] */
+  --stripe-alt: #14161b; /* trama diagonal de placeholder de foto    [REF] */
+  --scrim: #08090be6; /* velo detrás de bottom sheets                [REF] */
+
+  /* ======================================================================
+     02 · COLOR — Hueso (secciones claras: datos históricos)       [README]
+     ====================================================================== */
+  --hueso-500: #8a877c; /* texto secundario claro */
+  --hueso-400: #a9a69b;
+  --hueso-300: #cbc8be;
+  --hueso-200: #e0ded7; /* bordes */
+  --hueso-100: #edece7; /* fondos de nota */
+  --hueso-50: #f6f5f2; /* fondo de sección */
+
+  --hueso-ink: #16181c; /* texto principal sobre Hueso            [README] */
+  --hueso-card: #ffffff; /* cards blancas                         [README] */
+  --hueso-text-secondary: #5f5d55; /*                             [README] */
+  --hueso-track: #f0efea; /* pista de barra / divisor sobre Hueso    [REF] */
+  --hueso-segmented-bg: #e7e5df; /* fondo de control segmentado     [REF] */
+
+  /* ======================================================================
+     03 · COLOR — Fragua (único acento)                            [README]
+     ====================================================================== */
+  --fragua-900: #7a2604;
+  --fragua-800: #9c3407;
+  --fragua-700: #c2440a;
+  --fragua-600: #e5540f;
+  --fragua-500: #ff6317; /* principal */
+  --fragua-400: #ff7e42; /* hover */
+  --fragua-300: #ff9c6b;
+  --fragua-200: #ffbd9c;
+  --fragua-100: #ffdcc9;
+  --fragua-50: #fff0e7;
+
+  --on-fragua: var(--carbon-950); /* texto sobre Fragua-500        [README] */
+  --fragua-border-tint: #3e2a1e; /* borde de botón terciario Fragua  [REF] */
+  --brasa: #3a1f0c; /* nivel de pirámide ya superado              [README] */
+
+  /* ======================================================================
+     04 · COLOR — Zonas (semánticas)                               [README]
+     ====================================================================== */
+  --zona-roja: #e5484d; /* retroceso */
+  --zona-ambar: #dfa23a; /* manteniendo */
+  --zona-verde: #43b97f; /* progresando / territorio PR */
+
+  --zona-roja-fill: #e5484d24;
+  --zona-ambar-fill: #dfa23a24;
+  --zona-verde-fill: #43b97f24;
+
+  --zona-roja-hueso: #b5443f; /* rojo de texto sobre Hueso        [README] */
+  --zona-verde-hueso: #3f8f5f; /* verde de texto sobre Hueso      [README] */
+
+  --zona-roja-border: #3d2626; /* borde de card en error             [REF] */
+  --zona-verde-border: #2c3d2f; /* borde de card en acierto          [REF] */
+
+  /* ======================================================================
+     05 · COLOR — Rangos musculares (solo gamificación)            [README]
+     ====================================================================== */
+  --rango-hierro: #3e4552;
+  --rango-bronce: #a9744a;
+  --rango-plata: #a8aeb9;
+  --rango-oro: #e3b341;
+  --rango-platino: #8fd0db;
+  --rango-esmeralda: #43b97f;
+  --rango-diamante: #7fc7ff;
+  --rango-campeon: #ff6317;
+  --rango-simetrico: #c9a0ff;
+
+  /* ======================================================================
+     06 · COLOR — Heatmap (cuartiles)                              [README]
+     ====================================================================== */
+  --heat-0: #171a20;
+  --heat-q1: #52290f;
+  --heat-q2: #8a3d0b;
+  --heat-q3: #c85510;
+  --heat-q4: #ff6317;
+  --heat-cardio-border: #c2440a; /* día solo-cardio, 1.5px, sin relleno */
+
+  /* ======================================================================
+     07 · COLOR — Alias semánticos (uso en componentes)
+     ====================================================================== */
+  --bg-app: var(--carbon-950);
+  --bg-card: var(--carbon-900);
+  --bg-elevated: var(--carbon-800);
+  --bg-sheet: var(--carbon-900);
+
+  --border-subtle: var(--carbon-700);
+  --border-card-active: var(--carbon-600);
+  --border-secondary-btn: var(--carbon-500);
+  --border-sheet-top: var(--carbon-600);
+
+  --text-primary: var(--carbon-50);
+  --text-secondary: var(--carbon-300);
+  --text-tertiary: var(--carbon-200);
+  --text-disabled: var(--carbon-400);
+
+  --accent: var(--fragua-500);
+  --accent-hover: var(--fragua-400);
+
+  --bg-hueso: var(--hueso-50);
+  --border-hueso: var(--hueso-200);
+  --text-hueso-primary: var(--hueso-ink);
+  --text-hueso-secondary: var(--hueso-text-secondary);
+
+  /* ======================================================================
+     08 · TIPOGRAFÍA                                               [README]
+     ====================================================================== */
+  --font-display: 'Archivo', system-ui, sans-serif;
+  --font-ui: 'Instrument Sans', system-ui, -apple-system, sans-serif;
+  --font-mono: ui-monospace, Menlo, monospace;
+
+  /* Anchos de Archivo — siempre expandido */
+  --stretch-display-xl: 118%;
+  --stretch-display-m: 112%;
+  --stretch-cifra: 110%;
+  --stretch-cifra-alt: 115%;
+
+  /* display-xl — Archivo 900 · 44/0.95 (héroe; 22–30px en headers móviles) */
+  --display-xl-size: 44px;
+  --display-xl-line: 0.95;
+  --display-xl-weight: 900;
+  --display-xl-tracking: -0.01em;
+
+  /* display-m — Archivo 800 · 30/1.05 (títulos de sección) */
+  --display-m-size: 30px;
+  --display-m-line: 1.05;
+  --display-m-weight: 800;
+
+  /* cifra — Archivo 800–900 · 18–72px tabular (dato protagonista) */
+  --cifra-weight: 800;
+  --cifra-weight-hero: 900;
+  --cifra-size-s: 18px;
+  --cifra-size-m: 24px;
+  --cifra-size-l: 40px;
+  --cifra-size-xl: 72px;
+  --cifra-unit-size-s: 11px;
+  --cifra-unit-size-m: 13px;
+  --cifra-unit-size-l: 18px;
+  --cifra-unit-weight: 600;
+  --cifra-unit-weight-strong: 700;
+
+  /* heading — Instrument 700 · 15–18px */
+  --heading-weight: 700;
+  --heading-size-s: 15px;
+  --heading-size-m: 16px;
+  --heading-size-l: 18px;
+
+  /* body — Instrument 400–600 · 13–15px / 1.45–1.55 */
+  --body-size-s: 13px;
+  --body-size-m: 14px;
+  --body-size-l: 15px;
+  --body-line: 1.55;
+  --body-line-tight: 1.45;
+
+  /* label — mono 600–700 · 9.5–11px caps · tracking .06–.16em */
+  --label-weight: 600;
+  --label-weight-strong: 700;
+  --label-size-xs: 9.5px;
+  --label-size-s: 10.5px;
+  --label-size-m: 11px;
+  --label-tracking-tight: 0.06em;
+  --label-tracking: 0.1em;
+  --label-tracking-wide: 0.12em;
+  --label-tracking-widest: 0.16em;
+
+  /* ======================================================================
+     09 · FORMA — el radio comunica peso del dato                  [README]
+     ====================================================================== */
+  --r-frame: 28px; /* marco de teléfono/pantalla */
+  --r-sheet: 24px; /* bottom sheet (solo arriba) */
+  --r-hero: 20px; /* card héroe */
+  --r-card: 14px; /* card métrica */
+  --r-card-l: 16px; /* card métrica (variante alta) */
+  --r-row: 10px; /* fila de dato */
+  --r-row-l: 12px; /* fila de dato (variante alta) */
+  --r-btn: 10px;
+  --r-btn-l: 12px;
+  --r-chip: 6px; /* chips / badges */
+  --r-chip-s: 5px;
+  --r-cell: 3px; /* celda de heatmap */
+  --r-pill: 50%;
+
+  /* ======================================================================
+     10 · ESPACIO Y TÁCTIL                                         [README]
+     ====================================================================== */
+  --pad-card: 16px; /* rango 14–20px */
+  --pad-card-s: 14px;
+  --pad-card-l: 20px;
+  --gap-card: 10px; /* rango 8–12px */
+  --gap-card-s: 8px;
+  --gap-card-l: 12px;
+  --pad-screen: 18px; /* rango 18–20px */
+  --pad-screen-l: 20px;
+  --touch-min: 44px;
+  --stepper-h: 56px; /* rango 46–56px */
+  --stepper-h-s: 46px;
+  --btn-pad-y: 15px; /* rango 15–16px */
+  --fab-size: 50px;
+
+  --safe-area-inset-bottom: env(safe-area-inset-bottom, 0px);
+
+  /* ======================================================================
+     11 · SOMBRAS                                                  [README]
+     ====================================================================== */
+  --shadow-toast: 0 8px 24px rgba(0, 0, 0, 0.5);
+  --shadow-knob: 0 0 0 1px var(--carbon-500);
+
+  /* ======================================================================
+     12 · MOVIMIENTO — las únicas animaciones permitidas           [README]
+     ====================================================================== */
+  --dur-blink: 0.9s; /* cursor de streaming del coach */
+  --dur-blink-slow: 1.3s; /* label PENSANDO */
+  --dur-pulse: 1.4s; /* celda de hoy / estado pendiente */
+  --dur-pulse-piramide: 1.6s; /* nivel activo de la pirámide */
+  --dur-zone-bar: 600ms; /* entrada del marcador de la barra de zonas */
+  --ease-zone-bar: cubic-bezier(0.22, 0.61, 0.36, 1); /* ease-out */
+}
+
+/* --------------------------------------------------------------------------
+   Keyframes del sistema — no se permite ninguna animación fuera de estas.
+   -------------------------------------------------------------------------- */
+@keyframes fierro-blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.15;
+  }
+}
+
+@keyframes fierro-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

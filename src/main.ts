@@ -1,3 +1,5 @@
+import './styles/fonts.css';
+import './styles/tokens.css';
 import './styles/main.css';
 import { initializeIcons, refreshIcons } from '@/utils/icons';
 import { initializeNavigation, showHome, switchTab, resumeDraft, dismissDraft } from '@/ui/navigation';

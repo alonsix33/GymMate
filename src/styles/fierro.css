@@ -782,7 +782,7 @@
   color: var(--text-disabled);
 }
 
-/* --- nivel + mapa muscular [REF :65-88] --- */
+/* --- nivel + mapa muscular [REF Pantallas:66-88] --- */
 .f-home__nivel {
   display: flex;
   gap: var(--r-18);
@@ -812,7 +812,7 @@
   color: var(--text-secondary);
 }
 .f-barra {
-  height: 6px; /* [REF :74] */
+  height: 6px; /* [REF Pantallas:75] */
   border-radius: var(--r-bar);
   background: var(--border-subtle);
   overflow: hidden;
@@ -847,7 +847,7 @@
   font-family: var(--font-ui);
 }
 
-/* --- banner de borrador [REF :89-96] --- */
+/* --- banner de borrador [REF Pantallas:86-91] --- */
 .f-home__borrador {
   background: var(--bg-elevated);
   border: 1px solid var(--border-card-active);
@@ -1055,17 +1055,20 @@
 }
 
 /* El contenido reserva sitio para la tab bar fija; si no, las ultimas cards
-   quedan debajo de ella. */
+   quedan debajo de ella. Solo aqui: el pb-28 legacy de <main> se retiro, o la
+   reserva quedaba duplicada y dejaba 217px muertos bajo la ultima card. */
 body {
   padding-bottom: calc(var(--h-nav-inferior) + var(--safe-area-inset-bottom));
 }
 
-/* La etiqueta del hueco y la leyenda comparten fila: sin un hueco minimo se
-   tocan cuando el numero de dias es largo. */
-.f-home__heatmap-pie {
-  gap: var(--gap-card-l);
-  flex-wrap: wrap;
+/* Las pantallas legacy conservan el padding que tenia <main> hasta que su
+   fase las reemplace. */
+.tab-content {
+  padding: 1.5rem 1.25rem 1rem;
 }
+
+/* El mockup declara solo space-between: sin gap y sin wrap. El gap que se
+   habia anadido era justo lo que partia el pie en dos filas. [REF :59] */
 .f-heat__hueco {
   flex: none;
 }
@@ -1128,7 +1131,6 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: var(--gap-card);
   background: transparent;
   cursor: pointer;
   font-family: var(--font-ui);
@@ -1144,4 +1146,12 @@ body {
   line-height: var(--lh-1);
   color: var(--accent);
   flex: none;
+}
+
+/* H-01 declara su propia medida de badge, distinta de la del sistema.
+   [REF Pantallas:122] font:700 10.5px/1, padding 6px 9px, sin letter-spacing */
+.f-badge--h01 {
+  font-size: var(--fs-10_5);
+  padding: 6px 9px;
+  letter-spacing: normal;
 }

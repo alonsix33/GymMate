@@ -1,3 +1,4 @@
+import { claveDia } from '@/utils/heatmap';
 import type { SessionData, ExerciseData, CardioState, RPEData } from '@/types';
 import { DRAFT_SAVE_DELAY, DRAFT_MAX_AGE } from '@/constants';
 import {
@@ -16,7 +17,7 @@ import { calculateVolume, calculateVolumenPorGrupo } from '@/utils/calculations'
 // ==========================================
 
 export let sessionData: SessionData = {
-  date: new Date().toISOString().split('T')[0],
+  date: claveDia(new Date()),
   grupo: '',
   ejercicios: [],
   volumenTotal: 0,
@@ -42,7 +43,7 @@ export function setOnDraftSavedCallback(callback: () => void): void {
 
 export function resetSession(): void {
   sessionData = {
-    date: new Date().toISOString().split('T')[0],
+    date: claveDia(new Date()),
     grupo: '',
     ejercicios: [],
     volumenTotal: 0,
@@ -57,7 +58,7 @@ export function resetSession(): void {
 
 export function setSessionGroup(groupName: string): void {
   sessionData.grupo = groupName;
-  sessionData.date = new Date().toISOString().split('T')[0];
+  sessionData.date = claveDia(new Date());
 }
 
 export function setSessionExercises(ejercicios: ExerciseData[]): void {

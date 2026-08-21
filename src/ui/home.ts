@@ -107,7 +107,8 @@ function bloqueCoach(insight: Insight): string {
 function celdaHeatmap(celda: CeldaHeatmap): string {
   const clases = ['f-heat__celda'];
   if (celda.soloCardio) clases.push('f-heat__celda--cardio');
-  if (celda.esHoy) clases.push('f-heat__celda--hoy');
+  // El mockup de H-01 no anima la celda de hoy; solo la de O-01 lo hace.
+  // [REF :55 sin atributo animation, frente a :1276 con el]
   const relleno = celda.soloCardio ? '' : ` style="background:var(--heat-${celda.cuartil === 0 ? '0' : 'q' + celda.cuartil})"`;
   const titulo = celda.soloCardio
     ? `${celda.fecha}: solo cardio`
@@ -157,22 +158,36 @@ function bloqueNivel(): string {
   const progreso = getCurrentLevelProgress();
   const titulo = getCurrentTitle();
 
-  // Los dos grupos de los extremos: el mas fuerte y el mas flojo. Es lo que
-  // muestra el mockup (Piernas·Glúteos en Oro, Core en Hierro).
+  // Se agrupa POR RANGO, no por grupo muscular: el mockup une "Piernas ·
+  // Glúteos" en una sola fila porque los dos estan en Oro, y deja "Core" solo
+  // porque es el unico en Hierro. Tomar "el mejor grupo y el peor" daba dos
+  // filas identicas en cuanto dos grupos empataban.
   const entradas = Object.entries(rangos) as [GamificationMuscleGroup, { rank: string }][];
-  const ordenados = [...entradas].sort(
-    (a, b) => ORDEN_RANGOS.indexOf(b[1].rank) - ORDEN_RANGOS.indexOf(a[1].rank)
+  const porRango = new Map<string, GamificationMuscleGroup[]>();
+  for (const [grupo, datos] of entradas) {
+    const lista = porRango.get(datos.rank) ?? [];
+    lista.push(grupo);
+    porRango.set(datos.rank, lista);
+  }
+  const rangosPresentes = [...porRango.keys()].sort(
+    (a, b) => ORDEN_RANGOS.indexOf(b) - ORDEN_RANGOS.indexOf(a)
   );
-  const destacados = ordenados.length > 1 ? [ordenados[0], ordenados[ordenados.length - 1]] : ordenados;
+  // Con todos los grupos en el mismo rango, dos filas iguales no dicen nada:
+  // se muestra una sola.
+  const aMostrar =
+    rangosPresentes.length > 1
+      ? [rangosPresentes[0], rangosPresentes[rangosPresentes.length - 1]]
+      : rangosPresentes;
 
-  const filas = destacados
-    .map(
-      ([grupo, datos]) => `
+  const filas = aMostrar
+    .map((rango) => {
+      const grupos = (porRango.get(rango) ?? []).map((g) => NOMBRE_GRUPO[g] ?? g);
+      return `
         <div class="f-home__rango">
-          <span>${NOMBRE_GRUPO[grupo] ?? grupo}</span>
-          <span style="color:${colorDeRango(datos.rank)};font-weight:var(--w-600)">${nombreDeRango(datos.rank)}</span>
-        </div>`
-    )
+          <span>${grupos.join(' · ')}</span>
+          <span style="color:${colorDeRango(rango)};font-weight:var(--w-600)">${nombreDeRango(rango)}</span>
+        </div>`;
+    })
     .join('');
 
   const pct = Math.max(0, Math.min(100, progreso.percentage));
@@ -302,7 +317,7 @@ function bloqueCardio(): string {
         <span class="f-home__cardio-titulo">Cardio &amp; HIIT</span>
         <span class="f-home__cardio-sub">Tabata · EMOM · AMRAP · Circuito · Pirámide</span>
       </span>
-      <span class="f-badge f-badge--intensa">6 MODOS</span>
+      <span class="f-badge f-badge--intensa f-badge--h01">6 MODOS</span>
     </button>
   `;
 }
@@ -338,6 +353,12 @@ function heatmapVacio(hoy: Date): string {
   `;
 }
 
+/**
+ * El mockup dice "Elige una rutina abajo — 6 ejercicios, ~45 min."
+ * El repo no guarda duracion por rutina ni por ejercicio (solo CardioConfig
+ * tiene duration), y en O-01 no hay historial del que estimarla. Se omite el
+ * tiempo en vez de inventar una metrica. PREGUNTA ABIERTA al dueno del diseno.
+ */
 function renderHomeVacio(contenedor: HTMLElement, hoy: Date): void {
   const grupos = Object.entries(trainingGroups);
   const [idPrimero, primero] = grupos[0];
@@ -360,7 +381,7 @@ function renderHomeVacio(contenedor: HTMLElement, hoy: Date): void {
     ${heatmapVacio(hoy)}
 
     <section class="f-home__nivel" aria-label="Rangos">
-      ${renderMapaFierro(rangos, 72, 144)}
+      ${renderMapaFierro(rangos, { ancho: 72, alto: 144, vacio: true })}
       <div class="f-home__nivel-datos">
         <span class="f-home__vacio-titulo">${enHierro} GRUPOS EN HIERRO</span>
         <span class="f-home__vacio-texto">Todos empiezan abajo. Cada sesión alimenta el rango del músculo que trabajas — el mapa se enciende contigo.</span>
@@ -405,6 +426,7 @@ export function renderHome(contenedor: HTMLElement, hoy: Date = new Date()): voi
   }
   const mapa = construirHeatmap(historial, hoy);
   const hasDraft = borrador.hasDraft;
+  void hasDraft;
   const racha = getStreakInfo();
 
   const ultimaSesion = historial.find((s) => s.type !== 'cardio');
@@ -412,7 +434,13 @@ export function renderHome(contenedor: HTMLElement, hoy: Date = new Date()): voi
     ? Math.floor((hoy.getTime() - new Date(`${ultimaSesion.date.slice(0, 10)}T00:00:00`).getTime()) / DIA_MS)
     : 999;
 
-  const insight = generateInsight(hasDraft, {
+  // El banner de borrador ya dice que hay una sesion sin terminar, y esta
+  // justo debajo. Si ademas el coach lo repite, se pierde el unico hueco de
+  // mensaje que tiene la pantalla — que es lo que enseña el mockup: banner de
+  // borrador Y coach hablando de otra cosa [REF Pantallas:41-45 con :89-96].
+  // El README pone "borrador" como maxima prioridad del coach; el mockup lo
+  // contradice. PREGUNTA ABIERTA; se sigue el mockup, que es la verdad visual.
+  const insight = generateInsight(false, {
     totalWorkouts: historial.filter((s) => s.type !== 'cardio').length,
     streak: racha.current,
     daysSinceLastWorkout: diasDesdeUltima,

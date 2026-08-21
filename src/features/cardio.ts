@@ -921,6 +921,7 @@ function finishCardioWorkout(): void {
   const session = {
     type: 'cardio' as const,
     mode: cardioState.mode!,
+    // Instante completo: el heatmap deriva de aqui el dia LOCAL.
     date: new Date().toISOString(),
     savedAt: new Date().toISOString(),
     config: { ...cardioState.config },

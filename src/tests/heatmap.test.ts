@@ -76,12 +76,121 @@ describe('construirHeatmap', () => {
     expect(h.entrenos).toBe(0);
   });
 
-  it('un dia de solo cardio no entra en los cuartiles y queda marcado', () => {
-    const h = construirHeatmap([sesion(haceDias(3), 0, 'cardio')], HOY);
+  it('un dia de solo cardio no compite en kg aunque la sesion traiga volumen', () => {
+    // Con volumenTotal 0 esta prueba no podia fallar: sumar 0 no cambia nada.
+    // Una sesion de cardio con volumen la obliga a discriminar de verdad.
+    const h = construirHeatmap([sesion(haceDias(3), 5000, 'cardio')], HOY);
     const celda = h.semanas.flat().find((c) => c.fecha === haceDias(3));
     expect(celda?.soloCardio).toBe(true);
+    expect(celda?.volumen).toBe(0);
     expect(celda?.cuartil).toBe(0);
-    expect(h.entrenos).toBe(0); // no compite en kg
+  });
+
+  it('cuenta como entrenos los dias con cualquier sesion, cardio incluido', () => {
+    // La rejilla marca el dia de cardio con su anillo: contar solo pesas
+    // dejaba al usuario viendo N marcas y leyendo un numero menor.
+    const h = construirHeatmap(
+      [sesion(haceDias(1), 1000), sesion(haceDias(2), 0, 'cardio')],
+      HOY
+    );
+    expect(h.entrenos).toBe(2);
+  });
+
+  it('reparte los cuatro cuartiles sin colapsar dos en uno', () => {
+    // Mutante que sobrevivia: pintar Q2 como Q3 y viceversa.
+    const dias = Array.from({ length: 40 }, (_, i) => sesion(haceDias(i + 1), (i + 1) * 100));
+    const h = construirHeatmap(dias, HOY);
+    const cuenta = { 1: 0, 2: 0, 3: 0, 4: 0 } as Record<number, number>;
+    for (const c of h.semanas.flat()) if (c.cuartil > 0) cuenta[c.cuartil]++;
+    expect(cuenta[1]).toBe(10);
+    expect(cuenta[2]).toBe(10);
+    expect(cuenta[3]).toBe(10);
+    expect(cuenta[4]).toBe(10);
+  });
+
+  it('la ventana de referencia es de 6 meses, no menos', () => {
+    // Mutante que sobrevivia: MESES_DE_REFERENCIA 6 -> 1.
+    // Un dia flojo de hace 5 meses SI entra en la distribucion y empuja el
+    // dia de hoy hacia arriba; si la ventana fuera de 1 mes, no.
+    const cinco = Array.from({ length: 20 }, (_, i) => sesion(haceDias(140 + i), 100));
+    const q = (hist: HistorySession[]) =>
+      construirHeatmap(hist, HOY).semanas.flat().find((c) => c.fecha === haceDias(1))?.cuartil;
+    // Solo, el unico dia no es ni el mejor ni el peor: rango medio -> Q3.
+    expect(q([sesion(haceDias(1), 9000)])).toBe(3);
+    // Con 20 dias flojos de hace ~5 meses DENTRO de la ventana, hoy es Q4.
+    // Con una ventana de 1 mes esos dias no contarian y seguiria en Q3.
+    expect(q([...cinco, sesion(haceDias(1), 9000)])).toBe(4);
+  });
+
+  it('el umbral del hueco es exactamente 14 dias', () => {
+    // Mutante que sobrevivia: DIAS_HUECO 14 -> 7 o -> 21.
+    const con13 = construirHeatmap([sesion(haceDias(13), 1000), sesion(haceDias(0), 1000)], HOY);
+    expect(con13.huecoMayor).toBeNull();
+    const con14 = construirHeatmap([sesion(haceDias(15), 1000), sesion(haceDias(0), 1000)], HOY);
+    expect(con14.huecoMayor?.dias).toBe(14);
+    const con20 = construirHeatmap([sesion(haceDias(21), 1000), sesion(haceDias(0), 1000)], HOY);
+    expect(con20.huecoMayor?.dias).toBe(20);
+  });
+
+  it('con dos huecos devuelve el MAYOR, no el primero ni el menor', () => {
+    const h = construirHeatmap(
+      [
+        sesion(haceDias(100), 1000),
+        sesion(haceDias(60), 1000), // hueco de 39
+        sesion(haceDias(45), 1000), // hueco de 14
+        sesion(haceDias(0), 1000), // hueco de 44
+      ],
+      HOY
+    );
+    expect(h.huecoMayor?.dias).toBe(44);
+  });
+
+  it('el hueco que viene de antes de la ventana cuenta los dias REALES', () => {
+    // Recortarlo a las 112 celdas hacia que volver tras 10 meses se leyera
+    // como "109 dias sin entrenar".
+    const h = construirHeatmap([sesion(haceDias(300), 1000), sesion(haceDias(0), 1000)], HOY);
+    // De hace 300 dias a hoy hay 299 dias sin entrenar, no 300.
+    expect(h.huecoMayor?.dias).toBe(299);
+    // Y sin la extension se habria recortado a la ventana visible (112).
+    expect(h.huecoMayor!.dias).toBeGreaterThan(112);
+  });
+
+  it('la rejilla termina en la semana de hoy cualquiera que sea el dia', () => {
+    // Mutante que sobrevivia: desplazamiento = 0.
+    for (let d = 0; d < 7; d++) {
+      const dia = new Date(2026, 7, 17 + d, 12, 0, 0); // lunes 17 a domingo 23
+      const h = construirHeatmap([], dia);
+      const celdas = h.semanas.flat();
+      const ultima = new Date(`${celdas[celdas.length - 1].fecha}T00:00:00`);
+      expect(ultima.getDay()).toBe(0); // siempre cierra en domingo
+      expect(celdas.some((c) => c.esHoy)).toBe(true);
+    }
+  });
+
+  it('la fecha de la sesion se interpreta en dia LOCAL, no UTC', () => {
+    // Una sesion guardada a las 20:00 en UTC-5 lleva fecha UTC del dia
+    // siguiente. Debe pintarse en el dia local en que se entreno.
+    const local = new Date(2026, 7, 20, 20, 0, 0);
+    const conHora = {
+      date: local.toISOString(),
+      volumenTotal: 3000,
+      grupo: 'X',
+      ejercicios: [],
+      volumenPorGrupo: {},
+      type: 'weights',
+    } as unknown as HistorySession;
+    const h = construirHeatmap([conHora], HOY);
+    const celda = h.semanas.flat().find((c) => c.fecha === claveDia(local));
+    expect(celda?.volumen).toBe(3000);
+  });
+
+  it('no duplica ni pierde dias al cruzar un cambio de horario', () => {
+    // Aritmetica de calendario: restar 86.400.000 ms desplazaba la hora local
+    // y saltaba de dia a las 23:30.
+    const nocheTrasDST = new Date(2026, 10, 1, 23, 30, 0); // 1-nov 23:30
+    const h = construirHeatmap([], nocheTrasDST);
+    const fechas = h.semanas.flat().map((c) => c.fecha);
+    expect(new Set(fechas).size).toBe(fechas.length);
   });
 
   it('un dia con pesas Y cardio cuenta como dia de pesas', () => {
@@ -148,8 +257,9 @@ describe('construirHeatmap', () => {
   it('el vacio ANTERIOR a la primera sesion no es un hueco', () => {
     // Alguien que empezo hace 20 dias no lleva "89 dias sin entrenar".
     const h = construirHeatmap([sesion(haceDias(20), 1000), sesion(haceDias(19), 1000)], HOY);
-    // Solo cuenta el tramo desde la ultima sesion hasta hoy: 19 dias, bajo umbral.
-    expect(h.huecoMayor?.dias ?? 0).toBeLessThan(20);
+    // Lo unico que puede contar es el tramo desde la ultima sesion hasta hoy
+    // (19 dias, hoy incluido), nunca los 92 anteriores a la primera.
+    expect(h.huecoMayor?.dias).toBe(19);
   });
 
   it('si ya entrenaba antes de la ventana visible, el vacio inicial SI cuenta', () => {
@@ -165,12 +275,19 @@ describe('construirHeatmap', () => {
   });
 
   it('los dias futuros de la semana en curso no cuentan como hueco', () => {
-    // Entrenando HOY, el resto de la semana esta por venir: no es un hueco.
-    const h = construirHeatmap([sesion(haceDias(0), 1000)], HOY);
-    const futuras = h.semanas.flat().filter((c) => c.futuro);
-    expect(futuras.every((c) => c.cuartil === 0)).toBe(true);
-    // El hueco previo a hoy si existe (no hay nada antes), pero no incluye futuro.
-    if (h.huecoMayor) expect(h.huecoMayor.hasta).toBeLessThan(SEMANAS_VISIBLES * DIAS_POR_SEMANA - 1);
+    // La version anterior metia su unica asercion sustantiva dentro de un if
+    // que nunca se cumplia: pasaba por vacio. Aqui se fuerza un hueco real
+    // que llega hasta hoy y se comprueba que NO se extiende al futuro.
+    const h = construirHeatmap(
+      [sesion(haceDias(40), 1000), sesion(haceDias(0), 1000)],
+      new Date(2026, 7, 19, 12, 0, 0) // miercoles: quedan 4 dias futuros
+    );
+    const celdas = h.semanas.flat();
+    const futuras = celdas.filter((c) => c.futuro);
+    expect(futuras.length).toBe(4);
+    expect(h.huecoMayor).not.toBeNull();
+    const ultimaNoFutura = celdas.map((c, i) => (c.futuro ? -1 : i)).reduce((a, b) => Math.max(a, b), -1);
+    expect(h.huecoMayor!.hasta).toBeLessThanOrEqual(ultimaNoFutura);
   });
 
   it('marca la celda de hoy', () => {

@@ -4,6 +4,10 @@ import { resolve } from 'path';
 export default defineConfig({
   test: {
     environment: 'jsdom',
+    // La zona horaria se fija en el script de npm (TZ=America/Lima), no aqui:
+    // V8 la cachea al arrancar el proceso y ponerla en la config llega tarde.
+    // Corriendo en UTC, un defecto de fecha local vs UTC es invisible porque
+    // los dos lados coinciden. Lima es ademas la zona real del usuario.
     globals: true,
     include: ['src/**/*.{test,spec}.{js,mjs,cjs,ts,mts,cts,jsx,tsx}'],
     coverage: {

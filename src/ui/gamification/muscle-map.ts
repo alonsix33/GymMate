@@ -502,11 +502,18 @@ export function colorDeRango(rango: string): string {
  * partes neutras van en --frame-border.
  * Las cuatro elipses de manos y pies salen del mockup [REF Pantallas:67].
  */
+export interface OpcionesMapa {
+  ancho?: number;
+  alto?: number;
+  /** O-01 pinta el cuerpo entero apagado, sin manos ni pies. */
+  vacio?: boolean;
+}
+
 export function renderMapaFierro(
   muscleRanks: MuscleRanks,
-  ancho = 86,
-  alto = 172
+  opciones: OpcionesMapa = {}
 ): string {
+  const { ancho = 86, alto = 172, vacio = false } = opciones;
   const grupos: GamificationMuscleGroup[] = [
     'pecho', 'espalda', 'hombros', 'biceps', 'triceps', 'core', 'gluteos', 'piernas',
   ];
@@ -522,18 +529,33 @@ export function renderMapaFierro(
     })
     .join('');
 
-  const neutro = 'var(--frame-border)';
-  const neutras = (['head', 'neck', 'forearm', 'knees'] as const)
-    .flatMap((clave) => ANTERIOR_POLYGONS[clave] ?? [])
-    .map((puntos) => `<polygon points="${puntos}" fill="${neutro}"></polygon>`)
-    .join('');
+  // Cabeza, cuello y antebrazos van en --frame-border (#262B34); las
+  // articulaciones y las elipses de manos y pies, en --border-subtle
+  // (#20242D). Son dos grises distintos en el mockup [REF Pantallas:68, :1590].
+  // En el tablero vacio (O-01) todo lo neutro baja a --divider-hairline y no
+  // hay elipses [REF Pantallas:1732-1734].
+  const base = vacio ? 'var(--divider-hairline)' : 'var(--frame-border)';
+  const articulacion = vacio ? 'var(--divider-hairline)' : 'var(--border-subtle)';
+
+  const neutras =
+    (['head', 'neck', 'forearm'] as const)
+      .flatMap((clave) => ANTERIOR_POLYGONS[clave] ?? [])
+      .map((puntos) => `<polygon points="${puntos}" fill="${base}"></polygon>`)
+      .join('') +
+    (ANTERIOR_POLYGONS.knees ?? [])
+      .map((puntos) => `<polygon points="${puntos}" fill="${articulacion}"></polygon>`)
+      .join('');
+
+  const elipses = vacio
+    ? ''
+    : `<ellipse cx="5" cy="105" rx="5" ry="8" fill="${articulacion}"></ellipse>
+       <ellipse cx="95" cy="105" rx="5" ry="8" fill="${articulacion}"></ellipse>
+       <ellipse cx="23" cy="200" rx="6" ry="4" fill="${articulacion}"></ellipse>
+       <ellipse cx="77" cy="200" rx="6" ry="4" fill="${articulacion}"></ellipse>`;
 
   return `
     <svg viewBox="0 0 100 200" width="${ancho}" height="${alto}" style="flex:none" aria-hidden="true">
-      <ellipse cx="5" cy="105" rx="5" ry="8" fill="${neutro}"></ellipse>
-      <ellipse cx="95" cy="105" rx="5" ry="8" fill="${neutro}"></ellipse>
-      <ellipse cx="23" cy="200" rx="6" ry="4" fill="${neutro}"></ellipse>
-      <ellipse cx="77" cy="200" rx="6" ry="4" fill="${neutro}"></ellipse>
+      ${elipses}
       ${neutras}
       ${poligonos}
     </svg>

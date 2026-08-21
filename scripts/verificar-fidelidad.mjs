@@ -524,6 +524,73 @@ await compararCaja(
   '.f-home__borrador'
 );
 
+// --------------------------------------------------------------------------
+// La pantalla EN SU PAGINA, no el componente aislado.
+//
+// Este es el chequeo que faltaba: comparar cajas de componentes montados en un
+// contenedor propio daba 0.00px mientras la pantalla entera perdia 40px de
+// ancho, porque el <main> legacy y .f-home aplicaban padding los dos. Un
+// componente correcto dentro de una pantalla encogida sigue estando mal.
+// --------------------------------------------------------------------------
+console.log('\n--- H-01 en su pagina real ---');
+{
+  const anchoPantalla = 390;
+  const paginaReal = await navegador.newPage({ viewport: { width: anchoPantalla, height: 900 } });
+  await paginaReal.addInitScript(() => {
+    const dia = 86400000;
+    const clave = (d) => {
+      const x = new Date(Date.now() - d * dia);
+      return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`;
+    };
+    // Con un hueco LARGO: la etiqueta "← hueco de 47 días" es la que llenaba
+    // la fila del pie. Sembrar solo dias recientes dejaba el pie corto y el
+    // chequeo pasaba aunque el gap estuviera mal.
+    const dias = [0, 2, 4, 7, 9, 56, 58, 61, 63, 66];
+    localStorage.setItem(
+      'gymmate_history',
+      JSON.stringify(
+        dias.map((d) => ({
+          date: clave(d), type: 'weights', grupo: 'GRUPO 1 - Piernas + Glúteos',
+          volumenTotal: 1000 + d * 300, volumenPorGrupo: {}, ejercicios: [],
+        }))
+      )
+    );
+  });
+  await paginaReal.goto(URL_APP, { waitUntil: 'networkidle', timeout: 60000 });
+  await paginaReal.waitForTimeout(1200);
+
+  const medido = await paginaReal.evaluate(() => {
+    const card = document.querySelector('.f-home__heatmap');
+    const celda = document.querySelector('.f-heat__celda');
+    const pie = document.querySelector('.f-home__heatmap-pie');
+    const primero = document.querySelector('.f-home__saludo');
+    return {
+      card: card ? +card.getBoundingClientRect().width.toFixed(2) : null,
+      celda: celda ? +celda.getBoundingClientRect().width.toFixed(2) : null,
+      pie: pie ? +pie.getBoundingClientRect().height.toFixed(2) : null,
+      aireArriba: primero ? +primero.getBoundingClientRect().top.toFixed(2) : null,
+      desbordaX: document.documentElement.scrollWidth > window.innerWidth,
+      hueco: document.querySelector('.f-heat__hueco')?.textContent ?? '',
+    };
+  });
+  await paginaReal.close();
+
+  // El mockup: pantalla de 390 con UN solo padding de 20 -> card de 350.
+  const cardEsperada = anchoPantalla - 20 * 2;
+  chk('la card ocupa el ancho del mockup', Math.abs((medido.card ?? 0) - cardEsperada) < 0.5,
+    `real ${medido.card} | mockup ${cardEsperada}`);
+  // 350 de card - 2*20 de padding = 310 utiles; 16 columnas con 15 gaps de 3px.
+  const celdaEsperada = +((cardEsperada - 40 - 15 * 3) / 16).toFixed(2);
+  chk('la celda del heatmap mide lo que debe', Math.abs((medido.celda ?? 0) - celdaEsperada) < 0.6,
+    `real ${medido.celda} | esperada ${celdaEsperada}`);
+  chk('el escenario tiene etiqueta de hueco (si no, el pie no prueba nada)',
+    medido.hueco.includes('hueco de'), medido.hueco);
+  chk('el pie del heatmap cabe en UNA fila', (medido.pie ?? 99) < 20, `${medido.pie}px de alto`);
+  chk('el aire sobre el saludo es el del mockup', Math.abs((medido.aireArriba ?? 0) - 14) < 0.5,
+    `${medido.aireArriba}px | mockup 14`);
+  chk('la pantalla no desborda en horizontal', !medido.desbordaX);
+}
+
 await navegador.close();
 servidor.close();
 console.log(fallos ? `\n${fallos} FALLO(S) DE FIDELIDAD` : '\nOK: la app coincide con el mockup en todo lo comprobado');

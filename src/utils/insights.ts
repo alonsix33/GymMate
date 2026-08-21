@@ -40,12 +40,25 @@ type InsightType =
 // AYUDAS DE FORMATO
 // ==========================================
 
-/** Salto de carga real de gimnasio: el siguiente multiplo de 2.5 kg por
- *  encima del pico. Un PR de 47.5 kg se supera con 50, no con 47.6. */
-const SALTO_KG = 2.5;
+/**
+ * Siguiente carga ALCANZABLE por encima del pico.
+ *
+ * En barra o maquina el salto es el disco de 2.5 kg. En mancuerna no: el
+ * gancho sube de 1 en 1 por debajo de 10 kg y de 2 en 2 por encima, asi que
+ * proponer "de 8 pasa a 10" es pedir un +25% de un dia para otro.
+ */
+const SALTO_BARRA = 2.5;
 
-function siguienteCarga(pico: number): number {
-  return Math.floor(pico / SALTO_KG) * SALTO_KG + SALTO_KG;
+function saltoDe(pico: number, esMancuerna: boolean): number {
+  if (!esMancuerna) return SALTO_BARRA;
+  return pico < 10 ? 1 : 2;
+}
+
+function siguienteCarga(pico: number, esMancuerna = false): number {
+  const salto = saltoDe(pico, esMancuerna);
+  const siguiente = Math.floor(pico / salto) * salto + salto;
+  // Redondeo a 2 decimales: 0.1+0.2 no puede colarse en un peso.
+  return Math.round(siguiente * 100) / 100;
 }
 
 /** 50 -> "50", 47.5 -> "47.5". Sin decimales de adorno. */
@@ -160,7 +173,10 @@ export function generateInsight(hasDraft: boolean, stats: {
   if (stats.daysSinceLastWorkout > 7 && stats.totalWorkouts > 0) {
     insights.push({
       type: 'comeback',
-      priority: 5,
+      // 4.5, no 5: empataba con pr-close y el desempate lo decidia el orden
+      // de insercion. Volver a entrenar es importante, pero un PR al alcance
+      // es mas accionable ahora mismo.
+      priority: 4.5,
       message: `${stats.daysSinceLastWorkout} días sin entrenar`,
       destacado: `${stats.daysSinceLastWorkout} días`,
       subtext: `Hace ${stats.daysSinceLastWorkout} días de tu última sesión`,
@@ -267,7 +283,7 @@ function analyzeVolumetrend(history: HistorySession[]): Insight | null {
       priority: 7,
       message: `Tu volumen subió ${Math.round(percentChange)}% esta semana`,
       destacado: `${Math.round(percentChange)}%`,
-      subtext: `${formatVolume(thisWeekVolume)}kg vs ${formatVolume(lastWeekVolume)}kg`,
+      subtext: `${formatVolume(thisWeekVolume)} vs ${formatVolume(lastWeekVolume)}`,
       icon: 'trending-up',
       gradient: 'from-emerald-600/30 via-green-600/20 to-teal-600/20',
       accentGradient: 'from-emerald-500 to-green-500',
@@ -358,7 +374,7 @@ function analyzePRProximity(
       if (percentage >= 90 && percentage < 100) {
         // El README lo pide explicito: se dice el PESO OBJETIVO, nunca cuanto
         // falta. "Levanta 50 kg y es PR nuevo", jamas "faltan 2.5 kg".
-        const objetivo = siguienteCarga(pr.peso);
+        const objetivo = siguienteCarga(pr.peso, !!ejercicio.esMancuerna);
         const cuando = pr.date ? diasDesde(pr.date) : null;
         return {
           type: 'pr-close',
@@ -368,7 +384,11 @@ function analyzePRProximity(
           subtext:
             `Última vez: ${formatearPeso(ejercicio.peso)} kg · tu mejor marca: ` +
             `${formatearPeso(pr.peso)} kg` +
-            (cuando === null ? '' : ` (hace ${cuando} ${cuando === 1 ? 'día' : 'días'})`),
+            (cuando === null
+              ? ''
+              : cuando === 0
+                ? ' (hoy)'
+                : ` (hace ${cuando} ${cuando === 1 ? 'día' : 'días'})`),
           icon: 'target',
           gradient: 'from-amber-600/30 via-yellow-600/20 to-orange-600/20',
           accentGradient: 'from-amber-500 to-yellow-500',
@@ -406,9 +426,10 @@ function analyzeBestWeek(history: HistorySession[]): Insight | null {
   if (thisWeekVolume > 0 && weeks[0][0] === thisWeekKey) {
     return {
       type: 'best-week',
-      priority: 3,
+      // 2.5: empataba con consistency y el desempate era accidental.
+      priority: 2.5,
       message: 'Tu mejor semana hasta ahora',
-      subtext: `${formatVolume(thisWeekVolume)}kg de volumen total`,
+      subtext: `${formatVolume(thisWeekVolume)} de volumen total`,
       icon: 'crown',
       gradient: 'from-yellow-600/30 via-amber-600/20 to-orange-600/20',
       accentGradient: 'from-yellow-500 to-amber-500',
@@ -430,9 +451,11 @@ function getWeekKey(date: Date): string {
   return d.toISOString().split('T')[0];
 }
 
+/** Devuelve la cifra CON unidad: quien la use no debe anadir "kg" detras,
+ *  o sale "54.0kkg". */
 function formatVolume(volume: number): string {
   if (volume >= 1000) {
-    return (volume / 1000).toFixed(1) + 'k';
+    return (volume / 1000).toFixed(1) + 'k kg';
   }
-  return volume.toFixed(0);
+  return volume.toFixed(0) + ' kg';
 }

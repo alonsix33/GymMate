@@ -62,8 +62,24 @@ export function claveDia(fecha: Date): string {
   return `${y}-${m}-${d}`;
 }
 
-/** Normaliza la fecha de una sesion, que puede venir como ISO completo. */
-function diaDeSesion(sesion: HistorySession): string {
+/**
+ * Dia LOCAL de una sesion.
+ *
+ * El historial trae tres formatos: 'YYYY-MM-DD' derivado de toISOString (o
+ * sea UTC), un ISO completo (cardio), y sesiones con `savedAt` ISO completo.
+ * Si solo se recorta el 'YYYY-MM-DD' de un valor UTC, quien entrena de noche
+ * en UTC-5 ve su sesion pintada en el dia siguiente: el heatmap le dice que
+ * entreno hoy cuando lo hizo anoche, y dos sesiones del mismo dia local se
+ * parten en dos celdas. Aqui se recupera el instante siempre que exista.
+ */
+function diaDeSesion(sesion: HistorySession & { savedAt?: string }): string {
+  const conHora = [sesion.date, sesion.savedAt].find(
+    (v) => typeof v === 'string' && v.length > 10
+  );
+  if (conHora) {
+    const d = new Date(conHora);
+    if (!Number.isNaN(d.getTime())) return claveDia(d);
+  }
   return String(sesion.date ?? '').slice(0, 10);
 }
 
@@ -105,8 +121,11 @@ export function construirHeatmap(historial: HistorySession[], hoy: Date = new Da
 
   // Ventana de referencia: 6 meses. Solo dias CON pesas entran en la
   // distribucion; un dia de solo cardio no compite en kg.
-  const inicioReferencia = new Date(hoy);
+  // setMonth desde un dia 31 desborda al mes siguiente (31-ago menos 6 meses
+  // da 3-mar, no 28-feb). Se ancla al dia 1 antes de restar.
+  const inicioReferencia = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
   inicioReferencia.setMonth(inicioReferencia.getMonth() - MESES_DE_REFERENCIA);
+  inicioReferencia.setDate(Math.min(hoy.getDate(), diasDelMes(inicioReferencia)));
   const distribucion: number[] = [];
   for (const [dia, datos] of dias) {
     if (datos.pesas <= 0) continue;
@@ -125,7 +144,14 @@ export function construirHeatmap(historial: HistorySession[], hoy: Date = new Da
   const claveHoy = claveDia(hoy);
 
   for (let i = total - 1; i >= 0; i--) {
-    const fecha = new Date(finDeSemana.getTime() - i * DIA_MS);
+    // Calendario, no milisegundos: restar 86.400.000 ms cruza mal las
+    // transiciones de horario de verano y llega a duplicar un dia y perder
+    // otro (medido: 19 de 300 combinaciones fecha x hora en Madrid).
+    const fecha = new Date(
+      finDeSemana.getFullYear(),
+      finDeSemana.getMonth(),
+      finDeSemana.getDate() - i
+    );
     const clave = claveDia(fecha);
     const datos = dias.get(clave);
     const volumen = datos?.pesas ?? 0;
@@ -183,11 +209,34 @@ export function construirHeatmap(historial: HistorySession[], hoy: Date = new Da
     semanas.push(celdas.slice(s * DIAS_POR_SEMANA, (s + 1) * DIAS_POR_SEMANA));
   }
 
+  // El hueco que empieza en el borde de la ventana se extiende hacia atras
+  // con el historial real: recortarlo a las 112 celdas hacia que un regreso
+  // tras 10 meses se leyera como "109 dias sin entrenar".
+  if (huecoMayor && (huecoMayor as Hueco).desde === 0) {
+    const ultimoAntes = [...dias.entries()]
+      .filter(([dia, d]) => dia < primeraCelda && (d.pesas > 0 || d.cardio))
+      .map(([dia]) => dia)
+      .sort()
+      .pop();
+    if (ultimoAntes) {
+      const desde = new Date(`${ultimoAntes}T00:00:00`);
+      const hasta = new Date(`${celdas[(huecoMayor as Hueco).hasta].fecha}T00:00:00`);
+      (huecoMayor as Hueco).dias = Math.round((hasta.getTime() - desde.getTime()) / DIA_MS);
+    }
+  }
+
   return {
     semanas,
-    entrenos: celdas.filter((c) => c.volumen > 0).length,
+    // Dias con CUALQUIER sesion: la rejilla marca tambien los de solo cardio,
+    // asi que contar solo pesas dejaba al usuario viendo 40 marcas y leyendo
+    // "20 entrenos".
+    entrenos: celdas.filter((c) => c.volumen > 0 || c.soloCardio).length,
     huecoMayor,
   };
+}
+
+function diasDelMes(fecha: Date): number {
+  return new Date(fecha.getFullYear(), fecha.getMonth() + 1, 0).getDate();
 }
 
 /** Lunes = 1 … Domingo = 7. */

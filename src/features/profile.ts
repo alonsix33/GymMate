@@ -461,7 +461,12 @@ export function closeMeasurementsHistoryModal(): void {
 export async function deleteMeasurementEntry(date: string): Promise<void> {
   const eliminar = await confirmarDestructivo({
     titulo: '¿Eliminar esta medición?',
-    cuerpo: `La medición del ${date} sale del historial y deja de contar para la tendencia.`,
+    cuerpo: `La medición del ${new Date(date).toLocaleDateString('es-ES', {
+      weekday: 'short',
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+    })} sale del historial y deja de contar para la tendencia.`,
     cancelar: 'Conservar',
     confirmar: 'Eliminar',
   });

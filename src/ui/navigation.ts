@@ -1,6 +1,7 @@
+import { cifra } from '@/utils/formato';
 import { confirmarAccion, confirmarDestructivo, mostrarToast } from '@/ui/feedback';
-import type { TabName, HistorySession } from '@/types';
-import { sessionData, hasUnsavedData, checkForExistingDraft, restoreFromDraft, endSession } from '@/state/session';
+import type { ExerciseData, TabName, HistorySession } from '@/types';
+import { saveDraftNow, sessionData, hasUnsavedData, checkForExistingDraft, restoreFromDraft, endSession } from '@/state/session';
 import { loadHistory, loadPRs } from '@/features/history';
 import { initializeCharts } from '@/features/charts';
 import { initializeCalculators } from '@/features/calculators';
@@ -53,19 +54,35 @@ export function switchTab(tabName: TabName): void {
  * No se inventan minutos: SessionData no guarda hora de inicio, asi que se
  * cuenta lo que si existe — sets registrados y volumen.
  */
-function describirSesionEnCurso(): string {
-  const ejercicios = sessionData.ejercicios ?? [];
+function describirEjercicios(ejercicios: ExerciseData[], volumenTotal: number): string {
   const sets = ejercicios.reduce((total, e) => total + (e.sets || 0), 0);
-  const volumen = Math.round(sessionData.volumenTotal || 0);
   if (!sets) return 'Sin sets registrados todavía.';
-  const kg = volumen.toLocaleString('es');
+  const kg = cifra(volumenTotal);
   return `${sets} ${sets === 1 ? 'set' : 'sets'} y ${kg} kg registrados.`;
+}
+
+function describirSesionEnCurso(): string {
+  return describirEjercicios(sessionData.ejercicios ?? [], sessionData.volumenTotal);
+}
+
+/**
+ * Lo que se va a perder al descartar es el BORRADOR PERSISTIDO, no la sesion
+ * en memoria. La tarjeta que dispara el descarte se pinta al arrancar la app,
+ * cuando sessionData esta vacio por definicion: describir sessionData decia
+ * "Sin sets registrados todavia" justo antes de borrar una sesion entera.
+ */
+function describirBorrador(): string {
+  const { draft } = checkForExistingDraft();
+  if (!draft) return describirSesionEnCurso();
+  return describirEjercicios(draft.ejercicios ?? [], draft.volumenTotal);
 }
 
 export async function showHome(): Promise<void> {
   // Verificar cambios sin guardar
   if (hasUnsavedData()) {
-    // No destructivo: el borrador se autoguarda, no se pierde nada.
+    // El autoguardado tiene 15s de retardo: sin forzarlo aqui, la frase
+    // "el borrador queda guardado" seria falsa justo cuando se dice.
+    saveDraftNow();
     const seguir = await confirmarAccion({
       titulo: '¿Salir de la sesión?',
       cuerpo: `${describirSesionEnCurso()} El borrador queda guardado, pero sales de la sesión.`,
@@ -451,7 +468,7 @@ export function resumeDraft(): void {
 export async function dismissDraft(): Promise<void> {
   const descartar = await confirmarDestructivo({
     titulo: '¿Descartar la sesión?',
-    cuerpo: `${describirSesionEnCurso()} Esto no se puede deshacer — el borrador desaparece.`,
+    cuerpo: `${describirBorrador()} Esto no se puede deshacer — el borrador desaparece.`,
     cancelar: 'Seguir entrenando',
     confirmar: 'Descartar',
   });
@@ -484,10 +501,10 @@ export function initializeNavigation(): void {
       const grupo = this.dataset.grupo;
       if (grupo) {
         // Import dinámico para evitar dependencia circular
-        import('@/features/workout').then(({ loadTrainingGroup }) =>
-          // Ver nota en main.ts: la carga puede pedir confirmacion primero.
-          loadTrainingGroup(grupo).then(() => switchTab('workout'))
-        );
+        void import('@/features/workout')
+          .then(({ loadTrainingGroup }) => loadTrainingGroup(grupo))
+          .then((cargada) => cargada && switchTab('workout'))
+          .catch((e) => console.error('No se pudo cargar la rutina', e));
       }
     });
   });

@@ -50,6 +50,7 @@ import {
 import { trainingGroups } from '@/data/training-groups';
 import { getAdditionalExercisesByMuscle, getExerciseInfo } from '@/data/exercises';
 import {
+  saveCustomWorkouts,
   getCustomWorkouts,
   deleteCustomWorkout,
   addCustomWorkout,
@@ -156,10 +157,16 @@ declare global {
 function handleDeleteCustomWorkout(workoutId: string): void {
   // F-01: borrado reversible. La rutina desaparece de la vista al instante y
   // solo se borra de verdad cuando expira la cuenta atras.
-  const rutina = getCustomWorkouts().find((w) => w.id === workoutId);
-  if (!rutina) return;
+  const rutinas = getCustomWorkouts();
+  const posicion = rutinas.findIndex((w) => w.id === workoutId);
+  if (posicion === -1) return;
+  const rutina = rutinas[posicion];
   const restaurar = () => {
-    addCustomWorkout(rutina);
+    // Vuelve a SU sitio: addCustomWorkout hace push y la rutina reaparecia al
+    // final de la lista, que no es deshacer, es mover.
+    const actuales = getCustomWorkouts();
+    actuales.splice(Math.min(posicion, actuales.length), 0, rutina);
+    saveCustomWorkouts(actuales);
     renderCustomWorkoutsInHome();
   };
   deleteCustomWorkout(workoutId);
@@ -316,9 +323,11 @@ function renderRoutinesInHome(): void {
     card.addEventListener('click', function (this: HTMLElement) {
       const grupo = this.dataset.grupo;
       if (grupo) {
-        // Esperar: loadTrainingGroup puede abrir una confirmacion. Sin el await
-        // la app cambiaba de pestana antes de que la persona respondiera.
-        void loadTrainingGroup(grupo).then(() => switchTab('workout'));
+        // Solo se navega si la rutina se cargo. Antes se navegaba tambien
+        // cuando la persona pulsaba "Seguir en esta".
+        void loadTrainingGroup(grupo)
+          .then((cargada) => cargada && switchTab('workout'))
+          .catch((e) => console.error('No se pudo cargar la rutina', e));
       }
     });
   });
@@ -386,7 +395,9 @@ function renderCustomWorkoutsInHome(): void {
     card.addEventListener('click', function (this: HTMLElement) {
       const workoutId = this.dataset.customWorkout;
       if (workoutId) {
-        void loadTrainingGroup(workoutId).then(() => switchTab('workout'));
+        void loadTrainingGroup(workoutId)
+          .then((cargada) => cargada && switchTab('workout'))
+          .catch((e) => console.error('No se pudo cargar la rutina', e));
       }
     });
   });

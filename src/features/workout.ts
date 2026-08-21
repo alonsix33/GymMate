@@ -1,4 +1,4 @@
-import { confirmarAccion, confirmarDestructivo } from '@/ui/feedback';
+import { confirmarDestructivo, preguntar } from '@/ui/feedback';
 import type { ExerciseData, Exercise, RPEData, PRData, HistorySession } from '@/types';
 import { getTrainingGroup } from '@/data/training-groups';
 import {
@@ -28,22 +28,27 @@ import { showSessionSummary } from '@/ui/gamification';
 // CARGAR GRUPO DE ENTRENAMIENTO
 // ==========================================
 
-export async function loadTrainingGroup(grupoId: string): Promise<void> {
+/** Devuelve true si la rutina llego a cargarse. Los llamantes NO deben navegar
+ *  al tab de entrenamiento si devuelve false: el usuario pidio quedarse. */
+export async function loadTrainingGroup(grupoId: string): Promise<boolean> {
   const grupo = getTrainingGroup(grupoId);
   if (!grupo) {
     console.error(`Training group not found: ${grupoId}`);
-    return;
+    return false;
   }
 
   // Confirmar cambio si hay datos sin guardar
   if (hasUnsavedData()) {
-    const cambiar = await confirmarAccion({
+    // Destructivo de verdad: solo hay UN slot de borrador, y el primer
+    // autoguardado de la rutina nueva pisa el de la actual. Lo registrado
+    // aqui no queda en ninguna parte.
+    const cambiar = await confirmarDestructivo({
       titulo: '¿Cambiar de rutina?',
-      cuerpo: 'Lo registrado en esta sesión queda en el borrador, pero la rutina cambia.',
+      cuerpo: `Lo registrado en ${sessionData.grupo || 'esta rutina'} se pierde: solo se guarda un borrador a la vez.`,
       cancelar: 'Seguir en esta',
       confirmar: 'Cambiar',
     });
-    if (!cambiar) return;
+    if (!cambiar) return false;
   }
 
   // Establecer grupo en sesión
@@ -81,6 +86,7 @@ export async function loadTrainingGroup(grupoId: string): Promise<void> {
 
   // Renderizar UI
   renderWorkoutUI(grupo.nombre, ejercicios, grupo.ejercicios.length);
+  return true;
 }
 
 // ==========================================
@@ -531,14 +537,17 @@ export async function finishWorkout(): Promise<void> {
 
   // Check if there's data to save
   if (hasUnsavedData()) {
-    // El destructivo es SALIR SIN GUARDAR, que es lo que pierde datos.
-    const salirSinGuardar = await confirmarDestructivo({
+    // Tres salidas, no dos. Un doble tap cae sobre el velo recien aparecido:
+    // si eso significara "guardar y terminar", la sesion se cerraria por un
+    // dedo nervioso. 'descartado' no hace nada.
+    const respuesta = await preguntar({
       titulo: '¿Guardar antes de terminar?',
       cuerpo: 'Si sales sin guardar, lo registrado en esta sesión se pierde.',
       cancelar: 'Guardar',
       confirmar: 'Salir sin guardar',
     });
-    if (salirSinGuardar) {
+    if (respuesta === 'descartado') return;
+    if (respuesta === 'confirmar') {
       endSession();
       window.location.reload();
       return;

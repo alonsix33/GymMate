@@ -95,12 +95,14 @@ const servidor = createServer(async (q, r) => {
   const ruta = decodeURIComponent((q.url ?? '/').split('?')[0]);
   const archivo = join(DIST, ruta === '/' ? 'index.html' : ruta);
   if (!archivo.startsWith(DIST)) return r.writeHead(403).end();
+  let cuerpo;
   try {
-    r.writeHead(200, { 'Content-Type': MIME[extname(archivo)] ?? 'application/octet-stream' });
-    r.end(await leer(archivo));
+    cuerpo = await leer(archivo);
   } catch {
-    r.writeHead(404).end('404');
+    return r.writeHead(404, { 'Content-Type': 'text/plain' }).end('404');
   }
+  r.writeHead(200, { 'Content-Type': MIME[extname(archivo)] ?? 'application/octet-stream' });
+  r.end(cuerpo);
 });
 await new Promise((r) => servidor.listen(0, '127.0.0.1', r));
 const URL_APP = `http://127.0.0.1:${servidor.address().port}/`;
@@ -109,6 +111,120 @@ const navegador = await chromium.launch({ executablePath: CHROME });
 const pagina = await navegador.newPage({ viewport: { width: 390, height: 844 } });
 await pagina.goto(URL_APP, { waitUntil: 'networkidle', timeout: 60000 });
 await pagina.waitForTimeout(1000);
+
+/**
+ * Renderiza un fragmento LITERAL del mockup en un iframe aislado, con las
+ * mismas fuentes y sin el reset de Tailwind, y devuelve la caja del elemento
+ * raiz. Es la unica forma honesta de comparar ALTURAS: el mockup no tiene
+ * reset y la app si, asi que dos declaraciones identicas dan cajas distintas.
+ */
+async function cajaDelMockup(fragmento, contenedor = '') {
+  return pagina.evaluate(async ({ html, contenedor }) => {
+    const marco = document.createElement('iframe');
+    marco.style.cssText = 'position:fixed;left:-9999px;top:0;width:390px;height:900px;border:0';
+    document.body.appendChild(marco);
+    const d = marco.contentDocument;
+    d.open();
+    d.write(
+      '<!doctype html><meta charset="utf-8">' +
+        '<style>body{margin:0;font-family:\'Instrument Sans\',sans-serif;' +
+        'background:#0B0C0F;color:#EBEDF0}</style>' +
+        '<div id="r" style="width:390px;' + contenedor + '">' + html + '</div>'
+    );
+    d.close();
+    // Las @font-face viven en el documento padre: se replican en el iframe.
+    for (const hoja of [...document.styleSheets]) {
+      let reglas;
+      try { reglas = hoja.cssRules; } catch { continue; }
+      for (const regla of reglas) {
+        if (regla.constructor.name === 'CSSFontFaceRule') {
+          const est = d.createElement('style');
+          est.textContent = regla.cssText;
+          d.head.appendChild(est);
+        }
+      }
+    }
+    await d.fonts.ready;
+    const el = d.getElementById('r').firstElementChild;
+    const c = el.getBoundingClientRect();
+    marco.remove();
+    return { width: +c.width.toFixed(2), height: +c.height.toFixed(2) };
+  }, { html: fragmento, contenedor });
+}
+
+/** Caja del componente real de la app. */
+async function cajaDeLaApp(html, selector) {
+  return pagina.evaluate(
+    ({ html, selector }) => {
+      let host = document.getElementById('__fidelidadCaja');
+      if (!host) {
+        host = document.createElement('div');
+        host.id = '__fidelidadCaja';
+        host.className = 'f-root';
+        host.style.cssText = 'position:fixed;left:-9999px;top:0;width:390px';
+        document.body.appendChild(host);
+      }
+      host.innerHTML = html;
+      const el = host.querySelector(selector);
+      if (!el) return null;
+      const c = el.getBoundingClientRect();
+      return { width: +c.width.toFixed(2), height: +c.height.toFixed(2) };
+    },
+    { html, selector }
+  );
+}
+
+/** Estilo declarado en la etiqueta de apertura de un fragmento. */
+function estiloAbertura(frag) {
+  return frag.match(/^<[a-z]+\b[^>]*style="([^"]*)"/)?.[1] ?? '';
+}
+
+/** Extrae el outerHTML del primer elemento del bloque que cumpla un filtro. */
+function fragmentoDe(bloque, filtro) {
+  const re = /<(div|button|span|nav)\b[^>]*>/g;
+  const candidatos = [];
+  let m;
+  while ((m = re.exec(bloque))) {
+    const ini = m.index;
+    const etiqueta = m[1];
+    // Cierre equilibrado de la etiqueta.
+    const sub = bloque.slice(ini);
+    const partes = new RegExp(`<${etiqueta}\\b|</${etiqueta}>`, 'g');
+    let prof = 0;
+    let p;
+    let fin = -1;
+    while ((p = partes.exec(sub))) {
+      if (p[0][1] === '/') {
+        if (--prof === 0) { fin = p.index + p[0].length; break; }
+      } else prof++;
+    }
+    if (fin === -1) continue;
+    const frag = sub.slice(0, fin);
+    if (filtro(frag)) candidatos.push(frag);
+  }
+  // El mas corto es el elemento en si; los largos son sus contenedores, que
+  // tambien contienen el texto buscado.
+  return candidatos.length ? candidatos.sort((x, y) => x.length - y.length)[0] : null;
+}
+
+/** Compara la caja del mockup contra la de la app. */
+async function compararCaja(nombre, fragmento, htmlApp, selector, opciones = {}) {
+  const { tolerancia = 0.5, contenedor = '' } = opciones;
+  if (!fragmento) return chk(`${nombre} · caja`, false, 'no se localizo el fragmento en el mockup');
+  // El contexto del padre importa: un <span> suelto es inline y su alto sale
+  // de las metricas de la fuente; dentro de un flex se blockifica y sale del
+  // line-height. Medirlo fuera de su contenedor da un numero que no existe.
+  const esperada = await cajaDelMockup(fragmento, contenedor);
+  const obtenida = await cajaDeLaApp(htmlApp, selector);
+  for (const eje of ['width', 'height']) {
+    const dif = Math.abs(esperada[eje] - (obtenida?.[eje] ?? 0));
+    chk(
+      `${nombre} · ${eje}`,
+      dif <= tolerancia,
+      `mockup ${esperada[eje]} | app ${obtenida?.[eje]} (dif ${dif.toFixed(2)})`
+    );
+  }
+}
 
 /** Monta HTML suelto dentro de un .f-root y devuelve los estilos computados. */
 async function computar(html, selector, props) {
@@ -272,6 +388,74 @@ if (iTab >= 0) {
     );
   }
 }
+
+// --------------------------------------------------------------------------
+// Cajas: alto y ancho reales contra el mockup renderizado. Esta es la parte
+// que faltaba — la puerta comparaba colores y radios y dejaba pasar un toast
+// un 47% mas alto de lo debido.
+// --------------------------------------------------------------------------
+console.log('\n--- cajas contra el mockup renderizado ---');
+
+await compararCaja(
+  'toast con accion',
+  fragmentoDe(f01, (f) => estiloAbertura(f).includes('box-shadow') && f.includes('Sesión guardada')),
+  `<div class="f-toast"><div class="f-toast__icono f-toast__icono--exito">✓</div>
+   <div class="f-toast__texto"><span class="f-toast__titulo">Sesión guardada · 8,325 kg</span></div>
+   <button class="f-toast__accion">VER</button></div>`,
+  '.f-toast'
+);
+
+await compararCaja(
+  'toast con detalle',
+  fragmentoDe(f01, (f) => estiloAbertura(f).includes('box-shadow') && f.includes('CSV importado')),
+  `<div class="f-toast"><div class="f-toast__icono f-toast__icono--aviso">!</div>
+   <div class="f-toast__texto"><span class="f-toast__titulo">CSV importado: 44 sesiones</span>
+   <span class="f-toast__detalle">3 duplicadas omitidas</span></div>
+   <button class="f-toast__accion">DETALLE</button></div>`,
+  '.f-toast'
+);
+
+await compararCaja(
+  'chip DESHACER',
+  fragmentoDe(f01, (f) => f.startsWith('<span') && estiloAbertura(f).includes('border:1px solid #3E2A1E')),
+  '<div class="f-toast"><button class="f-toast__deshacer">DESHACER · 5</button></div>',
+  '.f-toast__deshacer',
+  { contenedor: 'display:flex;align-items:center' }
+);
+
+const sistema = await leer(join(RAIZ, 'redesign/design_handoff_fierro/Sistema Fierro.dc.html'), 'utf-8');
+await compararCaja(
+  'boton primario',
+  fragmentoDe(sistema, (f) => f.startsWith('<button') && estiloAbertura(f).includes('background:#FF6317')),
+  '<button class="f-btn f-btn--primario">Guardar entrenamiento</button>',
+  '.f-btn'
+);
+await compararCaja(
+  'boton secundario',
+  fragmentoDe(sistema, (f) => f.startsWith('<button') && estiloAbertura(f).includes('border:1px solid #3E4552')),
+  '<button class="f-btn f-btn--secundario">Terminar sesión</button>',
+  '.f-btn'
+);
+await compararCaja(
+  'badge INTENSA',
+  fragmentoDe(sistema, (f) => f.startsWith('<span') && estiloAbertura(f).includes('background:#FF6317') && f.includes('>INTENSA<')),
+  '<span class="f-badge f-badge--intensa">INTENSA</span>',
+  '.f-badge',
+  { contenedor: 'display:flex;flex-wrap:wrap;align-items:center' }
+);
+await compararCaja(
+  'badge MODERADA',
+  fragmentoDe(sistema, (f) => f.startsWith('<span') && estiloAbertura(f).includes('background:#52290F')),
+  '<span class="f-badge f-badge--moderada">MODERADA</span>',
+  '.f-badge',
+  { contenedor: 'display:flex;flex-wrap:wrap;align-items:center' }
+);
+await compararCaja(
+  'fila de dato',
+  fragmentoDe(sistema, (f) => estiloAbertura(f).includes('border-radius:10px') && f.includes('Set 3 · 12 reps')),
+  '<div class="f-fila"><span>Set 3 · 12 reps</span><span class="f-num" style="font-weight:600">120 kg</span></div>',
+  '.f-fila'
+);
 
 await navegador.close();
 servidor.close();

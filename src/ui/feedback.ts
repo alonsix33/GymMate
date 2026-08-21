@@ -103,8 +103,16 @@ export function mostrarToast(opciones: OpcionesToast): () => void {
 }
 
 /**
- * Toast con deshacer y cuenta atras visible. Si se agota sin tocar, se llama
- * alExpirar (que es donde se consolida la accion destructiva de verdad).
+ * Toast con deshacer y cuenta atras visible.
+ *
+ * El patron por defecto es OPTIMISTA: quien llama ya ejecuto el borrado y pasa
+ * en `alDeshacer` como revertirlo. Se eligio asi porque sobrevive a una
+ * recarga a mitad de la cuenta atras: lo borrado ya esta escrito y no queda un
+ * estado a medias.
+ *
+ * `alExpirar` existe para el patron contrario (borrar solo al expirar) y hoy
+ * NO lo usa nadie. Si algun dia se usa, hay que consolidar tambien en
+ * `beforeunload` o una recarga se comera la accion.
  */
 export function mostrarToastDeshacer(opciones: {
   titulo: string;
@@ -168,14 +176,29 @@ export interface OpcionesConfirmar {
   cancelar?: string;
 }
 
+/** Como se cerro la hoja. Cancelar y descartar NO son lo mismo: hay flujos
+ *  donde "cancelar" tiene consecuencias y "me equivoque de dedo" no debe
+ *  tenerlas. */
+export type RespuestaHoja = 'confirmar' | 'cancelar' | 'descartado';
+
+/** Solo puede haber una hoja viva. Sin esto, un doble tap abria una segunda
+ *  con un indice congelado de antes del await y se borraba el item
+ *  equivocado. */
+let hojaAbierta = false;
+
 /**
- * Bottom sheet de confirmacion. Devuelve true solo si se toca el destructivo;
- * tocar fuera, el secundario o Escape resuelven false.
+ * Bottom sheet de confirmacion, con las tres salidas distinguidas:
+ *   'confirmar'  el boton de la derecha
+ *   'cancelar'   el secundario de la izquierda
+ *   'descartado' tocar fuera, Escape, o una hoja ya abierta
  */
-export function confirmarDestructivo(opciones: OpcionesConfirmar): Promise<boolean> {
+export function preguntar(opciones: OpcionesConfirmar): Promise<RespuestaHoja> {
   const { titulo, cuerpo, confirmar, cancelar = 'Cancelar', __primario = false } = opciones;
 
-  return new Promise<boolean>((resolver) => {
+  if (hojaAbierta) return Promise.resolve('descartado');
+  hojaAbierta = true;
+
+  return new Promise<RespuestaHoja>((resolver) => {
     const velo = document.createElement('div');
     velo.className = 'f-scrim f-root';
 
@@ -183,6 +206,10 @@ export function confirmarDestructivo(opciones: OpcionesConfirmar): Promise<boole
     sheet.className = 'f-sheet';
     sheet.setAttribute('role', 'dialog');
     sheet.setAttribute('aria-modal', 'true');
+    // El foco va a la hoja, no al secundario: enfocarlo pintaba el anillo
+    // Fragua sobre "Seguir entrenando" en la pantalla cuyo proposito es
+    // justamente que la destructiva no sea la primaria Fragua.
+    sheet.tabIndex = -1;
 
     const handle = document.createElement('div');
     handle.className = 'f-sheet__handle';
@@ -227,27 +254,35 @@ export function confirmarDestructivo(opciones: OpcionesConfirmar): Promise<boole
 
     const foco = document.activeElement as HTMLElement | null;
 
-    const cerrar = (resultado: boolean) => {
+    const cerrar = (resultado: RespuestaHoja) => {
       document.removeEventListener('keydown', alTeclear);
       velo.remove();
-      foco?.focus?.();
+      hojaAbierta = false;
+      // El foco solo vuelve si su elemento sigue en el documento: tras un
+      // borrado confirmado, el boton que lo abrio ya no existe.
+      if (foco && document.contains(foco)) foco.focus?.();
       resolver(resultado);
     };
 
     const alTeclear = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') cerrar(false);
+      if (e.key === 'Escape') cerrar('descartado');
     };
 
-    btnCancelar.addEventListener('click', () => cerrar(false));
-    btnConfirmar.addEventListener('click', () => cerrar(true));
+    btnCancelar.addEventListener('click', () => cerrar('cancelar'));
+    btnConfirmar.addEventListener('click', () => cerrar('confirmar'));
     velo.addEventListener('click', (e) => {
-      if (e.target === velo) cerrar(false);
+      if (e.target === velo) cerrar('descartado');
     });
     document.addEventListener('keydown', alTeclear);
 
     document.body.appendChild(velo);
-    btnCancelar.focus();
+    sheet.focus();
   });
+}
+
+/** Atajo booleano para el caso comun: solo importa si se confirmo. */
+export function confirmarDestructivo(opciones: OpcionesConfirmar): Promise<boolean> {
+  return preguntar(opciones).then((r) => r === 'confirmar');
 }
 
 /**
@@ -256,7 +291,7 @@ export function confirmarDestructivo(opciones: OpcionesConfirmar): Promise<boole
  * es mentirle al usuario, y el rojo deja de significar algo.
  */
 export function confirmarAccion(opciones: OpcionesConfirmar): Promise<boolean> {
-  return confirmarDestructivo({ ...opciones, __primario: true });
+  return preguntar({ ...opciones, __primario: true }).then((r) => r === 'confirmar');
 }
 
 // --------------------------------------------------------------------------
@@ -270,10 +305,11 @@ declare global {
       mostrarToastDeshacer: typeof mostrarToastDeshacer;
       confirmarDestructivo: typeof confirmarDestructivo;
       confirmarAccion: typeof confirmarAccion;
+      preguntar: typeof preguntar;
     };
   }
 }
 
 export function inicializarFeedback(): void {
-  window.fierroFeedback = { mostrarToast, mostrarToastDeshacer, confirmarDestructivo, confirmarAccion };
+  window.fierroFeedback = { mostrarToast, mostrarToastDeshacer, confirmarDestructivo, confirmarAccion, preguntar };
 }

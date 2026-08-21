@@ -1,3 +1,4 @@
+import { cifra } from '@/utils/formato';
 import { confirmarDestructivo, mostrarToast } from '@/ui/feedback';
 import { getHistory, deleteFromHistory, getPRs, saveHistory, updatePR } from '@/utils/storage';
 import { renderHistoryItem, renderPRItem, refreshIcons } from '@/ui/components';
@@ -40,18 +41,25 @@ export function loadHistory(): void {
 // ==========================================
 
 export async function deleteHistoryItem(index: number): Promise<void> {
+  // La identidad se captura ANTES del await: si entre la pregunta y la
+  // respuesta cambia el historial, el indice ya apunta a otra sesion y se
+  // borraria una que nadie senalo.
   const sesion = getHistory()[index];
-  const detalle = sesion
-    ? `${sesion.grupo ?? 'Sesión'} · ${Math.round(sesion.volumenTotal ?? 0).toLocaleString('es')} kg.`
-    : '';
+  if (!sesion) return;
+  const detalle = `${sesion.grupo ?? 'Sesión'} · ${cifra(sesion.volumenTotal ?? 0)} kg.`;
   const eliminar = await confirmarDestructivo({
     titulo: '¿Eliminar este entrenamiento?',
-    cuerpo: `${detalle} Sale del historial y deja de contar para tus récords.`,
+    // Los PRs no se recalculan al borrar del historial: decir que "deja de
+    // contar para tus récords" seria falso.
+    cuerpo: `${detalle} Sale del historial.`,
     cancelar: 'Conservar',
     confirmar: 'Eliminar',
   });
   if (!eliminar) return;
-  deleteFromHistory(index);
+  const actual = getHistory();
+  const real = actual.indexOf(sesion);
+  if (real === -1) return; // ya no esta: alguien la borro mientras tanto
+  deleteFromHistory(real);
   loadHistory();
   mostrarToast({ tipo: 'exito', titulo: 'Entrenamiento eliminado' });
 }
@@ -503,7 +511,9 @@ export function triggerCSVImport(): void {
       mostrarToast({
         tipo: 'aviso',
         titulo: 'El CSV no se pudo leer',
-        detalle: (error as Error).message,
+        // El mensaje ya viene prefijado con "Error al procesar el archivo
+        // CSV:"; repetirlo bajo el titulo era ruido.
+        detalle: (error as Error).message.replace(/^Error al procesar el archivo CSV:\s*/, ''),
         duracion: 8000,
       });
     }

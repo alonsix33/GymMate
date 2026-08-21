@@ -13,16 +13,38 @@
 /* --------------------------------------------------------------------------
    00 · Base
    -------------------------------------------------------------------------- */
+/* El mockup NO tiene reset de box-sizing: renderiza en content-box y declara
+   `box-sizing:border-box` a mano donde lo necesita (celdas del heatmap, por
+   ejemplo). El preflight de Tailwind impone border-box a todo, y eso hacia
+   que declaraciones identicas dieran cajas 2px mas bajas en cada elemento con
+   borde. Se reproduce el modelo del mockup. */
 .f-root,
 .f-root * {
-  box-sizing: border-box;
+  box-sizing: content-box;
 }
 
 .f-root {
   font-family: var(--font-ui);
   color: var(--text-primary);
+  /* El preflight de Tailwind impone line-height 1.5 heredado; el mockup
+     renderiza con `normal`. Sin esto, CADA texto de CADA pantalla sale mas
+     alto que el mockup (el toast salia 20.25px donde el mockup mide 16.5).
+     Los componentes que si declaran line-height lo fijan ellos. */
+  line-height: normal;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+/* El CSS legacy impone `min-height:44px;min-width:44px` a TODO button y todo
+   [role=button] (main.css, WCAG 2.5.5). En content-box ese minimo se suma al
+   padding y desbordaba los botones un 55%. La capa FIERRO manda sobre su
+   propia geometria; los objetivos tactiles se recuperan abajo con un area
+   invisible en las piezas que se dibujan por debajo de 44px. */
+.f-root button,
+.f-root a,
+.f-root [role='button'] {
+  min-height: 0;
+  min-width: 0;
 }
 
 /* Toda cifra de dato alinea en columna. */
@@ -85,7 +107,6 @@
   line-height: var(--lh-1);
   letter-spacing: var(--label-tracking);
   color: var(--text-secondary);
-  text-transform: uppercase;
 }
 
 .f-label--acento {
@@ -98,16 +119,17 @@
 .f-btn {
   font-family: var(--font-ui);
   font-size: var(--fs-15);
-  line-height: var(--lh-1);
   border-radius: var(--r-btn);
-  border: 1px solid transparent;
+  border: none;
   cursor: pointer;
-  min-height: var(--touch-min);
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: var(--gap-card-s);
-  transition: background-color 0.15s, border-color 0.15s;
+  /* Sin line-height, sin min-height y sin borde transparente: los tres
+     estrechaban o ensanchaban la caja respecto al mockup, que ya renderiza
+     los botones a 48-52px de alto sin ayuda. Sin transition: el README solo
+     autoriza pulse/blink, la barra de zonas y las fases de los timers. */
 }
 
 .f-btn--primario {
@@ -123,7 +145,7 @@
 .f-btn--secundario {
   background: transparent;
   color: var(--text-primary);
-  border-color: var(--border-secondary-btn);
+  border: 1px solid var(--border-secondary-btn);
   font-weight: var(--w-600);
   padding: 12px 22px;
 }
@@ -136,6 +158,7 @@
   color: var(--accent);
   font-weight: var(--w-600);
   padding: 12px 8px;
+  border-radius: 0; /* [REF Sistema:144] el terciario no lleva radio */
 }
 
 /* Destructivo: NUNCA Fragua. Rojo, y siempre a la derecha del par. */
@@ -151,7 +174,7 @@
 .f-btn--deshabilitado {
   background: var(--bg-elevated);
   color: var(--text-disabled);
-  border-color: transparent;
+  border: none;
   cursor: default;
 }
 
@@ -224,7 +247,6 @@
   font-size: var(--fs-22);
   font-weight: var(--w-600);
   cursor: pointer;
-  transition: border-color 0.15s;
 }
 .f-stepper__btn:hover:not(:disabled) {
   border-color: var(--accent);
@@ -262,23 +284,22 @@
   letter-spacing: var(--label-tracking-tight);
   padding: 6px 10px;
   border-radius: var(--r-chip);
-  border: 1px solid transparent;
-  text-transform: uppercase;
+  border: none;
   display: inline-block;
 }
 
 .f-badge--contorno {
-  border-color: var(--border-secondary-btn);
+  border: 1px solid var(--border-secondary-btn);
   color: var(--text-tertiary);
 }
 
 .f-badge--suave {
-  border-color: var(--border-card-active);
+  border: 1px solid var(--border-card-active);
   color: var(--text-secondary);
 }
 
 .f-badge--moderada {
-  background: var(--heat-q1);
+  background: var(--intensidad-moderada-bg);
   color: var(--fragua-300);
 }
 
@@ -298,7 +319,7 @@
   display: flex;
   align-items: center;
   padding: 12px var(--pad-screen) 22px;
-  gap: var(--r-4);
+  gap: 4px; /* [REF Pantallas:123] */
 }
 
 .f-tabbar__item {
@@ -317,8 +338,10 @@
 }
 
 .f-tabbar__punto {
-  width: var(--r-4);
-  height: var(--r-4);
+  /* Geometria de componente: literal del mockup. Usar tokens de la escala de
+     radios para dimensiones haria que retocar un radio moviera este punto. */
+  width: 4px; /* [REF Pantallas:123] */
+  height: 4px;
   border-radius: var(--r-pill);
   background: transparent;
 }
@@ -330,7 +353,6 @@
   line-height: var(--lh-1);
   letter-spacing: var(--ls-_08);
   color: var(--text-disabled);
-  text-transform: uppercase;
 }
 
 .f-tabbar__item[aria-current='page'] .f-tabbar__punto {
@@ -374,7 +396,10 @@
   position: fixed;
   inset: 0;
   background: var(--scrim);
-  z-index: 900;
+  /* POR ENCIMA de los toasts. Al reves, un toast vivo interceptaba los toques
+     de los botones de la hoja y la app parecia colgada 4-8 segundos. La hoja
+     es modal: mientras este, manda ella. */
+  z-index: 960;
   display: flex;
   align-items: flex-end;
   justify-content: center;
@@ -382,7 +407,6 @@
 
 .f-sheet {
   width: 100%;
-  max-width: 430px;
   background: var(--bg-sheet);
   border-top: 1px solid var(--border-sheet-top);
   border-radius: var(--r-sheet) var(--r-sheet) 0 0;
@@ -390,13 +414,13 @@
   padding: 24px 22px calc(30px + var(--safe-area-inset-bottom));
   display: flex;
   flex-direction: column;
-  gap: var(--r-18);
+  gap: 18px; /* [REF Pantallas:250,276,939] */
 }
 
 .f-sheet__handle {
   width: 36px;
-  height: var(--r-4);
-  border-radius: var(--r-2);
+  height: 4px; /* [REF Pantallas:251] handle 36x4 */
+  border-radius: 2px;
   background: var(--border-secondary-btn);
   align-self: center;
   flex: none;
@@ -406,7 +430,9 @@
   font-family: var(--font-display);
   font-stretch: var(--stretch-display-m);
   font-weight: var(--w-800);
-  font-size: var(--fs-19);
+  /* 21px: el de las tres hojas REALES del mockup. El 19px sale de la tarjeta
+     de galeria de F-01, que ya se descarto para la geometria. */
+  font-size: var(--fs-21);
   color: var(--text-primary);
 }
 
@@ -432,9 +458,15 @@
    -------------------------------------------------------------------------- */
 .f-toasts {
   position: fixed;
-  left: var(--pad-screen);
-  right: var(--pad-screen);
-  bottom: calc(var(--pad-screen) + var(--safe-area-inset-bottom));
+  /* Centrado dentro del marco de la app: fijo al viewport, en pantalla ancha
+     el toast se salia del cuerpo, que esta limitado a 640px. */
+  left: 50%;
+  transform: translateX(-50%);
+  width: calc(min(100vw, var(--ancho-app)) - var(--pad-screen) * 2);
+  /* Por encima de la barra inferior legacy: si el toast la tapa, tocar
+     "Historial" dispara DESHACER y el borrado se revierte en silencio.
+     --h-nav-inferior lo redefine la fase 3 al montar la tab bar FIERRO. */
+  bottom: calc(var(--h-nav-inferior) + var(--pad-screen) + var(--safe-area-inset-bottom));
   z-index: 950;
   display: flex;
   flex-direction: column;
@@ -455,8 +487,8 @@
 }
 
 .f-toast__icono {
-  width: var(--fs-22);
-  height: var(--fs-22);
+  width: 22px; /* [REF Pantallas:1353] */
+  height: 22px;
   border-radius: var(--r-pill);
   color: var(--on-fragua);
   display: flex;
@@ -495,18 +527,37 @@
 .f-toast__accion {
   font-family: var(--font-mono);
   font-weight: var(--label-weight);
+  line-height: var(--lh-1); /* el mockup lo declara con `/1` */
   font-size: var(--fs-10_5);
   color: var(--text-secondary);
   background: none;
   border: none;
   cursor: pointer;
-  text-transform: uppercase;
   flex: none;
+  /* El mockup dibuja "VER" como un span de 15.75px. Se conserva ese dibujo y
+     el objetivo tactil se agranda con un area invisible, en vez de inflar la
+     caja: asi la fidelidad y el pulgar conviven. */
+  position: relative;
+  min-height: 0;
+  min-width: 0;
+}
+.f-toast__accion::after,
+.f-toast__deshacer::after {
+  content: '';
+  position: absolute;
+  inset: 50% 50%;
+  width: var(--touch-min);
+  height: var(--touch-min);
+  transform: translate(-50%, -50%);
 }
 
 .f-toast__deshacer {
+  position: relative;
+  min-height: 0;
+  min-width: 0;
   font-family: var(--font-mono);
   font-weight: var(--label-weight-strong);
+  line-height: var(--lh-1); /* el mockup lo declara con `/1` */
   font-size: var(--fs-11);
   color: var(--accent);
   background: none;
@@ -532,8 +583,8 @@
 }
 
 .f-sync__punto {
-  width: var(--r-8);
-  height: var(--r-8);
+  width: 8px; /* [REF Pantallas:1385] */
+  height: 8px;
   border-radius: var(--r-pill);
   flex: none;
 }

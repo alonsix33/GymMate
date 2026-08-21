@@ -76,6 +76,12 @@
   --fragua-50: #fff0e7;
 
   --on-fragua: var(--carbon-950); /* texto sobre Fragua-500        [README] */
+  /* Fondo del badge MODERADA. Mismo hex que --heat-q1, pero rol propio: el
+     README declara la escala de intensidad (Fragua) y la del heatmap (calor)
+     como cosas separadas, y compartir token soldaria las dos.
+     PREGUNTA ABIERTA: ¿el hex compartido es intencional, o a la rampa de
+     intensidad le falta un peldaño Fragua propio? [REF Sistema:181] */
+  --intensidad-moderada-bg: #52290f;
   --fragua-border-tint: #3e2a1e; /* borde de botón terciario Fragua  [REF] */
   --brasa: #3a1f0c; /* nivel de pirámide ya superado              [README] */
 
@@ -353,6 +359,11 @@
   --fab-size: 50px; /* [REF Pantallas:123] */
 
   --safe-area-inset-bottom: env(safe-area-inset-bottom, 0px);
+  /* Alto de la barra inferior viva. Hoy manda la .bottom-nav legacy; la fase 3
+     lo reapunta a la tab bar FIERRO cuando la sustituya. */
+  --h-nav-inferior: 72px;
+  /* Ancho maximo del cuerpo de la app; hoy lo fija main.css legacy. */
+  --ancho-app: 640px;
 
   /* ======================================================================
      11 · SOMBRAS

@@ -12,8 +12,9 @@
     "test:coverage": "vitest run --coverage",
     "verificar:tokens": "node scripts/verificar-tokens.mjs",
     "verificar:runtime": "npm run build && node scripts/verificar-runtime.mjs",
-    "verificar": "npm run verificar:tokens && tsc --noEmit && vitest run && npm run build && node scripts/verificar-runtime.mjs && node scripts/verificar-fidelidad.mjs",
-    "verificar:fidelidad": "npm run build && node scripts/verificar-fidelidad.mjs"
+    "verificar": "npm run verificar:tokens && tsc --noEmit && vitest run && npm run build && node scripts/verificar-runtime.mjs && node scripts/verificar-fidelidad.mjs && node scripts/verificar-comportamiento.mjs",
+    "verificar:fidelidad": "npm run build && node scripts/verificar-fidelidad.mjs",
+    "verificar:comportamiento": "npm run build && node scripts/verificar-comportamiento.mjs"
   },
   "dependencies": {
     "chart.js": "^4.4.0",

@@ -9,6 +9,11 @@ export interface Insight {
   type: InsightType;
   priority: number; // 1-10, higher = more important
   message: string;
+  /**
+   * Fragmento de `message` que la card del coach pinta en Fragua (H-01).
+   * Es siempre el DATO: el peso objetivo, los dias, el porcentaje.
+   */
+  destacado?: string;
   subtext?: string;
   icon: string;
   gradient: string;
@@ -32,6 +37,28 @@ type InsightType =
   | 'default';
 
 // ==========================================
+// AYUDAS DE FORMATO
+// ==========================================
+
+/** Salto de carga real de gimnasio: el siguiente multiplo de 2.5 kg por
+ *  encima del pico. Un PR de 47.5 kg se supera con 50, no con 47.6. */
+const SALTO_KG = 2.5;
+
+function siguienteCarga(pico: number): number {
+  return Math.floor(pico / SALTO_KG) * SALTO_KG + SALTO_KG;
+}
+
+/** 50 -> "50", 47.5 -> "47.5". Sin decimales de adorno. */
+function formatearPeso(kg: number): string {
+  return Number.isInteger(kg) ? String(kg) : kg.toFixed(1);
+}
+
+function diasDesde(fecha: string): number {
+  const dia = 24 * 60 * 60 * 1000;
+  return Math.max(0, Math.floor((Date.now() - new Date(fecha).getTime()) / dia));
+}
+
+// ==========================================
 // INSIGHT GENERATOR
 // ==========================================
 
@@ -51,8 +78,8 @@ export function generateInsight(hasDraft: boolean, stats: {
     insights.push({
       type: 'draft',
       priority: 10,
-      message: 'Tienes un entrenamiento pendiente',
-      subtext: 'Continúa donde lo dejaste',
+      message: 'Tienes una sesión sin terminar',
+      subtext: 'Continúa donde la dejaste',
       icon: 'play-circle',
       gradient: 'from-orange-600/30 via-amber-600/20 to-yellow-600/20',
       accentGradient: 'from-orange-500 to-amber-500',
@@ -65,7 +92,8 @@ export function generateInsight(hasDraft: boolean, stats: {
     insights.push({
       type: 'streak-risk',
       priority: 9,
-      message: `Entrena hoy para mantener tu racha de ${stats.streak} días`,
+      message: `Entrena hoy y tu racha llega a ${stats.streak + 1} días`,
+      destacado: `${stats.streak + 1} días`,
       subtext: 'No pierdas el impulso',
       icon: 'alert-triangle',
       gradient: 'from-amber-600/30 via-orange-600/20 to-red-600/20',
@@ -79,7 +107,8 @@ export function generateInsight(hasDraft: boolean, stats: {
     insights.push({
       type: 'streak-fire',
       priority: 8,
-      message: `${stats.streak} días de racha - ¡Imparable!`,
+      message: `${stats.streak} días seguidos entrenando`,
+      destacado: `${stats.streak} días`,
       subtext: 'Tu consistencia está dando resultados',
       icon: 'flame',
       gradient: 'from-orange-600/30 via-red-600/20 to-pink-600/20',
@@ -116,8 +145,9 @@ export function generateInsight(hasDraft: boolean, stats: {
   if (stats.totalWorkouts > 0 && stats.totalWorkouts % 10 === 0) {
     insights.push({
       type: 'consistency',
-      priority: 6,
-      message: `¡${stats.totalWorkouts} entrenamientos completados!`,
+      priority: 3,
+      message: `${stats.totalWorkouts} entrenamientos registrados`,
+      destacado: `${stats.totalWorkouts}`,
       subtext: 'Cada sesión cuenta',
       icon: 'award',
       gradient: 'from-purple-600/30 via-indigo-600/20 to-blue-600/20',
@@ -131,7 +161,8 @@ export function generateInsight(hasDraft: boolean, stats: {
     insights.push({
       type: 'comeback',
       priority: 5,
-      message: 'Es momento de volver',
+      message: `${stats.daysSinceLastWorkout} días sin entrenar`,
+      destacado: `${stats.daysSinceLastWorkout} días`,
       subtext: `Hace ${stats.daysSinceLastWorkout} días de tu última sesión`,
       icon: 'refresh-cw',
       gradient: 'from-purple-600/30 via-indigo-600/20 to-blue-600/20',
@@ -145,7 +176,7 @@ export function generateInsight(hasDraft: boolean, stats: {
     insights.push({
       type: 'new-user',
       priority: 4,
-      message: 'Comienza tu transformación hoy',
+      message: 'Elige una rutina y registra tu primera sesión',
       subtext: 'Elige una rutina para empezar',
       icon: 'rocket',
       gradient: 'from-cyan-600/30 via-blue-600/20 to-indigo-600/20',
@@ -159,7 +190,8 @@ export function generateInsight(hasDraft: boolean, stats: {
     insights.push({
       type: 'streak-fire',
       priority: 4,
-      message: `Racha de ${stats.streak} días - ¡Sigue así!`,
+      message: `Racha de ${stats.streak} días`,
+      destacado: `${stats.streak} días`,
       subtext: 'La constancia es la clave',
       icon: 'trending-up',
       gradient: 'from-green-600/30 via-emerald-600/20 to-teal-600/20',
@@ -172,8 +204,8 @@ export function generateInsight(hasDraft: boolean, stats: {
   if (stats.daysSinceLastWorkout <= 1 && stats.totalWorkouts > 0) {
     insights.push({
       type: 'on-fire',
-      priority: 3,
-      message: '¡Estás en racha!',
+      priority: 2,
+      message: 'Racha en curso',
       subtext: 'Mantén el ritmo',
       icon: 'zap',
       gradient: 'from-emerald-600/30 via-green-600/20 to-teal-600/20',
@@ -186,7 +218,7 @@ export function generateInsight(hasDraft: boolean, stats: {
   insights.push({
     type: 'default',
     priority: 1,
-    message: '¡Vamos a entrenar!',
+    message: 'Elige una rutina para empezar',
     subtext: 'Tu siguiente sesión te espera',
     icon: 'dumbbell',
     gradient: 'from-blue-600/30 via-indigo-600/20 to-purple-600/20',
@@ -234,6 +266,7 @@ function analyzeVolumetrend(history: HistorySession[]): Insight | null {
       type: 'volume-up',
       priority: 7,
       message: `Tu volumen subió ${Math.round(percentChange)}% esta semana`,
+      destacado: `${Math.round(percentChange)}%`,
       subtext: `${formatVolume(thisWeekVolume)}kg vs ${formatVolume(lastWeekVolume)}kg`,
       icon: 'trending-up',
       gradient: 'from-emerald-600/30 via-green-600/20 to-teal-600/20',
@@ -245,8 +278,9 @@ function analyzeVolumetrend(history: HistorySession[]): Insight | null {
   if (percentChange <= -15) {
     return {
       type: 'volume-down',
-      priority: 6,
-      message: `Volumen ${Math.abs(Math.round(percentChange))}% menor esta semana`,
+      priority: 7,
+      message: `Tu volumen bajó ${Math.abs(Math.round(percentChange))}% esta semana`,
+      destacado: `${Math.abs(Math.round(percentChange))}%`,
       subtext: '¿Todo bien? Descansa si lo necesitas',
       icon: 'activity',
       gradient: 'from-amber-600/30 via-yellow-600/20 to-orange-600/20',
@@ -294,7 +328,8 @@ function analyzeNeglectedMuscles(history: HistorySession[]): Insight | null {
     return {
       type: 'muscle-neglected',
       priority: 6,
-      message: `Hace ${days} días sin entrenar ${muscle}`,
+      message: `${days} días sin entrenar ${muscle}`,
+      destacado: `${days} días`,
       subtext: 'Considera incluirlo pronto',
       icon: 'alert-circle',
       gradient: 'from-violet-600/30 via-purple-600/20 to-indigo-600/20',
@@ -306,7 +341,10 @@ function analyzeNeglectedMuscles(history: HistorySession[]): Insight | null {
   return null;
 }
 
-function analyzePRProximity(history: HistorySession[], prs: Record<string, { peso: number; reps: number }>): Insight | null {
+function analyzePRProximity(
+  history: HistorySession[],
+  prs: Record<string, { peso: number; reps: number; date?: string }>
+): Insight | null {
   // Look at recent sessions to find exercises close to PR
   const recentSessions = history.slice(0, 5).filter(s => s.type !== 'cardio' && s.ejercicios);
 
@@ -318,12 +356,19 @@ function analyzePRProximity(history: HistorySession[], prs: Record<string, { pes
       const percentage = (ejercicio.peso / pr.peso) * 100;
 
       if (percentage >= 90 && percentage < 100) {
-        const diff = pr.peso - ejercicio.peso;
+        // El README lo pide explicito: se dice el PESO OBJETIVO, nunca cuanto
+        // falta. "Levanta 50 kg y es PR nuevo", jamas "faltan 2.5 kg".
+        const objetivo = siguienteCarga(pr.peso);
+        const cuando = pr.date ? diasDesde(pr.date) : null;
         return {
           type: 'pr-close',
-          priority: 7,
-          message: `Estás cerca del PR en ${ejercicio.nombre}`,
-          subtext: `Faltan solo ${diff.toFixed(1)}kg para superarlo`,
+          priority: 5,
+          message: `Levanta ${formatearPeso(objetivo)} kg en ${ejercicio.nombre} y es PR nuevo.`,
+          destacado: `${formatearPeso(objetivo)} kg`,
+          subtext:
+            `Última vez: ${formatearPeso(ejercicio.peso)} kg · tu mejor marca: ` +
+            `${formatearPeso(pr.peso)} kg` +
+            (cuando === null ? '' : ` (hace ${cuando} ${cuando === 1 ? 'día' : 'días'})`),
           icon: 'target',
           gradient: 'from-amber-600/30 via-yellow-600/20 to-orange-600/20',
           accentGradient: 'from-amber-500 to-yellow-500',
@@ -361,8 +406,8 @@ function analyzeBestWeek(history: HistorySession[]): Insight | null {
   if (thisWeekVolume > 0 && weeks[0][0] === thisWeekKey) {
     return {
       type: 'best-week',
-      priority: 8,
-      message: '¡Tu mejor semana hasta ahora!',
+      priority: 3,
+      message: 'Tu mejor semana hasta ahora',
       subtext: `${formatVolume(thisWeekVolume)}kg de volumen total`,
       icon: 'crown',
       gradient: 'from-yellow-600/30 via-amber-600/20 to-orange-600/20',

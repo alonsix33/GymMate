@@ -92,7 +92,7 @@ const borradorDePrueba = {
 // --------------------------------------------------------------------------
 {
   const { ctx, pagina } = await abrir({ gymmate_draft: borradorDePrueba });
-  const boton = pagina.locator('[onclick*="dismissDraft"]').first();
+  const boton = pagina.locator('[data-accion="descartar"]').first();
   const hay = (await boton.count()) > 0;
   if (!hay) {
     chk('la tarjeta de borrador aparece con un borrador sembrado', false, 'no se encontro el boton de descartar');
@@ -255,9 +255,9 @@ const borradorDePrueba = {
   const r = await pagina.evaluate(() => {
     window.fierroFeedback.mostrarToastDeshacer({ titulo: 'Rutina eliminada', alDeshacer() {} });
     const cont = document.getElementById('fierroToasts').getBoundingClientRect();
-    const nav = document.querySelector('.bottom-nav')?.getBoundingClientRect();
+    const nav = document.querySelector('.f-tabbar')?.getBoundingClientRect();
     if (!nav) return { sinNav: true };
-    const items = [...document.querySelectorAll('.bottom-nav-item')].map((el) => {
+    const items = [...document.querySelectorAll('.f-tabbar__item, .f-fab')].map((el) => {
       const c = el.getBoundingClientRect();
       const encima = document.elementFromPoint(c.x + c.width / 2, c.y + c.height / 2);
       return { texto: el.textContent.trim().slice(0, 12), encima: encima?.className ?? '' };
@@ -265,7 +265,7 @@ const borradorDePrueba = {
     return { solapa: cont.bottom > nav.top, items };
   });
   if (r.sinNav) {
-    chk('barra inferior presente', false, 'no se encontro .bottom-nav');
+    chk('barra inferior presente', false, 'no se encontro .f-tabbar');
   } else {
     chk('el toast no solapa la barra inferior', !r.solapa);
     const tapados = r.items.filter((i) => String(i.encima).includes('f-toast'));
@@ -311,6 +311,59 @@ const borradorDePrueba = {
       r.restaurado.join(',')
     );
   }
+  await ctx.close();
+}
+
+// --------------------------------------------------------------------------
+// 6b. La reserva de espacio coincide con la altura real de la tab bar
+// --------------------------------------------------------------------------
+{
+  const { ctx, pagina } = await abrir();
+  const r = await pagina.evaluate(() => {
+    const barra = document.querySelector('.f-tabbar');
+    if (!barra) return { sinBarra: true };
+    const alto = +barra.getBoundingClientRect().height.toFixed(1);
+    const token = parseFloat(
+      getComputedStyle(document.documentElement).getPropertyValue('--h-nav-inferior')
+    );
+    // Ultimo elemento del contenido: no puede quedar debajo de la barra.
+    const ultimo = document.querySelector('.f-home__cardio')?.getBoundingClientRect();
+    return { alto, token, tapado: ultimo ? ultimo.bottom > barra.getBoundingClientRect().top : null };
+  });
+  if (r.sinBarra) {
+    chk('la tab bar FIERRO existe', false);
+  } else {
+    chk(
+      '--h-nav-inferior coincide con la altura real de la tab bar',
+      Math.abs(r.alto - r.token) < 1,
+      `real ${r.alto}px | token ${r.token}px`
+    );
+  }
+  await ctx.close();
+}
+
+// --------------------------------------------------------------------------
+// 6c. Toda accion de H-01 tiene destino: un data-accion que apunta a un
+//     global inexistente no hace nada y no avisa.
+// --------------------------------------------------------------------------
+{
+  const { ctx, pagina } = await abrir();
+  const r = await pagina.evaluate(() => {
+    const acciones = [...document.querySelectorAll('#fierroHome [data-accion]')].map(
+      (el) => el.dataset.accion
+    );
+    const destinos = {
+      progreso: 'showGamificationModal',
+      cardio: 'showCardioSelector',
+      importar: 'importFromCSV',
+    };
+    const rotas = acciones
+      .filter((a) => a in destinos)
+      .filter((a) => typeof window[destinos[a]] !== 'function');
+    return { acciones, rotas };
+  });
+  chk('H-01 expone acciones', r.acciones.length > 0, r.acciones.join(', '));
+  chk('ninguna accion de H-01 apunta a un global inexistente', r.rotas.length === 0, r.rotas.join(', '));
   await ctx.close();
 }
 

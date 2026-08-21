@@ -457,6 +457,73 @@ await compararCaja(
   '.f-fila'
 );
 
+// --------------------------------------------------------------------------
+// H-01 — Inicio
+// --------------------------------------------------------------------------
+console.log('\n--- H-01 ---');
+
+comparar(
+  'card del coach',
+  estiloDe(h01, [...h01.matchAll(/style="([^"]*)"/g)].findIndex((m) => m[1].includes('border-radius:20px'))),
+  await computar('<section class="f-home__coach"></section>', '.f-home__coach', [
+    'background-color', 'border-radius', 'padding', 'gap', 'border-top-color',
+  ]),
+  { background: 'background-color', 'border-radius': 'border-radius', padding: 'padding', gap: 'gap' }
+);
+
+const declRacha = [...h01.matchAll(/style="([^"]*)"/g)].map((m) => m[1]).find((d) => d.includes('padding:7px 10px'));
+if (declRacha) {
+  const esperado = Object.fromEntries(
+    declRacha.split(';').filter(Boolean).map((d) => {
+      const c = d.indexOf(':');
+      return [d.slice(0, c).trim(), d.slice(c + 1).trim()];
+    })
+  );
+  comparar(
+    'chip de racha',
+    esperado,
+    await computar('<span class="f-home__racha">RACHA 2</span>', '.f-home__racha', [
+      'background-color', 'color', 'border-radius', 'padding', 'border-top-color',
+    ]),
+    { background: 'background-color', color: 'color', 'border-radius': 'border-radius', padding: 'padding' }
+  );
+}
+
+// La celda del heatmap: 2.5px y box-sizing border-box, declarados a mano en
+// el mockup porque la celda con anillo no puede crecer sobre sus vecinas.
+comparar(
+  'celda del heatmap',
+  { 'border-radius': '2.5px', 'box-sizing': 'border-box' },
+  await computar(
+    '<div class="f-heat"><div class="f-heat__semana"><div class="f-heat__celda"></div></div></div>',
+    '.f-heat__celda',
+    ['border-radius', 'box-sizing']
+  ),
+  { 'border-radius': 'border-radius', 'box-sizing': 'box-sizing' }
+);
+
+await compararCaja(
+  'fila de rutina',
+  fragmentoDe(h01, (f) => estiloAbertura(f).includes('padding:14px 16px') && f.includes('{{ r.t }}')),
+  `<button class="f-home__rutina"><span class="f-home__rutina-texto">
+     <span class="f-home__rutina-grupo">GRUPO 1</span>
+     <span class="f-home__rutina-nombre">Piernas + Glúteos</span></span>
+     <span class="f-home__rutina-meta f-num">6 ejercicios<br>hace 3 días</span>
+     <span class="f-home__chevron">›</span></button>`,
+  '.f-home__rutina'
+);
+
+await compararCaja(
+  'banner de borrador',
+  fragmentoDe(h01, (f) => estiloAbertura(f).includes('border-radius:14px') && f.includes('Sesión en curso')),
+  `<section class="f-home__borrador"><div class="f-home__borrador-texto">
+     <span class="f-home__borrador-titulo">Sesión en curso — Piernas + Glúteos</span>
+     <span class="f-home__borrador-sub">Borrador guardado hace 12 min · 2/8 ejercicios</span></div>
+     <button class="f-home__continuar">Continuar</button>
+     <button class="f-home__descartar">✕</button></section>`,
+  '.f-home__borrador'
+);
+
 await navegador.close();
 servidor.close();
 console.log(fallos ? `\n${fallos} FALLO(S) DE FIDELIDAD` : '\nOK: la app coincide con el mockup en todo lo comprobado');

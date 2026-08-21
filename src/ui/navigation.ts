@@ -1,3 +1,4 @@
+import { renderHome } from '@/ui/home';
 import { cifra } from '@/utils/formato';
 import { confirmarAccion, confirmarDestructivo, mostrarToast } from '@/ui/feedback';
 import type { ExerciseData, TabName, HistorySession } from '@/types';
@@ -6,7 +7,7 @@ import { loadHistory, loadPRs } from '@/features/history';
 import { initializeCharts } from '@/features/charts';
 import { initializeCalculators } from '@/features/calculators';
 import { loadProfile } from '@/features/profile';
-import { refreshIcons, icon } from '@/utils/icons';
+import { refreshIcons } from '@/utils/icons';
 import { generateInsight } from '@/utils/insights';
 
 // ==========================================
@@ -22,6 +23,8 @@ export function switchTab(tabName: TabName): void {
 
   // Ocultar todas las vistas de cardio
   hideCardioViews();
+
+  renderizarHome();
 
   // Ocultar todos los tabs
   document.querySelectorAll('.tab-content').forEach((tab) => {
@@ -75,6 +78,58 @@ function describirBorrador(): string {
   const { draft } = checkForExistingDraft();
   if (!draft) return describirSesionEnCurso();
   return describirEjercicios(draft.ejercicios ?? [], draft.volumenTotal);
+}
+
+/** Pinta H-01 dentro de #fierroHome y engancha sus acciones. */
+export function renderizarHome(): void {
+  const contenedor = document.getElementById('fierroHome');
+  if (!contenedor) return;
+  renderHome(contenedor);
+  if (contenedor.dataset.enganchado !== 'si') {
+    // Delegacion: un solo listener que sobrevive a cada repintado.
+    contenedor.addEventListener('click', alTocarHome);
+    contenedor.dataset.enganchado = 'si';
+  }
+}
+
+function alTocarHome(evento: Event): void {
+  const objetivo = (evento.target as HTMLElement)?.closest<HTMLElement>('[data-accion],[data-grupo],[data-custom-workout],[data-eliminar-rutina]');
+  if (!objetivo) return;
+
+  const rutinaPropia = objetivo.dataset.customWorkout;
+  const eliminar = objetivo.dataset.eliminarRutina;
+  const grupo = objetivo.dataset.grupo;
+
+  if (eliminar) {
+    (window as unknown as { deleteCustomWorkout?: (id: string) => void }).deleteCustomWorkout?.(eliminar);
+    return;
+  }
+  if (grupo || rutinaPropia) {
+    const id = (grupo ?? rutinaPropia) as string;
+    void import('@/features/workout')
+      .then(({ loadTrainingGroup }) => loadTrainingGroup(id))
+      .then((cargada) => cargada && switchTab('workout'))
+      .catch((e) => console.error('No se pudo cargar la rutina', e));
+    return;
+  }
+
+  switch (objetivo.dataset.accion) {
+    case 'continuar':
+      void resumeDraft();
+      break;
+    case 'descartar':
+      void dismissDraft();
+      break;
+    case 'progreso':
+      (window as unknown as { showGamificationModal?: () => void }).showGamificationModal?.();
+      break;
+    case 'cardio':
+      (window as unknown as { showCardioSelector?: () => void }).showCardioSelector?.();
+      break;
+    case 'importar':
+      (window as unknown as { importFromCSV?: () => void }).importFromCSV?.();
+      break;
+  }
 }
 
 export async function showHome(): Promise<void> {
@@ -137,12 +192,12 @@ function hideCardioViews(): void {
 }
 
 function updateBottomNav(activeTab: TabName | 'home'): void {
+  // La tab bar FIERRO marca el activo con aria-current: el punto Fragua y el
+  // label en acento cuelgan de ese atributo, no de una clase.
   document.querySelectorAll('[data-nav]').forEach((item) => {
-    item.classList.remove('active');
     const navType = (item as HTMLElement).dataset.nav;
-    if (navType === activeTab) {
-      item.classList.add('active');
-    }
+    if (navType === activeTab) item.setAttribute('aria-current', 'page');
+    else item.removeAttribute('aria-current');
   });
 }
 
@@ -347,62 +402,9 @@ function formatVolume(vol: number): string {
 }
 
 function updateResumeWorkoutCard(): void {
-  const resumeCard = document.getElementById('resumeWorkoutCard');
-  if (!resumeCard) return;
-
-  const { hasDraft, draft, isStale } = checkForExistingDraft();
-
-  if (!hasDraft || !draft) {
-    resumeCard.classList.add('hidden');
-    return;
-  }
-
-  if (isStale) {
-    resumeCard.classList.add('hidden');
-    return;
-  }
-
-  const draftDate = new Date(draft.draftSavedAt).toLocaleString('es-ES', {
-    weekday: 'short',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-
-  resumeCard.innerHTML = `
-    <div class="bg-dark-surface border border-accent/30 rounded-xl p-4 mb-4">
-      <div class="flex items-start justify-between mb-3">
-        <div class="flex items-center gap-2">
-          ${icon('clock', 'md', 'text-accent')}
-          <span class="text-sm font-semibold text-accent">Entrenamiento en progreso</span>
-        </div>
-        <button onclick="window.dismissDraft()" class="text-text-muted hover:text-text-secondary">
-          ${icon('close', 'sm')}
-        </button>
-      </div>
-      <h3 class="font-bold text-text-primary mb-1">${draft.grupo}</h3>
-      <p class="text-xs text-text-muted mb-3">Guardado: ${draftDate}</p>
-      <div class="flex gap-2">
-        <button
-          onclick="window.resumeDraft()"
-          class="flex-1 bg-accent hover:bg-accent-hover text-white font-semibold py-2 px-4 rounded-lg
-                 active:scale-95 transition-all flex items-center justify-center gap-2"
-        >
-          ${icon('play', 'sm')}
-          Continuar
-        </button>
-        <button
-          onclick="window.dismissDraft()"
-          class="px-4 py-2 bg-dark-bg border border-dark-border rounded-lg text-text-secondary
-                 hover:text-text-primary active:scale-95 transition-all"
-        >
-          Descartar
-        </button>
-      </div>
-    </div>
-  `;
-
-  resumeCard.classList.remove('hidden');
-  refreshIcons();
+  // El banner de borrador vive dentro de H-01 (src/ui/home.ts). Repintar la
+  // pantalla lo actualiza; ya no hay un #resumeWorkoutCard suelto.
+  renderizarHome();
 }
 
 function getQuickHomeStats(): {
@@ -486,9 +488,14 @@ export function initializeNavigation(): void {
   // Navegación inferior
   document.querySelectorAll('[data-nav]').forEach((item) => {
     item.addEventListener('click', function (this: HTMLElement) {
-      const navType = this.dataset.nav as TabName | 'home';
+      // 'progress' no es un TabName: es la pestana nueva de FIERRO.
+      const navType = this.dataset.nav as TabName | 'home' | 'progress';
       if (navType === 'home') {
         void showHome();
+      } else if (navType === 'progress') {
+        // GM-01 se construye en la fase 8; hasta entonces PROGRESO abre la
+        // vista de gamificacion que ya existe, para no dejar la pestana muerta.
+        (window as unknown as { showGamificationModal?: () => void }).showGamificationModal?.();
       } else {
         switchTab(navType as TabName);
       }

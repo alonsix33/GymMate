@@ -609,3 +609,539 @@
   color: var(--text-disabled);
   text-transform: uppercase;
 }
+
+/* ==========================================================================
+   10 · H-01 — Inicio
+   Valores literales de Pantallas Fierro.dc.html (lineas 31-129).
+   ========================================================================== */
+.f-home {
+  padding: 14px var(--pad-screen-l) 24px; /* [REF :33] */
+  display: flex;
+  flex-direction: column;
+  gap: var(--r-18); /* [REF :33] gap 18px */
+  background: var(--bg-app);
+}
+
+/* --- saludo, fecha y racha [REF :34-40] --- */
+.f-home__cabecera {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+}
+.f-home__saludo {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.f-home__hola {
+  font-size: var(--fs-13);
+  color: var(--text-secondary);
+}
+.f-home__fecha {
+  font-family: var(--font-display);
+  font-stretch: var(--stretch-118);
+  font-weight: var(--w-900);
+  font-size: var(--fs-30);
+  line-height: var(--lh-1);
+}
+.f-home__racha {
+  font-family: var(--font-mono);
+  font-weight: var(--w-700);
+  font-size: var(--fs-11);
+  line-height: var(--lh-1);
+  padding: 7px 10px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-card-active);
+  border-radius: var(--r-chip);
+  color: var(--accent);
+  flex: none;
+}
+
+/* --- card del coach [REF :41-45] --- */
+.f-home__coach {
+  background: var(--bg-card);
+  border: 1px solid var(--border-card-active);
+  border-radius: var(--r-hero);
+  padding: var(--pad-card-l);
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-card-l);
+}
+.f-home__coach .f-label {
+  font-size: var(--fs-10);
+}
+.f-home__coach-mensaje {
+  margin: 0;
+  font-size: var(--fs-16_5);
+  line-height: var(--lh-1_4);
+  font-weight: var(--w-600);
+}
+.f-home__coach-contexto {
+  margin: 0;
+  font-size: var(--fs-12_5);
+  color: var(--text-secondary);
+}
+
+/* --- heatmap [REF :46-64] --- */
+.f-home__heatmap,
+.f-home__nivel {
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--r-hero);
+  padding: var(--pad-card-l);
+}
+.f-home__heatmap {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.f-home__heatmap-cabecera {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+.f-home__seccion {
+  font-family: var(--font-display);
+  font-stretch: var(--stretch-112);
+  font-weight: var(--w-800);
+  font-size: var(--fs-17);
+}
+.f-home__heatmap-conteo {
+  font-size: var(--fs-12);
+  color: var(--text-secondary);
+}
+.f-home__heatmap-conteo b {
+  font-weight: var(--w-700);
+  color: var(--text-primary);
+}
+
+.f-heat {
+  display: flex;
+  gap: 3px; /* [REF :51] */
+}
+.f-heat__semana {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.f-heat__celda {
+  aspect-ratio: 1;
+  border-radius: var(--r-cell); /* 2.5px */
+  /* El mockup lo declara a mano justo aqui: la celda con anillo no puede
+     crecer 3px sobre sus vecinas. [REF :55] */
+  box-sizing: border-box;
+}
+.f-heat__celda--cardio {
+  background: transparent;
+  border: 1.5px solid var(--heat-cardio-border);
+}
+.f-heat__celda--hoy {
+  animation: fierro-pulse var(--dur-pulse) ease-in-out infinite;
+}
+
+.f-home__heatmap-pie {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.f-heat__hueco {
+  font-family: var(--font-mono);
+  font-size: var(--fs-11_5);
+  color: var(--zona-roja);
+}
+.f-heat__leyenda {
+  display: flex;
+  gap: 3px;
+  align-items: center;
+  font-size: var(--fs-10_5);
+  color: var(--text-secondary);
+}
+.f-heat__leyenda > span:first-child {
+  margin-right: 2px;
+}
+.f-heat__leyenda-q4 {
+  margin: 0 6px 0 2px;
+}
+.f-heat__leyenda-cardio {
+  margin-left: 2px;
+}
+.f-heat__muestra {
+  width: 9px; /* [REF :62] */
+  height: 9px;
+  border-radius: 2px;
+  box-sizing: border-box;
+}
+.f-heat__muestra--cardio {
+  border: 1.5px solid var(--heat-cardio-border);
+}
+.f-home__heatmap-nota {
+  margin: 0;
+  font-size: var(--fs-11);
+  line-height: var(--lh-1_5);
+  color: var(--text-disabled);
+}
+
+/* --- nivel + mapa muscular [REF :65-88] --- */
+.f-home__nivel {
+  display: flex;
+  gap: var(--r-18);
+  align-items: center;
+}
+.f-home__nivel-datos {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-card);
+  min-width: 0;
+}
+.f-home__nivel-titulo {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.f-home__nivel-numero {
+  font-family: var(--font-display);
+  font-stretch: var(--stretch-115);
+  font-weight: var(--w-900);
+  font-size: var(--fs-26);
+  line-height: var(--lh-1);
+}
+.f-home__nivel-sub {
+  font-size: var(--fs-12_5);
+  color: var(--text-secondary);
+}
+.f-barra {
+  height: 6px; /* [REF :74] */
+  border-radius: var(--r-bar);
+  background: var(--border-subtle);
+  overflow: hidden;
+}
+.f-barra__relleno {
+  height: 100%;
+  background: var(--accent);
+  border-radius: var(--r-bar);
+}
+.f-home__rangos {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: var(--fs-12);
+}
+.f-home__rango {
+  display: flex;
+  justify-content: space-between;
+}
+.f-home__rango > span:first-child {
+  color: var(--text-secondary);
+}
+.f-home__enlace {
+  font-size: var(--fs-12);
+  color: var(--accent);
+  font-weight: var(--w-600);
+  background: none;
+  border: none;
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
+  font-family: var(--font-ui);
+}
+
+/* --- banner de borrador [REF :89-96] --- */
+.f-home__borrador {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-card-active);
+  border-radius: var(--r-card);
+  padding: 14px 16px;
+  display: flex;
+  align-items: center;
+  gap: var(--gap-card-l);
+}
+.f-home__borrador-texto {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.f-home__borrador-titulo {
+  font-weight: var(--w-700);
+  font-size: var(--fs-14);
+}
+.f-home__borrador-sub {
+  font-size: var(--fs-12);
+  color: var(--text-secondary);
+}
+.f-home__continuar {
+  font-family: var(--font-ui);
+  font-weight: var(--w-700);
+  font-size: var(--fs-13_5);
+  background: var(--accent);
+  color: var(--on-fragua);
+  border: none;
+  border-radius: var(--r-8);
+  padding: 10px 16px;
+  cursor: pointer;
+  flex: none;
+}
+.f-home__descartar {
+  color: var(--text-disabled);
+  font-size: var(--fs-17);
+  padding: 4px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  flex: none;
+}
+
+/* --- rutinas [REF :97-118] --- */
+.f-home__seccion-bloque {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-card);
+}
+.f-home__seccion-cabecera {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+.f-home__seccion-meta {
+  font-size: var(--fs-12);
+  color: var(--text-secondary);
+}
+.f-home__rutina {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--r-row-l);
+  padding: 14px 16px;
+  display: flex;
+  align-items: center;
+  gap: var(--gap-card-l);
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  font-family: var(--font-ui);
+  color: var(--text-primary);
+  width: 100%;
+}
+.f-home__rutina-texto {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.f-home__rutina-grupo {
+  font-family: var(--font-mono);
+  font-weight: var(--w-600);
+  font-size: var(--fs-10);
+  line-height: var(--lh-1);
+  letter-spacing: var(--ls-_08);
+  color: var(--text-secondary);
+}
+.f-home__rutina-nombre {
+  font-weight: var(--w-700);
+  font-size: var(--fs-15);
+}
+.f-home__rutina-meta {
+  font-size: var(--fs-12);
+  color: var(--text-secondary);
+  text-align: right;
+  flex: none;
+}
+.f-home__chevron {
+  color: var(--text-disabled);
+  flex: none;
+}
+
+/* --- mis rutinas [REF :105-114] --- */
+.f-home__propia {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--r-row-l);
+  padding: 13px 16px;
+  display: flex;
+  align-items: center;
+  gap: var(--gap-card-l);
+}
+.f-home__propia-nombre {
+  flex: 1;
+  font-weight: var(--w-600);
+  font-size: var(--fs-14_5);
+  background: none;
+  border: none;
+  color: var(--text-primary);
+  text-align: left;
+  cursor: pointer;
+  font-family: var(--font-ui);
+  padding: 0;
+  min-width: 0;
+}
+.f-home__propia-meta {
+  font-size: var(--fs-12);
+  color: var(--text-secondary);
+  flex: none;
+}
+.f-home__eliminar {
+  font-size: var(--fs-12);
+  color: var(--zona-roja);
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: var(--font-ui);
+  padding: 0;
+  flex: none;
+}
+
+/* --- entrada a cardio [REF :115-122] --- */
+.f-home__cardio {
+  border: 1px solid var(--border-card-active);
+  border-radius: var(--r-card);
+  padding: var(--pad-card);
+  display: flex;
+  align-items: center;
+  gap: var(--gap-card-l);
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  font-family: var(--font-ui);
+  color: var(--text-primary);
+  width: 100%;
+}
+.f-home__cardio-texto {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.f-home__cardio-titulo {
+  font-weight: var(--w-700);
+  font-size: var(--fs-15);
+}
+.f-home__cardio-sub {
+  font-size: var(--fs-12);
+  color: var(--text-secondary);
+}
+
+/* La tab bar es cromo de la app: fija abajo, por encima del contenido y por
+   debajo del velo de las hojas. */
+.f-tabbar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 40;
+  padding-bottom: calc(22px + var(--safe-area-inset-bottom));
+}
+
+/* Los elementos que llenan su contenedor van en border-box: con width:100%
+   en content-box el padding se suma por fuera y la fila sale mas ancha que la
+   pantalla. En el mockup son <div> de ancho automatico, donde el padding
+   queda dentro; esto reproduce ese comportamiento. */
+.f-home__rutina,
+.f-home__cardio,
+.f-home__importar,
+.f-btn--bloque,
+.f-sheet,
+.f-toast,
+.f-sync,
+.f-home__borrador,
+.f-home__propia,
+.f-home__coach,
+.f-home__heatmap,
+.f-home__nivel,
+.f-home,
+.f-tabbar {
+  box-sizing: border-box;
+}
+
+/* El contenido reserva sitio para la tab bar fija; si no, las ultimas cards
+   quedan debajo de ella. */
+body {
+  padding-bottom: calc(var(--h-nav-inferior) + var(--safe-area-inset-bottom));
+}
+
+/* La etiqueta del hueco y la leyenda comparten fila: sin un hueco minimo se
+   tocan cuando el numero de dias es largo. */
+.f-home__heatmap-pie {
+  gap: var(--gap-card-l);
+  flex-wrap: wrap;
+}
+.f-heat__hueco {
+  flex: none;
+}
+
+/* --------------------------------------------------------------------------
+   O-01 — Home sin datos [REF Pantallas:1256-1311]
+   -------------------------------------------------------------------------- */
+.f-home__vacio-meta {
+  font-size: var(--fs-12);
+  color: var(--text-disabled);
+}
+.f-home__vacio-nota {
+  margin: 0;
+  font-size: var(--fs-11_5);
+  color: var(--text-disabled);
+}
+.f-home__vacio-titulo {
+  font-family: var(--font-display);
+  font-stretch: var(--stretch-115);
+  font-weight: var(--w-900);
+  font-size: var(--fs-20);
+  line-height: var(--lh-1_1);
+}
+.f-home__vacio-texto {
+  font-size: var(--fs-12_5);
+  line-height: var(--lh-1_5);
+  color: var(--text-secondary);
+}
+.f-home__nivel .f-home__nivel-datos:has(.f-home__vacio-titulo) {
+  gap: var(--gap-card-s);
+}
+
+/* La celda apagada del tablero vacio se trata distinto que en Home con datos:
+   con borde y un gris mas oscuro. [REF Pantallas:1729] */
+.f-heat__celda--vacio {
+  background: var(--heat-0-empty);
+  border: 1px solid var(--heat-0-empty-border);
+}
+.f-heat__celda--hoy-vacio {
+  background: var(--heat-q1);
+  border: 1.5px solid var(--accent);
+  animation: fierro-pulse var(--dur-pulse) ease-in-out infinite;
+}
+
+.f-home__rutina--recomendada {
+  border-color: var(--accent);
+  background: var(--bg-elevated);
+}
+.f-home__rutina-grupo--recomendada {
+  color: var(--accent);
+}
+.f-home__chevron--acento {
+  color: var(--accent);
+}
+
+.f-home__importar {
+  border: 1px dashed var(--border-secondary-btn);
+  border-radius: var(--r-row-l);
+  padding: 13px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--gap-card);
+  background: transparent;
+  cursor: pointer;
+  font-family: var(--font-ui);
+  font-size: var(--fs-13_5);
+  color: var(--text-tertiary);
+  text-align: left;
+  width: 100%;
+}
+.f-home__importar-accion {
+  font-family: var(--font-mono);
+  font-weight: var(--w-600);
+  font-size: var(--fs-10_5);
+  line-height: var(--lh-1);
+  color: var(--accent);
+  flex: none;
+}

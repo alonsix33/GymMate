@@ -470,3 +470,72 @@ export function renderMuscleProgress(
     </div>
   `;
 }
+
+// ==========================================
+// FIERRO — mapa muscular sin glow ni gradientes
+// ==========================================
+
+/**
+ * Rango -> token de color FIERRO. Los RANK_COLORS legacy son otra paleta
+ * entera (Platino en rojo, Simetrico en azul); aqui manda tokens.css.
+ */
+const RANGO_A_TOKEN: Record<string, string> = {
+  Hierro: 'var(--rango-hierro)',
+  Bronce: 'var(--rango-bronce)',
+  Plata: 'var(--rango-plata)',
+  Oro: 'var(--rango-oro)',
+  Platino: 'var(--rango-platino)',
+  Esmeralda: 'var(--rango-esmeralda)',
+  Diamante: 'var(--rango-diamante)',
+  Campeon: 'var(--rango-campeon)',
+  Simetrico: 'var(--rango-simetrico)',
+};
+
+export function colorDeRango(rango: string): string {
+  return RANGO_A_TOKEN[rango] ?? 'var(--rango-hierro)';
+}
+
+/**
+ * Vista anterior con los MISMOS poligonos que el resto de la app (README:
+ * "reutilizar los poligonos SVG existentes TAL CUAL"). Sin filtros de glow y
+ * sin gradientes; el relleno de cada grupo es el color de su rango y las
+ * partes neutras van en --frame-border.
+ * Las cuatro elipses de manos y pies salen del mockup [REF Pantallas:67].
+ */
+export function renderMapaFierro(
+  muscleRanks: MuscleRanks,
+  ancho = 86,
+  alto = 172
+): string {
+  const grupos: GamificationMuscleGroup[] = [
+    'pecho', 'espalda', 'hombros', 'biceps', 'triceps', 'core', 'gluteos', 'piernas',
+  ];
+
+  const poligonos = grupos
+    .map((grupo) => {
+      const color = colorDeRango(muscleRanks[grupo]?.rank ?? 'Hierro');
+      const mapeo = MUSCLE_GROUP_MAPPING[grupo];
+      return mapeo.anterior
+        .flatMap((clave) => ANTERIOR_POLYGONS[clave] ?? [])
+        .map((puntos) => `<polygon points="${puntos}" fill="${color}"></polygon>`)
+        .join('');
+    })
+    .join('');
+
+  const neutro = 'var(--frame-border)';
+  const neutras = (['head', 'neck', 'forearm', 'knees'] as const)
+    .flatMap((clave) => ANTERIOR_POLYGONS[clave] ?? [])
+    .map((puntos) => `<polygon points="${puntos}" fill="${neutro}"></polygon>`)
+    .join('');
+
+  return `
+    <svg viewBox="0 0 100 200" width="${ancho}" height="${alto}" style="flex:none" aria-hidden="true">
+      <ellipse cx="5" cy="105" rx="5" ry="8" fill="${neutro}"></ellipse>
+      <ellipse cx="95" cy="105" rx="5" ry="8" fill="${neutro}"></ellipse>
+      <ellipse cx="23" cy="200" rx="6" ry="4" fill="${neutro}"></ellipse>
+      <ellipse cx="77" cy="200" rx="6" ry="4" fill="${neutro}"></ellipse>
+      ${neutras}
+      ${poligonos}
+    </svg>
+  `;
+}

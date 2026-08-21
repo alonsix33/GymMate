@@ -359,9 +359,12 @@
   --fab-size: 50px; /* [REF Pantallas:123] */
 
   --safe-area-inset-bottom: env(safe-area-inset-bottom, 0px);
-  /* Alto de la barra inferior viva. Hoy manda la .bottom-nav legacy; la fase 3
-     lo reapunta a la tab bar FIERRO cuando la sustituya. */
-  --h-nav-inferior: 72px;
+  /* Alto real de la tab bar FIERRO: 12px de padding superior + 47px de
+     contenido (el FAB de 50px con margin-top -4px) + 22px inferior.
+     El contenido y los toasts reservan este espacio. La puerta de
+     comportamiento comprueba que coincide con la altura medida: si la barra
+     cambia y esto no, el contenido queda tapado sin avisar. */
+  --h-nav-inferior: 81px;
   /* Ancho maximo del cuerpo de la app; hoy lo fija main.css legacy. */
   --ancho-app: 640px;
 

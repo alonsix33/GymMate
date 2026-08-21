@@ -96,94 +96,9 @@
          HOME VIEW
          ========================================== -->
     <div id="homeView" role="region" aria-label="Página principal">
-      <!-- Hero Section - Dynamic content rendered by JS -->
-      <section class="mb-6" aria-labelledby="hero-title">
-        <div id="heroContent">
-          <!-- Placeholder - Will be replaced by updateHeroSection() -->
-          <div class="bg-dark-surface border border-dark-border rounded-2xl p-5 relative overflow-hidden">
-            <div class="absolute top-0 right-0 w-32 h-32 bg-accent/10 rounded-full blur-3xl opacity-50 -translate-y-1/2 translate-x-1/2" aria-hidden="true"></div>
-            <div class="relative">
-              <p class="text-sm text-text-muted mb-1">Hola</p>
-              <h1 id="hero-title" class="text-2xl font-display font-bold text-text-primary mb-3">GymMate</h1>
-              <div class="inline-flex items-center gap-2 px-3 py-1.5 bg-accent/10 rounded-full">
-                <i data-lucide="zap" class="w-4 h-4 text-accent" aria-hidden="true"></i>
-                <span class="text-sm font-medium text-accent">Cargando...</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- Resume Workout Card -->
-      <div id="resumeWorkoutCard" class="hidden" role="region" aria-label="Continuar entrenamiento"></div>
-
-      <!-- Gamification Hero Card -->
-      <div id="gamificationHeroContainer" class="mb-6" role="region" aria-label="Progreso de gamificación"></div>
-
-      <!-- Quick Actions - Vibrant and energetic -->
-      <section class="mb-6" aria-labelledby="quick-actions-title">
-        <h2 id="quick-actions-title" class="text-sm font-bold text-white uppercase tracking-wide mb-4 flex items-center gap-2">
-          <span class="w-1 h-4 bg-gradient-to-b from-cyan-400 to-blue-500 rounded-full" aria-hidden="true"></span>
-          Acceso Rápido
-        </h2>
-        <div class="grid grid-cols-4 gap-3" role="group" aria-label="Accesos directos">
-          <button data-action="calculators" class="bg-gradient-to-br from-blue-500/20 to-indigo-600/10 border border-blue-500/30 rounded-2xl p-4 flex flex-col items-center gap-2 active:scale-95 transition-transform min-h-[80px] hover:border-blue-400/50 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 focus:ring-offset-dark-bg" aria-label="Abrir calculadoras">
-            <div class="w-11 h-11 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-blue-500/30" aria-hidden="true">
-              <i data-lucide="calculator" class="w-5 h-5 text-white" aria-hidden="true"></i>
-            </div>
-            <span class="text-xs text-blue-300 font-semibold">Calc</span>
-          </button>
-          <button data-action="history" class="bg-gradient-to-br from-purple-500/20 to-violet-600/10 border border-purple-500/30 rounded-2xl p-4 flex flex-col items-center gap-2 active:scale-95 transition-transform min-h-[80px] hover:border-purple-400/50 focus:outline-none focus:ring-2 focus:ring-purple-400 focus:ring-offset-2 focus:ring-offset-dark-bg" aria-label="Ver historial de entrenamientos">
-            <div class="w-11 h-11 rounded-xl bg-gradient-to-br from-purple-500 to-violet-600 flex items-center justify-center shadow-lg shadow-purple-500/30" aria-hidden="true">
-              <i data-lucide="history" class="w-5 h-5 text-white" aria-hidden="true"></i>
-            </div>
-            <span class="text-xs text-purple-300 font-semibold">Historial</span>
-          </button>
-          <button data-action="charts" class="bg-gradient-to-br from-emerald-500/20 to-green-600/10 border border-emerald-500/30 rounded-2xl p-4 flex flex-col items-center gap-2 active:scale-95 transition-transform min-h-[80px] hover:border-emerald-400/50 focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:ring-offset-2 focus:ring-offset-dark-bg" aria-label="Ver gráficos de progreso">
-            <div class="w-11 h-11 rounded-xl bg-gradient-to-br from-emerald-500 to-green-600 flex items-center justify-center shadow-lg shadow-emerald-500/30" aria-hidden="true">
-              <i data-lucide="line-chart" class="w-5 h-5 text-white" aria-hidden="true"></i>
-            </div>
-            <span class="text-xs text-emerald-300 font-semibold">Gráficos</span>
-          </button>
-          <button data-action="prs" class="bg-gradient-to-br from-yellow-500/20 to-orange-600/10 border border-yellow-500/30 rounded-2xl p-4 flex flex-col items-center gap-2 active:scale-95 transition-transform min-h-[80px] hover:border-yellow-400/50 focus:outline-none focus:ring-2 focus:ring-yellow-400 focus:ring-offset-2 focus:ring-offset-dark-bg" aria-label="Ver récords personales">
-            <div class="w-11 h-11 rounded-xl bg-gradient-to-br from-yellow-500 to-orange-600 flex items-center justify-center shadow-lg shadow-yellow-500/30" aria-hidden="true">
-              <i data-lucide="trophy" class="w-5 h-5 text-white" aria-hidden="true"></i>
-            </div>
-            <span class="text-xs text-yellow-300 font-semibold">PRs</span>
-          </button>
-        </div>
-      </section>
-
-      <!-- Rutinas -->
-      <section class="mb-8" aria-labelledby="routines-title">
-        <h2 id="routines-title" class="text-base font-display font-bold text-white mb-4 flex items-center gap-2">
-          <span class="w-1 h-5 bg-gradient-to-b from-pink-500 to-purple-600 rounded-full" aria-hidden="true"></span>
-          <i data-lucide="dumbbell" class="w-5 h-5 text-pink-400" aria-hidden="true"></i>
-          Rutinas Disponibles
-        </h2>
-        <div id="routinesContainer" class="space-y-3" role="list" aria-label="Lista de rutinas de entrenamiento">
-          <!-- Se renderiza dinámicamente -->
-        </div>
-      </section>
-
-      <!-- Custom Workouts -->
-      <div id="customWorkoutsContainer" role="region" aria-label="Rutinas personalizadas"></div>
-
-      <!-- Cardio Section -->
-      <section class="mt-8" aria-label="Sección de cardio">
-        <button onclick="window.showCardioSelector()" class="w-full bg-gradient-to-r from-orange-600/20 via-red-600/15 to-pink-600/20 border border-orange-500/40 rounded-2xl p-5 flex items-center gap-4 active:scale-[0.98] transition-transform min-h-[80px] hover:border-orange-400/60 focus:outline-none focus:ring-2 focus:ring-orange-400 focus:ring-offset-2 focus:ring-offset-dark-bg" aria-label="Abrir sección de Cardio y HIIT: Tabata, EMOM, AMRAP y más">
-          <div class="w-14 h-14 rounded-xl bg-gradient-to-br from-orange-500 to-red-600 flex items-center justify-center flex-shrink-0 shadow-lg shadow-orange-500/40" aria-hidden="true">
-            <i data-lucide="flame" class="w-7 h-7 text-white" aria-hidden="true"></i>
-          </div>
-          <div class="flex-1 text-left min-w-0">
-            <h3 class="font-bold text-white text-base">Cardio & HIIT</h3>
-            <p class="text-sm text-orange-200/80 mt-1">Tabata, EMOM, AMRAP y más</p>
-          </div>
-          <div class="w-10 h-10 flex items-center justify-center flex-shrink-0" aria-hidden="true">
-            <i data-lucide="chevron-right" class="w-5 h-5 text-orange-300" aria-hidden="true"></i>
-          </div>
-        </button>
-      </section>
+      <!-- H-01 lo pinta entero src/ui/home.ts. Todo el markup Tailwind
+           anterior se retiro con el rediseno FIERRO. -->
+      <div id="fierroHome"></div>
     </div>
 
     <!-- ==========================================
@@ -631,28 +546,26 @@
   <!-- ==========================================
        BOTTOM NAVIGATION
        ========================================== -->
-  <nav class="bottom-nav" role="navigation" aria-label="Navegación principal">
-    <div class="flex items-center justify-around">
-      <button data-nav="home" class="bottom-nav-item active" role="tab" aria-selected="true" aria-label="Ir a inicio" tabindex="0">
-        <i data-lucide="home" class="w-5 h-5" aria-hidden="true"></i>
-        <span>Inicio</span>
-      </button>
-      <button data-nav="calculators" class="bottom-nav-item" role="tab" aria-selected="false" aria-label="Ir a calculadoras" tabindex="-1">
-        <i data-lucide="calculator" class="w-5 h-5" aria-hidden="true"></i>
-        <span>Calc</span>
-      </button>
-      <button id="fabButton" class="fab-button" aria-label="Crear nueva rutina o iniciar entrenamiento" aria-haspopup="true">
-        <i data-lucide="plus" class="w-6 h-6 text-white" aria-hidden="true"></i>
-      </button>
-      <button data-nav="history" class="bottom-nav-item" role="tab" aria-selected="false" aria-label="Ir a historial" tabindex="-1">
-        <i data-lucide="history" class="w-5 h-5" aria-hidden="true"></i>
-        <span>Historial</span>
-      </button>
-      <button data-nav="profile" class="bottom-nav-item" role="tab" aria-selected="false" aria-label="Ir a mi perfil" tabindex="-1">
-        <i data-lucide="user" class="w-5 h-5" aria-hidden="true"></i>
-        <span>Perfil</span>
-      </button>
+  <nav class="f-tabbar f-root" role="navigation" aria-label="Navegación principal">
+    <button data-nav="home" class="f-tabbar__item" role="tab" aria-current="page" aria-label="Ir a inicio">
+      <span class="f-tabbar__punto" aria-hidden="true"></span>
+      <span class="f-tabbar__label">INICIO</span>
+    </button>
+    <button data-nav="history" class="f-tabbar__item" role="tab" aria-label="Ir a historial">
+      <span class="f-tabbar__punto" aria-hidden="true"></span>
+      <span class="f-tabbar__label">HISTORIAL</span>
+    </button>
+    <div class="f-fab-hueco">
+      <button id="fabButton" class="f-fab" aria-label="Crear nueva rutina o iniciar entrenamiento" aria-haspopup="true">+</button>
     </div>
+    <button data-nav="progress" class="f-tabbar__item" role="tab" aria-label="Ir a progreso">
+      <span class="f-tabbar__punto" aria-hidden="true"></span>
+      <span class="f-tabbar__label">PROGRESO</span>
+    </button>
+    <button data-nav="profile" class="f-tabbar__item" role="tab" aria-label="Ir a mi perfil">
+      <span class="f-tabbar__punto" aria-hidden="true"></span>
+      <span class="f-tabbar__label">PERFIL</span>
+    </button>
   </nav>
 
   <!-- ==========================================

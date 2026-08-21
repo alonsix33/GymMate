@@ -1,3 +1,4 @@
+import { confirmarAccion, confirmarDestructivo } from '@/ui/feedback';
 import type { ExerciseData, Exercise, RPEData, PRData, HistorySession } from '@/types';
 import { getTrainingGroup } from '@/data/training-groups';
 import {
@@ -27,7 +28,7 @@ import { showSessionSummary } from '@/ui/gamification';
 // CARGAR GRUPO DE ENTRENAMIENTO
 // ==========================================
 
-export function loadTrainingGroup(grupoId: string): void {
+export async function loadTrainingGroup(grupoId: string): Promise<void> {
   const grupo = getTrainingGroup(grupoId);
   if (!grupo) {
     console.error(`Training group not found: ${grupoId}`);
@@ -36,13 +37,13 @@ export function loadTrainingGroup(grupoId: string): void {
 
   // Confirmar cambio si hay datos sin guardar
   if (hasUnsavedData()) {
-    if (
-      !confirm(
-        'Tienes cambios sin guardar. ¿Quieres cambiar de rutina de todas formas?'
-      )
-    ) {
-      return;
-    }
+    const cambiar = await confirmarAccion({
+      titulo: '¿Cambiar de rutina?',
+      cuerpo: 'Lo registrado en esta sesión queda en el borrador, pero la rutina cambia.',
+      cancelar: 'Seguir en esta',
+      confirmar: 'Cambiar',
+    });
+    if (!cambiar) return;
   }
 
   // Establecer grupo en sesión
@@ -524,17 +525,20 @@ const RPE_LABELS: Record<number, string> = {
   10: 'Máximo absoluto',
 };
 
-export function finishWorkout(): void {
+export async function finishWorkout(): Promise<void> {
   // Check if there's any session data (for gamification)
   hasSessionData = sessionData.volumenTotal > 0;
 
   // Check if there's data to save
   if (hasUnsavedData()) {
-    if (
-      !confirm(
-        '¿Guardar el entrenamiento antes de terminar? (Cancelar = no guardar)'
-      )
-    ) {
+    // El destructivo es SALIR SIN GUARDAR, que es lo que pierde datos.
+    const salirSinGuardar = await confirmarDestructivo({
+      titulo: '¿Guardar antes de terminar?',
+      cuerpo: 'Si sales sin guardar, lo registrado en esta sesión se pierde.',
+      cancelar: 'Guardar',
+      confirmar: 'Salir sin guardar',
+    });
+    if (salirSinGuardar) {
       endSession();
       window.location.reload();
       return;

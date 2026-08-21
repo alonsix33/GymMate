@@ -1,0 +1,560 @@
+/* ==========================================================================
+   FIERRO — Componentes base (paso 2)
+   Cubre F-01 y las piezas que las fases 3–9 reutilizan.
+
+   Se importa DESPUES de main.css a proposito: durante la migracion el CSS
+   legacy sigue vivo y hay que ganarle la cascada sin subir especificidad
+   con !important.
+
+   Regla dura del contrato: aqui no hay ni un hex. Todo color y toda medida
+   tipografica salen de src/styles/tokens.css.
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   00 · Base
+   -------------------------------------------------------------------------- */
+.f-root,
+.f-root * {
+  box-sizing: border-box;
+}
+
+.f-root {
+  font-family: var(--font-ui);
+  color: var(--text-primary);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Toda cifra de dato alinea en columna. */
+.f-num {
+  font-variant-numeric: tabular-nums;
+}
+
+/* --------------------------------------------------------------------------
+   01 · Tipografia
+   -------------------------------------------------------------------------- */
+.f-display-xl {
+  font-family: var(--font-display);
+  font-stretch: var(--stretch-display-xl);
+  font-weight: var(--display-xl-weight);
+  font-size: var(--display-xl-size);
+  line-height: var(--display-xl-line);
+  letter-spacing: var(--display-xl-tracking);
+}
+
+.f-display-m {
+  font-family: var(--font-display);
+  font-stretch: var(--stretch-display-m);
+  font-weight: var(--display-m-weight);
+  font-size: var(--display-m-size);
+  line-height: var(--display-m-line);
+}
+
+/* Cifra protagonista. El tamano lo fija quien la use con --f-cifra. */
+.f-cifra {
+  font-family: var(--font-display);
+  font-stretch: var(--stretch-cifra);
+  font-weight: var(--cifra-weight);
+  font-size: var(--f-cifra, var(--cifra-size-m));
+  line-height: var(--lh-1);
+  font-variant-numeric: tabular-nums;
+}
+
+/* La unidad (kg, reps) nunca compite con la cifra. */
+.f-unidad {
+  font-stretch: var(--stretch-100);
+  font-weight: var(--cifra-unit-weight);
+  font-size: var(--f-unidad, var(--cifra-unit-size-m));
+  color: var(--text-secondary);
+}
+
+.f-heading {
+  font-weight: var(--heading-weight);
+  font-size: var(--heading-size-m);
+}
+
+.f-body {
+  font-size: var(--body-size-l);
+  line-height: var(--body-line);
+}
+
+.f-label {
+  font-family: var(--font-mono);
+  font-weight: var(--label-weight);
+  font-size: var(--label-size-s);
+  line-height: var(--lh-1);
+  letter-spacing: var(--label-tracking);
+  color: var(--text-secondary);
+  text-transform: uppercase;
+}
+
+.f-label--acento {
+  color: var(--accent);
+}
+
+/* --------------------------------------------------------------------------
+   02 · Botones — un primario por pantalla, maximo
+   -------------------------------------------------------------------------- */
+.f-btn {
+  font-family: var(--font-ui);
+  font-size: var(--fs-15);
+  line-height: var(--lh-1);
+  border-radius: var(--r-btn);
+  border: 1px solid transparent;
+  cursor: pointer;
+  min-height: var(--touch-min);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--gap-card-s);
+  transition: background-color 0.15s, border-color 0.15s;
+}
+
+.f-btn--primario {
+  background: var(--accent);
+  color: var(--on-fragua);
+  font-weight: var(--w-700);
+  padding: 13px 22px;
+}
+.f-btn--primario:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+.f-btn--secundario {
+  background: transparent;
+  color: var(--text-primary);
+  border-color: var(--border-secondary-btn);
+  font-weight: var(--w-600);
+  padding: 12px 22px;
+}
+.f-btn--secundario:hover:not(:disabled) {
+  border-color: var(--carbon-400);
+}
+
+.f-btn--terciario {
+  background: transparent;
+  color: var(--accent);
+  font-weight: var(--w-600);
+  padding: 12px 8px;
+}
+
+/* Destructivo: NUNCA Fragua. Rojo, y siempre a la derecha del par. */
+.f-btn--destructivo {
+  background: var(--zona-roja);
+  color: var(--on-fragua);
+  font-weight: var(--w-700);
+  padding: 13px 22px;
+}
+
+/* Deshabilitado visible, nunca fantasma. */
+.f-btn:disabled,
+.f-btn--deshabilitado {
+  background: var(--bg-elevated);
+  color: var(--text-disabled);
+  border-color: transparent;
+  cursor: default;
+}
+
+.f-btn--bloque {
+  width: 100%;
+}
+
+/* Foco de teclado. NO viene del handoff: los mockups son estaticos y no
+   definen estados de foco. Se anade porque el anillo por defecto del
+   navegador es azul, y en FIERRO no existe el azul. */
+.f-btn:focus-visible,
+.f-tabbar__item:focus-visible,
+.f-fab:focus-visible,
+.f-stepper__btn:focus-visible,
+.f-toast__accion:focus-visible,
+.f-toast__deshacer:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* --------------------------------------------------------------------------
+   03 · Cards — el radio comunica el peso del dato
+   -------------------------------------------------------------------------- */
+.f-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--r-card);
+  padding: var(--pad-card);
+}
+
+.f-card--hero {
+  border-radius: var(--r-hero);
+  border-color: var(--border-card-active);
+  padding: var(--pad-card-l);
+}
+
+.f-card--activa {
+  border-color: var(--border-card-active);
+}
+
+/* Fila de dato: el escalon mas bajo de la jerarquia. */
+.f-fila {
+  background: transparent;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--r-row);
+  padding: 12px 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: var(--fs-13_5);
+}
+
+/* --------------------------------------------------------------------------
+   04 · Stepper numerico — operable con guantes, entre series
+   -------------------------------------------------------------------------- */
+.f-stepper {
+  display: flex;
+  gap: var(--gap-card-s);
+  align-items: stretch;
+}
+
+.f-stepper__btn {
+  width: 52px;
+  height: var(--stepper-h);
+  flex: none;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-card-active);
+  border-radius: var(--r-btn);
+  color: var(--text-primary);
+  font-size: var(--fs-22);
+  font-weight: var(--w-600);
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+.f-stepper__btn:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+.f-stepper__btn:disabled {
+  color: var(--text-disabled);
+  cursor: default;
+}
+
+.f-stepper__valor {
+  flex: 1;
+  background: var(--bg-card);
+  border: 1px solid var(--border-card-active);
+  border-radius: var(--r-btn);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-display);
+  font-stretch: var(--stretch-cifra);
+  font-weight: var(--w-800);
+  font-size: var(--fs-26);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}
+
+/* --------------------------------------------------------------------------
+   05 · Badges y chips — la intensidad escala DENTRO de Fragua,
+        nunca roba los colores de Zonas, que son de progresion
+   -------------------------------------------------------------------------- */
+.f-badge {
+  font-family: var(--font-mono);
+  font-weight: var(--label-weight);
+  font-size: var(--fs-11);
+  line-height: var(--lh-1);
+  letter-spacing: var(--label-tracking-tight);
+  padding: 6px 10px;
+  border-radius: var(--r-chip);
+  border: 1px solid transparent;
+  text-transform: uppercase;
+  display: inline-block;
+}
+
+.f-badge--contorno {
+  border-color: var(--border-secondary-btn);
+  color: var(--text-tertiary);
+}
+
+.f-badge--suave {
+  border-color: var(--border-card-active);
+  color: var(--text-secondary);
+}
+
+.f-badge--moderada {
+  background: var(--heat-q1);
+  color: var(--fragua-300);
+}
+
+.f-badge--intensa,
+.f-badge--pr {
+  background: var(--accent);
+  color: var(--on-fragua);
+  font-weight: var(--label-weight-strong);
+}
+
+/* --------------------------------------------------------------------------
+   06 · Tab bar + FAB
+   -------------------------------------------------------------------------- */
+.f-tabbar {
+  border-top: 1px solid var(--divider-hairline);
+  background: var(--surface-sunken);
+  display: flex;
+  align-items: center;
+  padding: 12px var(--pad-screen) 22px;
+  gap: var(--r-4);
+}
+
+.f-tabbar__item {
+  flex: 1;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  align-items: center;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  min-height: var(--touch-min);
+  justify-content: center;
+}
+
+.f-tabbar__punto {
+  width: var(--r-4);
+  height: var(--r-4);
+  border-radius: var(--r-pill);
+  background: transparent;
+}
+
+.f-tabbar__label {
+  font-family: var(--font-mono);
+  font-weight: var(--label-weight);
+  font-size: var(--fs-9_5);
+  line-height: var(--lh-1);
+  letter-spacing: var(--ls-_08);
+  color: var(--text-disabled);
+  text-transform: uppercase;
+}
+
+.f-tabbar__item[aria-current='page'] .f-tabbar__punto {
+  background: var(--accent);
+}
+.f-tabbar__item[aria-current='page'] .f-tabbar__label {
+  color: var(--accent);
+  font-weight: var(--label-weight-strong);
+}
+
+.f-fab-hueco {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+}
+
+.f-fab {
+  width: var(--fab-size);
+  height: var(--fab-size);
+  border-radius: var(--r-pill);
+  background: var(--accent);
+  color: var(--on-fragua);
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--fs-26);
+  font-weight: var(--w-500);
+  margin-top: -4px;
+  cursor: pointer;
+  font-family: var(--font-ui);
+}
+.f-fab:hover {
+  background: var(--accent-hover);
+}
+
+/* --------------------------------------------------------------------------
+   07 · Bottom sheet + velo
+   -------------------------------------------------------------------------- */
+.f-scrim {
+  position: fixed;
+  inset: 0;
+  background: var(--scrim);
+  z-index: 900;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.f-sheet {
+  width: 100%;
+  max-width: 430px;
+  background: var(--bg-sheet);
+  border-top: 1px solid var(--border-sheet-top);
+  border-radius: var(--r-sheet) var(--r-sheet) 0 0;
+  /* [REF Pantallas] las tres hojas del mockup usan 24px 22px 30px, gap 18px */
+  padding: 24px 22px calc(30px + var(--safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  gap: var(--r-18);
+}
+
+.f-sheet__handle {
+  width: 36px;
+  height: var(--r-4);
+  border-radius: var(--r-2);
+  background: var(--border-secondary-btn);
+  align-self: center;
+  flex: none;
+}
+
+.f-sheet__titulo {
+  font-family: var(--font-display);
+  font-stretch: var(--stretch-display-m);
+  font-weight: var(--w-800);
+  font-size: var(--fs-19);
+  color: var(--text-primary);
+}
+
+.f-sheet__cuerpo {
+  font-size: var(--fs-13);
+  line-height: var(--lh-1_5);
+  color: var(--text-secondary);
+}
+
+.f-sheet__botones {
+  display: flex;
+  gap: var(--gap-card);
+}
+.f-sheet__botones .f-btn {
+  flex: 1;
+  border-radius: var(--r-11);
+  padding: 14px;
+  font-size: var(--fs-14_5);
+}
+
+/* --------------------------------------------------------------------------
+   08 · Toasts — esquina inferior, reemplazan todos los alert()
+   -------------------------------------------------------------------------- */
+.f-toasts {
+  position: fixed;
+  left: var(--pad-screen);
+  right: var(--pad-screen);
+  bottom: calc(var(--pad-screen) + var(--safe-area-inset-bottom));
+  z-index: 950;
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-card-s);
+  pointer-events: none;
+}
+
+.f-toast {
+  background: var(--bg-card);
+  border: 1px solid var(--border-card-active);
+  border-radius: var(--r-row-l);
+  padding: 14px 16px;
+  display: flex;
+  align-items: center;
+  gap: var(--gap-card-l);
+  box-shadow: var(--shadow-toast);
+  pointer-events: auto;
+}
+
+.f-toast__icono {
+  width: var(--fs-22);
+  height: var(--fs-22);
+  border-radius: var(--r-pill);
+  color: var(--on-fragua);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: var(--w-800);
+  font-size: var(--fs-11);
+  flex: none;
+}
+.f-toast__icono--exito {
+  background: var(--zona-verde);
+}
+.f-toast__icono--aviso {
+  background: var(--zona-ambar);
+}
+
+.f-toast__texto {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.f-toast__titulo {
+  font-size: var(--fs-13_5);
+  font-weight: var(--w-600);
+  color: var(--text-primary);
+}
+
+.f-toast__detalle {
+  font-size: var(--fs-11_5);
+  color: var(--text-secondary);
+}
+
+.f-toast__accion {
+  font-family: var(--font-mono);
+  font-weight: var(--label-weight);
+  font-size: var(--fs-10_5);
+  color: var(--text-secondary);
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-transform: uppercase;
+  flex: none;
+}
+
+.f-toast__deshacer {
+  font-family: var(--font-mono);
+  font-weight: var(--label-weight-strong);
+  font-size: var(--fs-11);
+  color: var(--accent);
+  background: none;
+  border: 1px solid var(--fragua-border-tint);
+  border-radius: var(--r-chip);
+  padding: 6px 10px;
+  cursor: pointer;
+  flex: none;
+  font-variant-numeric: tabular-nums;
+}
+
+/* --------------------------------------------------------------------------
+   09 · Estados de sync — viven en Perfil, no en una barra global
+   -------------------------------------------------------------------------- */
+.f-sync {
+  background: var(--bg-app);
+  border: 1px solid var(--frame-border);
+  border-radius: var(--r-row-l);
+  padding: 13px 16px;
+  display: flex;
+  align-items: center;
+  gap: var(--gap-card);
+}
+
+.f-sync__punto {
+  width: var(--r-8);
+  height: var(--r-8);
+  border-radius: var(--r-pill);
+  flex: none;
+}
+.f-sync__punto--ok {
+  background: var(--zona-verde);
+}
+.f-sync__punto--pendiente {
+  background: var(--zona-ambar);
+  animation: fierro-pulse var(--dur-pulse-sync) ease-in-out infinite;
+}
+
+.f-sync__texto {
+  flex: 1;
+  font-size: var(--fs-13);
+  color: var(--text-tertiary);
+}
+
+.f-sync__meta {
+  font-family: var(--font-mono);
+  font-weight: var(--w-500);
+  font-size: var(--fs-10_5);
+  color: var(--text-disabled);
+  text-transform: uppercase;
+}

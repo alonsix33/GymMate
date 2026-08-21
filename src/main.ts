@@ -1,7 +1,17 @@
 import './styles/fonts.css';
 import './styles/tokens.css';
 import './styles/main.css';
+// FIERRO va DESPUES del CSS legacy: durante la migracion tiene que ganar la
+// cascada sin subir especificidad con !important.
+import './styles/fierro.css';
 import { initializeIcons, refreshIcons } from '@/utils/icons';
+import {
+  inicializarFeedback,
+  mostrarToast,
+  mostrarToastDeshacer,
+  confirmarAccion,
+  confirmarDestructivo,
+} from '@/ui/feedback';
 import { initializeNavigation, showHome, switchTab, resumeDraft, dismissDraft } from '@/ui/navigation';
 import { initializeModals, showAnimation, closeAnimationModal, type GuidanceType } from '@/ui/modals';
 import { initializeTimerListeners, openRestTimerModal } from '@/features/timer';
@@ -144,10 +154,20 @@ declare global {
 // ==========================================
 
 function handleDeleteCustomWorkout(workoutId: string): void {
-  if (confirm('¿Eliminar esta rutina personalizada?')) {
-    deleteCustomWorkout(workoutId);
+  // F-01: borrado reversible. La rutina desaparece de la vista al instante y
+  // solo se borra de verdad cuando expira la cuenta atras.
+  const rutina = getCustomWorkouts().find((w) => w.id === workoutId);
+  if (!rutina) return;
+  const restaurar = () => {
+    addCustomWorkout(rutina);
     renderCustomWorkoutsInHome();
-  }
+  };
+  deleteCustomWorkout(workoutId);
+  renderCustomWorkoutsInHome();
+  mostrarToastDeshacer({
+    titulo: `${rutina.nombre} eliminada`,
+    alDeshacer: restaurar,
+  });
 }
 
 window.showHome = showHome;
@@ -198,11 +218,17 @@ window.hideGamificationModal = hideGamificationModal;
 
 // Utility to recalculate all XP from history (for recovery)
 window.recalculateXP = (): void => {
-  if (confirm('¿Recalcular todo el XP desde el historial? Esto puede tomar un momento.')) {
+  void confirmarAccion({
+    titulo: '¿Recalcular el XP?',
+    cuerpo: 'Se reconstruye desde tu historial completo. No se pierde nada; la app se recarga al terminar.',
+    cancelar: 'Ahora no',
+    confirmar: 'Recalcular',
+  }).then((recalcular) => {
+    if (!recalcular) return;
     reinitGamification();
-    alert('XP recalculado correctamente. Recargando página...');
-    window.location.reload();
-  }
+    mostrarToast({ tipo: 'exito', titulo: 'XP recalculado', detalle: 'Recargando…' });
+    window.setTimeout(() => window.location.reload(), 900);
+  });
 };
 
 // ==========================================
@@ -290,8 +316,9 @@ function renderRoutinesInHome(): void {
     card.addEventListener('click', function (this: HTMLElement) {
       const grupo = this.dataset.grupo;
       if (grupo) {
-        loadTrainingGroup(grupo);
-        switchTab('workout');
+        // Esperar: loadTrainingGroup puede abrir una confirmacion. Sin el await
+        // la app cambiaba de pestana antes de que la persona respondiera.
+        void loadTrainingGroup(grupo).then(() => switchTab('workout'));
       }
     });
   });
@@ -359,8 +386,7 @@ function renderCustomWorkoutsInHome(): void {
     card.addEventListener('click', function (this: HTMLElement) {
       const workoutId = this.dataset.customWorkout;
       if (workoutId) {
-        loadTrainingGroup(workoutId);
-        switchTab('workout');
+        void loadTrainingGroup(workoutId).then(() => switchTab('workout'));
       }
     });
   });
@@ -631,7 +657,11 @@ function saveCustomWorkout(): void {
   const name = nameInput?.value.trim() || nameInput?.placeholder || 'Mi Rutina';
 
   if (workoutBuilderState.selectedExercises.length === 0) {
-    alert('Selecciona al menos un ejercicio');
+    mostrarToast({
+      tipo: 'aviso',
+      titulo: 'La rutina está vacía',
+      detalle: 'Elige al menos un ejercicio para guardarla.',
+    });
     return;
   }
 
@@ -710,7 +740,11 @@ function addCustomExercise(): void {
   // Check if exercise already exists
   const existingExercises = getCustomExercises();
   if (existingExercises.some(e => e.nombre.toLowerCase() === name.toLowerCase())) {
-    alert('Ya existe un ejercicio con ese nombre');
+    mostrarToast({
+      tipo: 'aviso',
+      titulo: `Ya tienes un ejercicio llamado "${name}"`,
+      detalle: 'Usa otro nombre para distinguirlos en el historial.',
+    });
     return;
   }
 
@@ -741,8 +775,14 @@ function addCustomExercise(): void {
   refreshIcons();
 }
 
-function removeCustomExercise(exerciseId: string, exerciseName: string): void {
-  if (confirm(`¿Eliminar "${exerciseName}" de tus ejercicios personalizados?`)) {
+async function removeCustomExercise(exerciseId: string, exerciseName: string): Promise<void> {
+  const eliminar = await confirmarDestructivo({
+    titulo: `¿Eliminar "${exerciseName}"?`,
+    cuerpo: 'Sale de tus ejercicios personalizados. Las sesiones ya guardadas con él no cambian.',
+    cancelar: 'Conservar',
+    confirmar: 'Eliminar',
+  });
+  if (eliminar) {
     deleteCustomExercise(exerciseId);
 
     // Also remove from selection if selected
@@ -885,6 +925,10 @@ function initializeEventDelegation(): void {
 // ==========================================
 
 function init(): void {
+  // FIERRO: toasts y confirmaciones. Va primero para que cualquier fallo
+  // posterior tenga como reportarse sin recurrir a alert().
+  inicializarFeedback();
+
   // Inicializar iconos Lucide
   initializeIcons();
 
@@ -916,7 +960,7 @@ function init(): void {
   loadPRs();
 
   // Mostrar home por defecto
-  showHome();
+  void showHome();
 
   // Ocultar bottom nav cuando el teclado virtual está activo
   initializeKeyboardHandler();

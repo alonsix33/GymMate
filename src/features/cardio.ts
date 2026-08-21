@@ -1,3 +1,4 @@
+import { confirmarDestructivo } from '@/ui/feedback';
 import type { CardioMode, CardioConfig, CardioSessionStats } from '@/types';
 import { cardioState, resetCardioState } from '@/state/session';
 import { getCardioExerciseNames } from '@/data/cardio-exercises';
@@ -886,10 +887,14 @@ export function toggleCardioPause(): void {
   renderTimerView();
 }
 
-export function stopCardioWorkout(): void {
-  if (confirm('¿Seguro que quieres terminar el entrenamiento?')) {
-    finishCardioWorkout();
-  }
+export async function stopCardioWorkout(): Promise<void> {
+  const terminar = await confirmarDestructivo({
+    titulo: '¿Terminar el cardio?',
+    cuerpo: 'La sesión se cierra donde está y se guarda con el tiempo hecho hasta ahora.',
+    cancelar: 'Seguir',
+    confirmar: 'Terminar',
+  });
+  if (terminar) finishCardioWorkout();
 }
 
 // ==========================================

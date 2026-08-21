@@ -1,3 +1,4 @@
+import { confirmarDestructivo, mostrarToast } from '@/ui/feedback';
 import { getHistory, deleteFromHistory, getPRs, saveHistory, updatePR } from '@/utils/storage';
 import { renderHistoryItem, renderPRItem, refreshIcons } from '@/ui/components';
 import { icon } from '@/utils/icons';
@@ -38,11 +39,21 @@ export function loadHistory(): void {
 // ELIMINAR DEL HISTORIAL
 // ==========================================
 
-export function deleteHistoryItem(index: number): void {
-  if (confirm('¿Eliminar este entrenamiento del historial?')) {
-    deleteFromHistory(index);
-    loadHistory();
-  }
+export async function deleteHistoryItem(index: number): Promise<void> {
+  const sesion = getHistory()[index];
+  const detalle = sesion
+    ? `${sesion.grupo ?? 'Sesión'} · ${Math.round(sesion.volumenTotal ?? 0).toLocaleString('es')} kg.`
+    : '';
+  const eliminar = await confirmarDestructivo({
+    titulo: '¿Eliminar este entrenamiento?',
+    cuerpo: `${detalle} Sale del historial y deja de contar para tus récords.`,
+    cancelar: 'Conservar',
+    confirmar: 'Eliminar',
+  });
+  if (!eliminar) return;
+  deleteFromHistory(index);
+  loadHistory();
+  mostrarToast({ tipo: 'exito', titulo: 'Entrenamiento eliminado' });
 }
 
 // ==========================================
@@ -100,7 +111,11 @@ export function exportToCSV(): void {
   const history = getHistory();
 
   if (history.length === 0) {
-    alert('No hay datos para exportar');
+    mostrarToast({
+      tipo: 'aviso',
+      titulo: 'Todavía no hay sesiones que exportar',
+      detalle: 'Guarda un entrenamiento y el CSV se genera solo.',
+    });
     return;
   }
 
@@ -203,7 +218,11 @@ export function exportToCSV(): void {
   }
 
   if (rows.length === 0) {
-    alert('No hay datos para exportar');
+    mostrarToast({
+      tipo: 'aviso',
+      titulo: 'Todavía no hay sesiones que exportar',
+      detalle: 'Guarda un entrenamiento y el CSV se genera solo.',
+    });
     return;
   }
 
@@ -468,19 +487,25 @@ export function triggerCSVImport(): void {
     try {
       const result = await importFromCSV(file);
 
-      let message = `¡Importación completada!\n\n`;
-      message += `✅ ${result.imported} entrenamiento(s) importado(s)`;
-      if (result.duplicates > 0) {
-        message += `\n⚠️ ${result.duplicates} duplicado(s) omitido(s)`;
-      }
-
-      alert(message);
+      mostrarToast({
+        tipo: result.duplicates > 0 ? 'aviso' : 'exito',
+        titulo: `CSV importado: ${result.imported} ${result.imported === 1 ? 'sesión' : 'sesiones'}`,
+        detalle:
+          result.duplicates > 0
+            ? `${result.duplicates} ${result.duplicates === 1 ? 'duplicada omitida' : 'duplicadas omitidas'}`
+            : undefined,
+      });
 
       // Recargar historial si estamos en esa pestaña
       loadHistory();
       loadPRs();
     } catch (error) {
-      alert('Error: ' + (error as Error).message);
+      mostrarToast({
+        tipo: 'aviso',
+        titulo: 'El CSV no se pudo leer',
+        detalle: (error as Error).message,
+        duracion: 8000,
+      });
     }
   };
 

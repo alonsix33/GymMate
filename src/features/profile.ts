@@ -1,3 +1,4 @@
+import { confirmarDestructivo, mostrarToast } from '@/ui/feedback';
 import { getProfile, saveProfile as saveProfileData, getLatestMeasurement, addBodyMeasurement, getBodyMeasurements, deleteMeasurement } from '@/utils/storage';
 import type { ProfileData, BodyMeasurement } from '@/types';
 import { refreshIcons } from '@/utils/icons';
@@ -457,10 +458,16 @@ export function closeMeasurementsHistoryModal(): void {
   }
 }
 
-export function deleteMeasurementEntry(date: string): void {
-  if (confirm('¿Eliminar esta medición?')) {
-    deleteMeasurement(date);
-    showMeasurementsHistory(); // Refresh the list
-    updateMeasurementPreview(); // Update preview
-  }
+export async function deleteMeasurementEntry(date: string): Promise<void> {
+  const eliminar = await confirmarDestructivo({
+    titulo: '¿Eliminar esta medición?',
+    cuerpo: `La medición del ${date} sale del historial y deja de contar para la tendencia.`,
+    cancelar: 'Conservar',
+    confirmar: 'Eliminar',
+  });
+  if (!eliminar) return;
+  deleteMeasurement(date);
+  showMeasurementsHistory(); // Refresh the list
+  updateMeasurementPreview(); // Update preview
+  mostrarToast({ tipo: 'exito', titulo: 'Medición eliminada' });
 }

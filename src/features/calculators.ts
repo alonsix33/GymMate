@@ -1,3 +1,4 @@
+import { mostrarToast } from '@/ui/feedback';
 import { getHistory, getProfile } from '@/utils/storage';
 import {
   calculate1RM,
@@ -178,7 +179,11 @@ function handleCaloriesCalculation(): void {
   );
 
   if (!age || !weight || !height) {
-    alert('Por favor completa todos los campos');
+    mostrarToast({
+      tipo: 'aviso',
+      titulo: 'Faltan datos',
+      detalle: 'Edad, peso y estatura son necesarios para el cálculo.',
+    });
     return;
   }
 

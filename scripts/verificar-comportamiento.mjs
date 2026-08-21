@@ -85,16 +85,30 @@ function historialDePrueba(dias = [1, 3, 5, 8, 12]) {
   const hoy = new Date();
   return dias.map((atras, i) => {
     const d = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate() - atras, 19, 30);
+    const peso = 120 - i * 5;
+    const volumen = 4 * 12 * peso;
     return {
       id: `s${i}`,
+      sessionId: `s${i}`,
       date: d.toISOString(),
       savedAt: d.toISOString(),
+      startedAt: new Date(d.getTime() - 3160000).toISOString(),
       grupo: 'GRUPO 1 - Piernas + Glúteos',
-      volumenTotal: 3000 + i * 800,
+      volumenTotal: volumen,
+      rpe: { value: 8, label: 'Muy difícil' },
       ejercicios: [
-        { nombre: 'Prensa de Piernas', sets: 4, reps: 12, peso: 100 + i * 5, volumen: 3000 + i * 800 },
+        {
+          nombre: 'Prensa de Piernas',
+          esMancuerna: false,
+          grupoMuscular: 'Piernas',
+          sets: 4,
+          reps: 12,
+          peso,
+          volumen,
+          completado: true,
+        },
       ],
-      volumenPorGrupo: { piernas: 3000 + i * 800 },
+      volumenPorGrupo: { Piernas: volumen * 0.7, 'Glúteos': volumen * 0.3 },
     };
   });
 }
@@ -506,8 +520,8 @@ const borradorDePrueba = {
 {
   const { ctx, pagina } = await abrir({ gymmate_history: historialDePrueba() });
   for (const [destino, camino] of [
-    ['prs', ['[data-nav="history"]', '[data-action="prs"]']],
-    ['charts', ['[data-nav="history"]', '[data-action="charts"]']],
+    ['prs', ['[data-nav="profile"]', '[data-action="prs"]']],
+    ['charts', ['[data-nav="profile"]', '[data-action="charts"]']],
     ['calculators', ['[data-nav="profile"]', '[data-action="calculators"]']],
   ]) {
     let visible = false;
@@ -848,6 +862,179 @@ const borradorDePrueba = {
       antes !== r.despues,
       antes === r.despues ? 'texto identico: la home no se entero' : 'cambio'
     );
+  }
+  await ctx.close();
+}
+
+// --------------------------------------------------------------------------
+// 20. HI-01 → HI-02 → volver, y las cifras del detalle.
+// --------------------------------------------------------------------------
+{
+  const { ctx, pagina } = await abrir({
+    gymmate_history: historialDePrueba([1, 4, 8, 40, 70]),
+    gymmate_prs: { 'Prensa de Piernas': { peso: 150, sets: 4, reps: 12, volumen: 7200, date: new Date().toISOString() } },
+  });
+  await pagina.locator('[data-nav="history"]').click();
+  await pagina.waitForTimeout(400);
+  const lista = await pagina.evaluate(() => ({
+    filas: document.querySelectorAll('.f-hist__fila').length,
+    meses: [...document.querySelectorAll('.f-hueso__mes')].map((e) => e.textContent),
+  }));
+  chk('HI-01 lista las cinco sesiones', lista.filas === 5, String(lista.filas));
+  chk('HI-01 agrupa por mes', lista.meses.length >= 2, lista.meses.join(' / '));
+  chk(
+    'el contador del mes cuadra con las filas que lo siguen',
+    lista.meses.reduce((t, m) => t + Number(/· (\d+)/.exec(m)?.[1] ?? 0), 0) === lista.filas,
+    lista.meses.join(' / ')
+  );
+
+  await pagina.locator('.f-hist__fila').first().click();
+  await pagina.waitForTimeout(400);
+  const detalle = await pagina.evaluate(() => ({
+    hay: !!document.querySelector('[data-hueso="volver-lista"]'),
+    sub: document.querySelector('#fierroHistorial .f-sesion__sub')?.textContent ?? '',
+    metricas: [...document.querySelectorAll('.f-metrica-hueso')].map((e) => e.innerText.replace(/\n/g, '=')),
+    sets: document.querySelectorAll('.f-set').length,
+  }));
+  chk('tocar una sesion abre HI-02', detalle.hay);
+  chk('HI-02 lleva el prefijo del grupo al subtitulo, no al titular',
+    detalle.sub.includes('GRUPO 1'), detalle.sub);
+  chk('el subtitulo de HI-02 trae fecha, duracion y RPE',
+    /·.*·.*RPE/.test(detalle.sub), detalle.sub);
+  chk('HI-02 pinta un set por serie registrada', detalle.sets === 4, String(detalle.sets));
+  chk('HI-02 enseña volumen y sets', detalle.metricas.some((m) => m.startsWith('VOLUMEN')) &&
+    detalle.metricas.some((m) => m.startsWith('SETS')), detalle.metricas.join(' | '));
+
+  await pagina.locator('[data-hueso="volver-lista"]').click();
+  await pagina.waitForTimeout(350);
+  const vuelta = await pagina.evaluate(() => document.querySelectorAll('.f-hist__fila').length);
+  chk('volver devuelve a la lista', vuelta === 5, String(vuelta));
+  await ctx.close();
+}
+
+// --------------------------------------------------------------------------
+// 21. PR-01: la etiqueta y el marcador cuentan la MISMA historia. Con el pico
+//     del record (150) y el actual del historial (120) decia "EN TU PICO" con
+//     el marcador al 80%.
+// --------------------------------------------------------------------------
+{
+  const { ctx, pagina } = await abrir({
+    gymmate_history: historialDePrueba([1, 4, 8]),
+    gymmate_prs: { 'Prensa de Piernas': { peso: 150, sets: 4, reps: 12, volumen: 7200, date: new Date().toISOString() } },
+  });
+  await pagina.locator('[data-nav="profile"]').click();
+  await pagina.waitForTimeout(300);
+  await pagina.locator('[data-action="prs"]').click();
+  await pagina.waitForTimeout(600);
+  const r = await pagina.evaluate(() => {
+    const marcador = document.querySelector('.f-zonas__marcador');
+    const pista = document.querySelector('.f-zonas__pista');
+    const pie = document.querySelector('#fierroRecords .f-zonas__pie');
+    if (!marcador || !pista) return { sinBarra: true };
+    const m = marcador.getBoundingClientRect();
+    const p = pista.getBoundingClientRect();
+    return {
+      estado: pie?.firstElementChild?.textContent ?? '',
+      pico: pie?.lastElementChild?.textContent ?? '',
+      left: marcador.style.left,
+      dentro: m.left >= p.left - 1 && m.right <= p.right + 1,
+      color: getComputedStyle(marcador).backgroundColor,
+    };
+  });
+  if (r.sinBarra) {
+    chk('PR-01 dibuja la barra de zonas', false);
+  } else {
+    chk('el marcador se queda dentro de la pista', r.dentro, `left ${r.left}`);
+    chk('el marcador es #16181C sobre Hueso', r.color === 'rgb(22, 24, 28)', r.color);
+    chk('con el actual por debajo del pico NO dice "EN TU PICO"',
+      !r.estado.includes('EN TU PICO'), `${r.estado} · ${r.pico}`);
+    chk('el pico del pie es el del record, no el del historial',
+      r.pico.includes('150'), r.pico);
+  }
+  await ctx.close();
+}
+
+// --------------------------------------------------------------------------
+// 22. G-01: el toggle cambia el grafico, y el rotulo no puede mentir sobre
+//     lo que agrupa.
+// --------------------------------------------------------------------------
+{
+  const { ctx, pagina } = await abrir({ gymmate_history: historialDePrueba([1, 4, 8, 40, 70, 100]) });
+  await pagina.locator('[data-nav="profile"]').click();
+  await pagina.waitForTimeout(300);
+  await pagina.locator('[data-action="charts"]').click();
+  await pagina.waitForTimeout(600);
+  const leer = () =>
+    pagina.evaluate(() => ({
+      activos: [...document.querySelectorAll('.f-segmentado__item[aria-pressed="true"]')].map((e) => e.textContent),
+      label: document.querySelector('.f-graf__label')?.textContent ?? '',
+      puntos: (document.querySelector('.f-graf__linea')?.getAttribute('points') ?? '').split(' ').filter(Boolean).length,
+      canvas: document.querySelectorAll('canvas').length,
+    }));
+  const mes = await leer();
+  chk('G-01 no usa <canvas>: los graficos son SVG a mano', mes.canvas === 0, String(mes.canvas));
+  chk('solo hay UN rango activo', mes.activos.length === 1, mes.activos.join(','));
+  chk('el rotulo dice por MES cuando se agrupa por mes',
+    mes.label.includes('MES'), mes.label);
+
+  await pagina.locator('[data-hueso="rango"][data-rango="dia"]').click();
+  await pagina.waitForTimeout(400);
+  const dia = await leer();
+  chk('cambiar el rango cambia el activo', dia.activos.join(',') === 'Día', dia.activos.join(','));
+  chk('el rotulo dice por SESIÓN cuando cada punto es una sesion',
+    dia.label.includes('SESIÓN'), dia.label);
+  chk('por dia hay mas puntos que por mes', dia.puntos > mes.puntos, `${dia.puntos} vs ${mes.puntos}`);
+  await ctx.close();
+}
+
+// --------------------------------------------------------------------------
+// 22b. El fondo Hueso solo se enciende en las pantallas Hueso. Con el
+//      selector puesto sobre .f-hueso en vez de sobre el tab, los tres tabs
+//      existen siempre en el DOM y la home salia con fondo claro.
+// --------------------------------------------------------------------------
+{
+  const { ctx, pagina } = await abrir({ gymmate_history: historialDePrueba() });
+  const fondo = () => pagina.evaluate(() => getComputedStyle(document.body).backgroundColor);
+  const enHome = await fondo();
+  await pagina.locator('[data-nav="history"]').click();
+  await pagina.waitForTimeout(350);
+  const enHistorial = await fondo();
+  await pagina.locator('[data-nav="home"]').click();
+  await pagina.waitForTimeout(350);
+  const deVuelta = await fondo();
+  chk('la home tiene fondo Carbon', enHome === 'rgb(8, 9, 11)', enHome);
+  chk('el historial tiene fondo Hueso', enHistorial === 'rgb(246, 245, 242)', enHistorial);
+  chk('volver a la home devuelve el fondo Carbon', deVuelta === 'rgb(8, 9, 11)', deVuelta);
+  await ctx.close();
+}
+
+// --------------------------------------------------------------------------
+// 23. Vacíos de las secciones Hueso: nunca "No hay datos", siempre con accion.
+// --------------------------------------------------------------------------
+{
+  const { ctx, pagina } = await abrir();
+  for (const [nombre, camino] of [
+    ['historial', ['[data-nav="history"]']],
+    ['récords', ['[data-nav="profile"]', '[data-action="prs"]']],
+    ['gráficos', ['[data-nav="profile"]', '[data-action="charts"]']],
+  ]) {
+    for (const paso of camino) {
+      await pagina.locator(paso).first().click();
+      await pagina.waitForTimeout(300);
+    }
+    const r = await pagina.evaluate(() => {
+      const vacio = [...document.querySelectorAll('.f-vacio-hueso')].find(
+        (el) => el.getBoundingClientRect().width > 0
+      );
+      return {
+        hay: !!vacio,
+        texto: vacio?.innerText ?? '',
+        acciones: vacio ? vacio.querySelectorAll('button').length : 0,
+      };
+    });
+    chk(`el vacío de ${nombre} existe`, r.hay, r.texto.slice(0, 60));
+    chk(`el vacío de ${nombre} ofrece una accion concreta`, r.acciones > 0, String(r.acciones));
+    chk(`el vacío de ${nombre} no dice "No hay datos"`, !/no hay datos/i.test(r.texto), r.texto.slice(0, 60));
   }
   await ctx.close();
 }

@@ -1,8 +1,7 @@
 import { cifra } from '@/utils/formato';
 import { confirmarDestructivo, mostrarToast } from '@/ui/feedback';
 import { getHistory, deleteFromHistory, getPRs, saveHistory, updatePR } from '@/utils/storage';
-import { renderHistoryItem, renderPRItem, refreshIcons } from '@/ui/components';
-import { icon } from '@/utils/icons';
+import { renderHistorial, renderRecords, abrirDetalle, animarZonas } from '@/ui/hueso';
 import { normalizeExerciseName } from '@/utils/exercise-normalizer';
 
 // ==========================================
@@ -10,30 +9,45 @@ import { normalizeExerciseName } from '@/utils/exercise-normalizer';
 // ==========================================
 
 export function loadHistory(): void {
-  const history = getHistory();
-  const historyList = document.getElementById('historyList');
-
-  if (!historyList) return;
-
-  if (history.length === 0) {
-    historyList.innerHTML = `
-      <div class="text-center py-8">
-        ${icon('history', 'xl', 'text-text-muted mb-3 mx-auto')}
-        <p class="text-text-secondary">No hay entrenamientos guardados aún</p>
-        <p class="text-text-muted text-sm mt-1">Completa tu primer entrenamiento para verlo aquí</p>
-      </div>
-    `;
-    refreshIcons();
-    return;
+  const contenedor = document.getElementById('fierroHistorial');
+  if (!contenedor) return;
+  renderHistorial(contenedor);
+  if (contenedor.dataset.enganchado !== 'si') {
+    // Delegacion: un solo listener que sobrevive a cada repintado.
+    contenedor.addEventListener('click', alTocarHistorial);
+    contenedor.dataset.enganchado = 'si';
   }
+}
 
-  let html = '';
-  history.forEach((session, index) => {
-    html += renderHistoryItem(session, index);
-  });
-
-  historyList.innerHTML = html;
-  refreshIcons();
+function alTocarHistorial(evento: Event): void {
+  const objetivo = (evento.target as HTMLElement)?.closest<HTMLElement>('[data-hueso]');
+  if (!objetivo) return;
+  const indice = Number(objetivo.dataset.indice);
+  switch (objetivo.dataset.hueso) {
+    case 'detalle':
+      abrirDetalle(indice);
+      loadHistory();
+      break;
+    case 'volver-lista':
+      abrirDetalle(null);
+      loadHistory();
+      break;
+    case 'borrar':
+      void deleteHistoryItem(indice).then(() => {
+        abrirDetalle(null);
+        loadHistory();
+      });
+      break;
+    case 'exportar':
+      exportToCSV();
+      break;
+    case 'importar':
+      triggerCSVImport();
+      break;
+    case 'primera':
+      void import('@/ui/navigation').then(({ showHome }) => showHome());
+      break;
+  }
 }
 
 // ==========================================
@@ -69,37 +83,17 @@ export async function deleteHistoryItem(index: number): Promise<void> {
 // ==========================================
 
 export function loadPRs(): void {
-  const prs = getPRs();
-  const prsList = document.getElementById('prsList');
-
-  if (!prsList) return;
-
-  const prEntries = Object.entries(prs);
-
-  if (prEntries.length === 0) {
-    prsList.innerHTML = `
-      <div class="text-center py-8">
-        ${icon('trophy', 'xl', 'text-text-muted mb-3 mx-auto')}
-        <p class="text-text-secondary">Registra tus primeros entrenamientos para ver tus PRs</p>
-        <p class="text-text-muted text-sm mt-1">Los récords personales se guardan automáticamente</p>
-      </div>
-    `;
-    refreshIcons();
-    return;
+  const contenedor = document.getElementById('fierroRecords');
+  if (!contenedor) return;
+  renderRecords(contenedor);
+  animarZonas(contenedor);
+  if (contenedor.dataset.enganchado !== 'si') {
+    contenedor.addEventListener('click', (e) => {
+      const objetivo = (e.target as HTMLElement)?.closest<HTMLElement>('[data-hueso="primera"]');
+      if (objetivo) void import('@/ui/navigation').then(({ showHome }) => showHome());
+    });
+    contenedor.dataset.enganchado = 'si';
   }
-
-  // Ordenar por fecha (más reciente primero)
-  prEntries.sort((a, b) => {
-    return new Date(b[1].date).getTime() - new Date(a[1].date).getTime();
-  });
-
-  let html = '';
-  prEntries.forEach(([nombre, data]) => {
-    html += renderPRItem(nombre, data);
-  });
-
-  prsList.innerHTML = html;
-  refreshIcons();
 }
 
 // ==========================================

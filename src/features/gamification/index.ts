@@ -24,6 +24,7 @@ import {
   updateAchievementsInState,
   updateStreakData,
   claimStreakMilestone,
+  getXPHistory,
 } from './state';
 
 import {
@@ -294,6 +295,20 @@ export function getStreakInfo(): {
     lastWorkout: data.lastWorkoutDate,
   };
 }
+
+/**
+ * XP que gano una sesion concreta. HI-02 lo enseña; se suma de las
+ * transacciones que llevan su sessionId. Devuelve null si esa sesion no dejo
+ * ninguna (historial anterior a la gamificacion, o importada de CSV): antes
+ * que enseñar "+0 XP", no se enseña la metrica.
+ */
+export function getSessionXP(sessionId: string | undefined): number | null {
+  if (!sessionId) return null;
+  const transacciones = getXPHistory(getState()).filter((t) => t.sessionId === sessionId);
+  if (transacciones.length === 0) return null;
+  return transacciones.reduce((total, t) => total + t.amount, 0);
+}
+
 
 // ==========================================
 // SESSION PROCESSING

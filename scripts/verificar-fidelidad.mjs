@@ -752,6 +752,212 @@ console.log('\n--- W-01 en su pagina real ---');
   chk('la metrica de volumen total cuadra', m.metrica === '5,760 kg', String(m.metrica));
 }
 
+// --------------------------------------------------------------------------
+// Secciones Hueso — HI-01, HI-02, PR-01, G-01.
+// --------------------------------------------------------------------------
+const hi01 = bloquePantalla('HI-01 Historial');
+const pr01 = bloquePantalla('PR-01 PRs');
+const g01 = bloquePantalla('G-01 Gráficos');
+
+console.log('\n--- Hueso · componentes ---');
+
+{
+  // El header oscuro que hace la transicion Carbon -> Hueso.
+  const declHeader = [...hi01.matchAll(/style="([^"]*)"/g)]
+    .map((m) => m[1])
+    .find((d) => d.includes('background:#0B0C0F') && d.includes('padding:14px 22px 18px'));
+  if (declHeader) {
+    const esperado = Object.fromEntries(
+      declHeader.split(';').filter(Boolean).map((d) => {
+        const c = d.indexOf(':');
+        return [d.slice(0, c).trim(), d.slice(c + 1).trim()];
+      })
+    );
+    comparar(
+      'header Hueso',
+      esperado,
+      await computar('<header class="f-hueso__header"></header>', '.f-hueso__header', [
+        'background-color', 'color', 'padding', 'gap',
+      ]),
+      { background: 'background-color', color: 'color', padding: 'padding', gap: 'gap' }
+    );
+  } else {
+    chk('header Hueso · se localiza en el mockup', false);
+  }
+}
+
+await compararCaja(
+  'fila de sesion (HI-01)',
+  fragmentoDe(hi01, (f) => estiloAbertura(f).includes('padding:14px 16px') && f.includes('{{ h.v }}')),
+  `<button class="f-hist__fila"><span class="f-hist__textos">
+     <span class="f-hist__nombre">Piernas + Glúteos</span>
+     <span class="f-hist__sub">vie, 17 abr · 6 ejercicios</span></span>
+     <span class="f-hist__cifra">8,325</span></button>`,
+  '.f-hist__fila',
+  { contenedor: 'width:354px' }
+);
+
+await compararCaja(
+  'card de record (PR-01)',
+  fragmentoDe(pr01, (f) => estiloAbertura(f).includes('border-radius:12px;padding:16px') && f.includes('{{ p.kg }}')),
+  `<article class="f-hueso__card">
+     <div class="f-pr__cabecera"><div class="f-pr__identidad"><div class="f-pr__nombre">Prensa de Piernas</div>
+     <div class="f-pr__detalle">4×12 · 120 kg</div></div>
+     <span class="f-pr__cifra">164.9 <span class="f-pr__unidad">kg</span></span></div>
+     <div class="f-zonas"><div class="f-zonas__pista">
+       <div class="f-zonas__roja"></div><div class="f-zonas__ambar"></div><div class="f-zonas__verde"></div>
+       <div class="f-zonas__marcador"></div></div>
+       <div class="f-zonas__pie"><span>EN TU PICO</span><span>PICO 150 KG</span></div></div>
+   </article>`,
+  '.f-hueso__card',
+  { contenedor: 'width:354px' }
+);
+
+{
+  // Los tres segmentos de la barra de zonas, uno a uno.
+  const pista = fragmentoDe(pr01, (f) => estiloAbertura(f).includes('position:relative;height:10px;display:flex;gap:2px'));
+  if (!pista) chk('barra de zonas · se localiza en el mockup', false);
+  const declSegmentos = [...(pista ?? '').matchAll(/style="([^"]*)"/g)].map((m) => m[1]).slice(1);
+  const clases = ['f-zonas__roja', 'f-zonas__ambar', 'f-zonas__verde', 'f-zonas__marcador'];
+  for (let i = 0; i < clases.length && i < declSegmentos.length; i++) {
+    const esperado = Object.fromEntries(
+      declSegmentos[i].split(';').filter(Boolean).map((d) => {
+        const c = d.indexOf(':');
+        return [d.slice(0, c).trim(), d.slice(c + 1).trim()];
+      })
+    );
+    const mapa = {};
+    if (esperado.background) mapa.background = 'background-color';
+    if (esperado['border-radius']) mapa['border-radius'] = 'border-radius';
+    if (esperado.width) mapa.width = 'width';
+    comparar(
+      `zona ${clases[i]}`,
+      esperado,
+      await computar(
+        `<div style="width:300px"><div class="f-zonas__pista"><div class="f-zonas__roja"></div><div class="f-zonas__ambar"></div><div class="f-zonas__verde"></div><div class="f-zonas__marcador"></div></div></div>`,
+        `.${clases[i]}`,
+        ['background-color', 'border-radius', 'width', 'border-bottom-color', 'border-bottom-width']
+      ),
+      // El ancho se compara solo donde el mockup lo declara en %.
+      Object.fromEntries(Object.entries(mapa).filter(([k]) => k !== 'width' || esperado.width.endsWith('%') === false))
+    );
+    if (esperado['border-bottom']) {
+      const [ancho, , color] = esperado['border-bottom'].split(' ');
+      comparar(
+        `zona ${clases[i]} · borde`,
+        { ancho, color },
+        await computar(
+          `<div class="f-zonas__pista"><div class="f-zonas__roja"></div><div class="f-zonas__ambar"></div><div class="f-zonas__verde"></div></div>`,
+          `.${clases[i]}`,
+          ['border-bottom-width', 'border-bottom-color']
+        ),
+        { ancho: 'border-bottom-width', color: 'border-bottom-color' }
+      );
+    }
+  }
+}
+
+{
+  const declSeg = [...g01.matchAll(/style="([^"]*)"/g)]
+    .map((m) => m[1])
+    .find((d) => d.includes('background:#E7E5DF'));
+  if (declSeg) {
+    const esperado = Object.fromEntries(
+      declSeg.split(';').filter(Boolean).map((d) => {
+        const c = d.indexOf(':');
+        return [d.slice(0, c).trim(), d.slice(c + 1).trim()];
+      })
+    );
+    comparar(
+      'control segmentado',
+      esperado,
+      await computar('<div class="f-segmentado"></div>', '.f-segmentado', [
+        'background-color', 'border-radius', 'padding', 'gap',
+      ]),
+      { background: 'background-color', 'border-radius': 'border-radius', padding: 'padding', gap: 'gap' }
+    );
+  } else {
+    chk('control segmentado · se localiza en el mockup', false);
+  }
+}
+
+// --------------------------------------------------------------------------
+// Las pantallas Hueso en su pagina real.
+// --------------------------------------------------------------------------
+console.log('\n--- Hueso en su pagina real ---');
+{
+  const anchoPantalla = 390;
+  const paginaH = await navegador.newPage({ viewport: { width: anchoPantalla, height: 900 } });
+  await paginaH.addInitScript(() => {
+    const hoy = new Date();
+    const mk = (atras, vol, peso) => {
+      const d = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate() - atras, 19, 30);
+      return {
+        sessionId: 's' + atras, date: d.toISOString(), savedAt: d.toISOString(),
+        startedAt: new Date(d.getTime() - 3160000).toISOString(),
+        grupo: 'GRUPO 1 - Piernas + Glúteos', volumenTotal: vol,
+        rpe: { value: 8, label: 'Muy difícil' },
+        ejercicios: [{ nombre: 'Prensa de Piernas', esMancuerna: false, grupoMuscular: 'Piernas', sets: 4, reps: 12, peso, volumen: vol, completado: true }],
+        volumenPorGrupo: { Piernas: vol * 0.7, 'Glúteos': vol * 0.3 },
+      };
+    };
+    localStorage.setItem('gymmate_history', JSON.stringify([mk(1, 8325, 120), mk(4, 7700, 115), mk(8, 7000, 110), mk(40, 6000, 100), mk(70, 5000, 90)]));
+    localStorage.setItem('gymmate_prs', JSON.stringify({ 'Prensa de Piernas': { peso: 150, sets: 4, reps: 12, volumen: 7200, date: new Date().toISOString() } }));
+  });
+  await paginaH.goto(URL_APP, { waitUntil: 'networkidle', timeout: 60000 });
+  await paginaH.waitForTimeout(1000);
+
+  const medir = async () =>
+    paginaH.evaluate(() => {
+      // La pantalla VISIBLE: los tres tabs Hueso existen a la vez en el DOM y
+      // querySelector devolvia siempre el primero, oculto y de ancho 0.
+      const visible = [...document.querySelectorAll('.f-hueso')].find(
+        (el) => el.getBoundingClientRect().width > 0
+      );
+      const card = visible?.querySelector('.f-hist__fila, .f-hueso__card, .f-graf, .f-vacio-hueso');
+      const cuerpo = visible?.querySelector('.f-hueso__cuerpo');
+      return {
+        fondo: visible ? getComputedStyle(visible).backgroundColor : null,
+        fondoBody: getComputedStyle(document.body).backgroundColor,
+        card: card ? +card.getBoundingClientRect().width.toFixed(2) : null,
+        cardIzq: card ? +card.getBoundingClientRect().left.toFixed(2) : null,
+        cuerpoPad: cuerpo ? getComputedStyle(cuerpo).padding : null,
+        desbordaX: document.documentElement.scrollWidth > window.innerWidth,
+      };
+    });
+
+  for (const [nombre, camino] of [
+    ['HI-01', ['[data-nav="history"]']],
+    ['PR-01', ['[data-nav="profile"]', '[data-action="prs"]']],
+    ['G-01', ['[data-nav="profile"]', '[data-action="charts"]']],
+  ]) {
+    for (const paso of camino) {
+      await paginaH.locator(paso).first().click();
+      await paginaH.waitForTimeout(350);
+    }
+    const m = await medir();
+    // 390 de pantalla con UN solo padding de 18 -> card de 354.
+    chk(`${nombre} · la card ocupa el ancho del mockup`, Math.abs((m.card ?? 0) - 354) < 0.5,
+      `real ${m.card} | mockup 354`);
+    chk(`${nombre} · el margen izquierdo es el del mockup`, Math.abs((m.cardIzq ?? 0) - 18) < 0.5,
+      `${m.cardIzq}px | mockup 18`);
+    chk(`${nombre} · el cuerpo lleva el padding del mockup`, m.cuerpoPad === '18px 18px 26px', String(m.cuerpoPad));
+    chk(`${nombre} · el fondo es Hueso`, m.fondo === 'rgb(246, 245, 242)', String(m.fondo));
+    chk(`${nombre} · el fondo de la pagina tambien`, m.fondoBody === 'rgb(246, 245, 242)', String(m.fondoBody));
+    chk(`${nombre} · no desborda en horizontal`, !m.desbordaX);
+  }
+
+  // HI-02: se entra desde la lista.
+  await paginaH.locator('[data-nav="history"]').click();
+  await paginaH.waitForTimeout(350);
+  await paginaH.locator('.f-hist__fila').first().click();
+  await paginaH.waitForTimeout(350);
+  const d = await medir();
+  chk('HI-02 · la card ocupa el ancho del mockup', Math.abs((d.card ?? 0) - 354) < 0.5, `real ${d.card}`);
+  chk('HI-02 · no desborda en horizontal', !d.desbordaX);
+  await paginaH.close();
+}
+
 await navegador.close();
 servidor.close();
 console.log(fallos ? `\n${fallos} FALLO(S) DE FIDELIDAD` : '\nOK: la app coincide con el mockup en todo lo comprobado');

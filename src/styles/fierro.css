@@ -1049,6 +1049,15 @@
    en content-box el padding se suma por fuera y la fila sale mas ancha que la
    pantalla. En el mockup son <div> de ancho automatico, donde el padding
    queda dentro; esto reproduce ese comportamiento. */
+.f-hist__fila,
+.f-hueso__card,
+.f-hueso__cuerpo,
+.f-hueso__header,
+.f-hueso__nota,
+.f-graf,
+.f-segmentado,
+.f-vacio-hueso,
+.f-sesion,
 .f-home__rutina,
 .f-home__cardio,
 .f-home__importar,
@@ -1081,9 +1090,10 @@ body.f-sin-tabbar {
    fase las reemplace. Las cuatro vistas de cardio no son .tab-content: son
    hijas directas de <main>, asi que al retirar su padding quedaron de borde a
    borde. Se listan aparte hasta que la fase 6 las rehaga.
-   #workoutTab queda FUERA: ya es una pantalla FIERRO y trae su propio padding
-   de 20px; sumarle el legacy dejaba la card en 310px en vez de 350. */
-.tab-content:not(#workoutTab),
+   Las pantallas ya rehechas quedan FUERA: traen su propio padding (20px en
+   Carbon, 18px en Hueso) y sumarles el legacy dejaba las cards 40px mas
+   estrechas de lo que manda el mockup. */
+.tab-content:not(#workoutTab):not(#historyTab):not(#prsTab):not(#chartsTab),
 #cardioSelectorView,
 #cardioConfigView,
 #cardioTimerView,
@@ -1994,4 +2004,610 @@ body.f-sin-tabbar {
   height: 100%;
   border-radius: var(--r-bar);
   background: var(--accent);
+}
+
+/* --------------------------------------------------------------------------
+   15 · Secciones Hueso — lo que YA PASÓ
+        (HI-01, HI-02, PR-01, G-01)  [REF Pantallas:617-798]
+
+   Regla del README: el historial se lee sobre Hueso, con header oscuro que
+   hace la transicion. Todo lo de aqui vive dentro de .f-hueso.
+   -------------------------------------------------------------------------- */
+.f-hueso {
+  background: var(--bg-hueso);
+  color: var(--text-hueso-primary);
+  min-height: 100%;
+}
+/* El fondo claro no puede terminar donde termina el contenido: la pantalla
+   entera es Hueso, tambien bajo la tab bar.
+   Se mira el TAB, no la .f-hueso: los tres tabs Hueso existen siempre en el
+   DOM y `.f-hueso:not(.hidden)` casaba tambien con los ocultos, asi que el
+   fondo de la app se volvia claro en la home. */
+body:has(#historyTab:not(.hidden)),
+body:has(#prsTab:not(.hidden)),
+body:has(#chartsTab:not(.hidden)) {
+  background: var(--bg-hueso);
+}
+
+.f-hueso__header {
+  background: var(--bg-app);
+  color: var(--text-primary);
+  padding: 14px 22px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-card-l);
+}
+.f-hueso__fila-titulo {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-card-l);
+}
+.f-hueso__fila-titulo--baseline {
+  align-items: baseline;
+}
+.f-hueso__titulo {
+  font-family: var(--font-display);
+  font-stretch: var(--stretch-115);
+  font-weight: var(--w-900);
+  font-size: var(--fs-24);
+  flex: 1;
+  min-width: 0;
+}
+.f-hueso__subtitulo {
+  font-size: var(--fs-12);
+  color: var(--text-secondary);
+}
+/* Botones del header oscuro: CSV ↓, CSV ↑, ⋯ */
+.f-hueso__accion {
+  font-family: var(--font-mono);
+  font-weight: var(--label-weight);
+  font-size: var(--fs-10_5);
+  line-height: var(--lh-1);
+  padding: 7px 10px;
+  border: 1px solid var(--border-secondary-btn);
+  border-radius: var(--r-chip);
+  color: var(--text-tertiary);
+  background: none;
+  cursor: pointer;
+  flex: none;
+}
+.f-hueso__volver {
+  color: var(--text-secondary);
+  font-size: var(--fs-20);
+  line-height: var(--lh-1);
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  flex: none;
+}
+.f-hueso__cuerpo {
+  padding: 18px 18px 26px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-card);
+}
+.f-hueso__cuerpo--graficos {
+  gap: 14px;
+}
+.f-hueso__mes {
+  font-family: var(--font-mono);
+  font-weight: var(--label-weight);
+  font-size: var(--fs-10);
+  line-height: var(--lh-1);
+  letter-spacing: var(--ls-_1);
+  color: var(--hueso-500);
+}
+.f-hueso__card {
+  background: var(--hueso-card);
+  border: 1px solid var(--border-hueso);
+  border-radius: var(--r-row-l);
+  padding: var(--pad-card);
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-card-l);
+}
+/* La nota explicativa del mockup: fondo hueso-100, sin borde. */
+.f-hueso__nota {
+  background: var(--hueso-100);
+  border-radius: var(--r-btn);
+  padding: 12px 14px;
+  font-size: var(--fs-12);
+  line-height: var(--body-line);
+  color: var(--text-hueso-secondary);
+}
+
+/* HI-01 · fila de sesion */
+.f-hist__fila {
+  background: var(--hueso-card);
+  border: 1px solid var(--border-hueso);
+  border-radius: var(--r-row-l);
+  padding: 14px 16px;
+  display: flex;
+  align-items: center;
+  gap: var(--gap-card-l);
+  width: 100%;
+  text-align: left;
+  font-family: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+.f-hist__textos {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.f-hist__nombre {
+  font-weight: var(--w-700);
+  font-size: var(--fs-14_5);
+}
+.f-hist__sub {
+  font-size: var(--fs-12);
+  color: var(--hueso-500);
+}
+.f-hist__cifra {
+  font-family: var(--font-display);
+  font-stretch: var(--stretch-110);
+  font-weight: var(--w-800);
+  font-size: var(--fs-19);
+  font-variant-numeric: tabular-nums;
+  flex: none;
+}
+.f-hist__hiit {
+  font-family: var(--font-mono);
+  font-weight: var(--label-weight-strong);
+  font-size: var(--fs-10);
+  line-height: var(--lh-1);
+  color: var(--fragua-700);
+  flex: none;
+}
+
+/* HI-02 · metricas del header */
+.f-detalle__metricas {
+  display: flex;
+  gap: var(--gap-card);
+}
+.f-metrica-hueso {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.f-metrica-hueso--ancha {
+  flex: 1.3;
+}
+.f-metrica-hueso__label {
+  font-family: var(--font-mono);
+  font-weight: var(--label-weight);
+  font-size: var(--fs-9);
+  line-height: var(--lh-1);
+  color: var(--text-secondary);
+}
+.f-metrica-hueso__cifra {
+  font-family: var(--font-display);
+  font-stretch: var(--stretch-110);
+  font-weight: var(--w-800);
+  font-size: var(--fs-18);
+  font-variant-numeric: tabular-nums;
+}
+.f-metrica-hueso--ancha .f-metrica-hueso__cifra {
+  font-stretch: var(--stretch-112);
+  font-weight: var(--w-900);
+  font-size: var(--fs-22);
+}
+.f-metrica-hueso__unidad {
+  font-size: var(--fs-11);
+  font-weight: var(--w-600);
+  color: var(--text-secondary);
+}
+.f-metrica-hueso__cifra--xp {
+  color: var(--accent);
+}
+
+/* HI-02 · card de ejercicio con sus sets */
+.f-detalle__cabecera {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--gap-card);
+}
+.f-detalle__identidad,
+.f-pr__identidad {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.f-detalle__nombre {
+  font-weight: var(--w-700);
+  font-size: var(--fs-15);
+}
+.f-detalle__meta {
+  font-size: var(--fs-11_5);
+  color: var(--hueso-500);
+}
+.f-detalle__delta {
+  font-size: var(--fs-12);
+  font-weight: var(--w-700);
+  flex: none;
+}
+.f-detalle__sets {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.f-set {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-card);
+  font-size: var(--fs-13);
+  font-variant-numeric: tabular-nums;
+}
+.f-set__indice {
+  width: 16px;
+  flex: none;
+  font-family: var(--font-mono);
+  font-weight: var(--label-weight);
+  font-size: var(--fs-10_5);
+  line-height: var(--lh-1);
+  color: var(--hueso-400);
+}
+.f-set__reps {
+  width: 64px;
+  flex: none;
+  color: var(--text-hueso-secondary);
+}
+.f-set__pista {
+  flex: 1;
+  height: 10px;
+  border-radius: var(--r-bar);
+  background: var(--hueso-track);
+  overflow: hidden;
+}
+.f-set__relleno {
+  height: 100%;
+  border-radius: var(--r-bar);
+  background: var(--hueso-400);
+}
+.f-set__relleno--pr {
+  background: var(--accent);
+}
+.f-set__kg {
+  width: 58px;
+  flex: none;
+  text-align: right;
+  font-weight: var(--w-600);
+}
+.f-detalle__pie {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--gap-card);
+  border-top: 1px solid var(--hueso-track);
+  padding-top: var(--gap-card);
+  font-size: var(--fs-11_5);
+}
+.f-detalle__pie-texto {
+  color: var(--hueso-500);
+}
+.f-detalle__pie-badge {
+  font-weight: var(--w-600);
+}
+
+/* PR-01 y G-01 · barra de zonas */
+.f-zonas {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.f-zonas__pista {
+  position: relative;
+  height: 10px;
+  display: flex;
+  gap: 2px;
+}
+.f-zonas__roja,
+.f-zonas__ambar,
+.f-zonas__verde {
+  border-bottom-style: solid;
+  border-bottom-width: 3px;
+}
+.f-zonas__roja {
+  width: 63%;
+  background: var(--zona-roja-fill);
+  border-bottom-color: var(--zona-roja);
+  border-radius: var(--r-5) var(--r-2) var(--r-2) var(--r-5);
+}
+.f-zonas__ambar {
+  width: 23%;
+  background: var(--zona-ambar-fill);
+  border-bottom-color: var(--zona-ambar);
+}
+.f-zonas__verde {
+  flex: 1;
+  background: var(--zona-verde-fill);
+  border-bottom-color: var(--zona-verde);
+  border-radius: var(--r-2) var(--r-5) var(--r-5) var(--r-2);
+}
+.f-zonas__marcador {
+  position: absolute;
+  top: -5px;
+  bottom: -3px;
+  width: 2.5px;
+  background: var(--text-hueso-primary);
+  border-radius: var(--r-2);
+  /* Al aparecer, viaja desde 0 hasta su posicion (~600ms ease-out). */
+  left: 0;
+  transition: left var(--dur-zone-bar) var(--ease-zone-bar);
+}
+.f-zonas__pie {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--gap-card);
+  font-family: var(--font-mono);
+  font-weight: var(--w-500);
+  font-size: var(--fs-10);
+  line-height: var(--lh-1);
+  color: var(--hueso-400);
+}
+
+/* PR-01 · card de record */
+.f-pr__cabecera {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--gap-card);
+}
+.f-pr__nombre {
+  font-weight: var(--w-700);
+  font-size: var(--fs-15);
+}
+.f-pr__detalle {
+  font-size: var(--fs-11_5);
+  color: var(--hueso-500);
+}
+.f-pr__cifra {
+  font-family: var(--font-display);
+  font-stretch: var(--stretch-110);
+  font-weight: var(--w-800);
+  font-size: var(--fs-22);
+  font-variant-numeric: tabular-nums;
+  flex: none;
+}
+.f-pr__unidad {
+  font-size: var(--fs-12);
+  font-weight: var(--w-600);
+  color: var(--hueso-500);
+}
+
+/* G-01 · control segmentado */
+.f-segmentado {
+  display: flex;
+  background: var(--hueso-segmented-bg);
+  border-radius: var(--r-btn);
+  padding: 4px;
+  gap: 2px;
+}
+.f-segmentado__item {
+  flex: 1;
+  text-align: center;
+  padding: 8px 0;
+  border-radius: var(--r-7);
+  font-size: var(--fs-12_5);
+  font-weight: var(--w-600);
+  color: var(--hueso-500);
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+}
+.f-segmentado__item[aria-pressed='true'] {
+  font-weight: var(--w-700);
+  background: var(--text-hueso-primary);
+  color: var(--bg-hueso);
+}
+
+/* G-01 · cards de grafico */
+.f-graf {
+  background: var(--hueso-card);
+  border: 1px solid var(--border-hueso);
+  border-radius: var(--r-card);
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-card-l);
+}
+.f-graf__cabecera {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--gap-card);
+}
+.f-graf__cabecera--centro {
+  align-items: center;
+}
+.f-graf__label {
+  font-family: var(--font-mono);
+  font-weight: var(--label-weight);
+  font-size: var(--fs-10);
+  line-height: var(--lh-1);
+  letter-spacing: var(--ls-_08);
+  color: var(--hueso-500);
+}
+.f-graf__max {
+  font-family: var(--font-display);
+  font-stretch: var(--stretch-110);
+  font-weight: var(--w-800);
+  font-size: var(--fs-18);
+  font-variant-numeric: tabular-nums;
+  flex: none;
+}
+.f-graf__svg {
+  width: 100%;
+  height: 110px;
+  display: block;
+}
+.f-graf__linea {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2.5;
+  stroke-linejoin: round;
+}
+.f-graf__media {
+  fill: none;
+  stroke: var(--hueso-300);
+  stroke-width: 1.5;
+  stroke-dasharray: 4 4;
+}
+.f-graf__pie {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--gap-card);
+  font-family: var(--font-mono);
+  font-weight: var(--w-500);
+  font-size: var(--fs-10);
+  line-height: var(--lh-1);
+  color: var(--hueso-400);
+}
+.f-graf__nota {
+  font-size: var(--fs-11);
+  line-height: var(--body-line);
+  color: var(--hueso-400);
+}
+.f-graf__selector {
+  font-size: var(--fs-12_5);
+  font-weight: var(--w-600);
+  border: 1px solid var(--border-hueso);
+  border-radius: var(--r-7);
+  padding: 7px 10px;
+  background: none;
+  color: inherit;
+  font-family: inherit;
+  cursor: pointer;
+  max-width: 62%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.f-graf__actual {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--gap-card);
+}
+.f-graf__actual-cifra {
+  font-family: var(--font-display);
+  font-stretch: var(--stretch-110);
+  font-weight: var(--w-800);
+  font-size: var(--fs-24);
+  font-variant-numeric: tabular-nums;
+}
+.f-graf__actual-unidad {
+  font-size: var(--fs-12);
+  font-weight: var(--w-600);
+  color: var(--hueso-500);
+}
+.f-graf__delta {
+  font-size: var(--fs-12);
+  font-weight: var(--w-600);
+  flex: none;
+}
+
+/* G-01 · distribucion muscular */
+.f-dist {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-card);
+}
+.f-dist__nombre {
+  width: 74px;
+  flex: none;
+  font-size: var(--fs-12);
+  color: var(--text-hueso-secondary);
+}
+.f-dist__pista {
+  flex: 1;
+  height: 14px;
+  border-radius: var(--r-4);
+  background: var(--hueso-track);
+  overflow: hidden;
+}
+.f-dist__relleno {
+  height: 100%;
+  border-radius: var(--r-4);
+  background: var(--accent);
+}
+.f-dist__pct {
+  width: 38px;
+  flex: none;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-size: var(--fs-12);
+  font-weight: var(--w-600);
+}
+
+/* Verde y rojo de TEXTO sobre Hueso: mas oscuros por contraste [README:34] */
+.f-verde-hueso {
+  color: var(--zona-verde-hueso);
+}
+.f-rojo-hueso {
+  color: var(--zona-roja-hueso);
+}
+
+/* O-02 · vacios de las secciones Hueso  [REF Pantallas:1315-1330] */
+.f-vacio-hueso {
+  background: var(--bg-hueso);
+  color: var(--text-hueso-primary);
+  border-radius: var(--r-18);
+  padding: var(--pad-card-l);
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-card);
+}
+.f-vacio-hueso__label {
+  font-family: var(--font-mono);
+  font-weight: var(--label-weight);
+  font-size: var(--fs-9_5);
+  line-height: var(--lh-1);
+  letter-spacing: var(--ls-_08);
+  color: var(--hueso-500);
+}
+.f-vacio-hueso__titulo {
+  font-size: var(--fs-14_5);
+  line-height: var(--body-line);
+  font-weight: var(--w-600);
+}
+.f-vacio-hueso__acciones {
+  display: flex;
+  gap: var(--gap-card-s);
+}
+.f-btn-hueso {
+  font-family: var(--font-ui);
+  font-weight: var(--w-700);
+  font-size: var(--fs-13);
+  background: var(--text-hueso-primary);
+  color: var(--bg-hueso);
+  border: none;
+  border-radius: var(--r-9);
+  padding: 11px 16px;
+  cursor: pointer;
+}
+.f-btn-hueso--secundario {
+  font-weight: var(--w-600);
+  background: transparent;
+  color: var(--text-hueso-primary);
+  border: 1px solid var(--hueso-300);
+}
+.f-vacio-hueso__grafico {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.f-vacio-hueso__texto {
+  flex: 1;
+  font-size: var(--fs-13);
+  line-height: var(--body-line-tight);
+  color: var(--text-hueso-secondary);
 }

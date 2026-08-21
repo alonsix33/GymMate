@@ -217,100 +217,25 @@
     <!-- ==========================================
          CHARTS TAB
          ========================================== -->
-    <div id="chartsTab" class="tab-content hidden pb-24" role="region" aria-label="Gráficos de progreso">
-      <!-- Navigation Bar -->
-      <div class="flex items-center gap-3 mb-6">
-        <button onclick="window.showHome()" class="w-11 h-11 flex items-center justify-center bg-dark-surface border border-dark-border rounded-xl active:scale-95 transition-transform focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-dark-bg" aria-label="Volver al inicio">
-          <i data-lucide="arrow-left" class="w-5 h-5 text-text-primary" aria-hidden="true"></i>
-        </button>
-        <h1 class="text-xl font-display font-bold text-text-primary flex items-center gap-2">
-          <i data-lucide="line-chart" class="w-6 h-6 text-green-400" aria-hidden="true"></i>
-          Progreso
-        </h1>
-      </div>
-
-      <!-- Volume Trend -->
-      <div class="bg-dark-surface border border-dark-border rounded-xl p-4 mb-4">
-        <h2 class="text-sm font-semibold text-text-primary mb-3">Tendencia de Volumen</h2>
-        <div class="h-48" role="img" aria-label="Gráfico de tendencia de volumen de entrenamiento">
-          <canvas id="volumeTrendChart" aria-label="Gráfico de líneas mostrando la tendencia de volumen"></canvas>
-        </div>
-      </div>
-
-      <!-- Muscle Distribution -->
-      <div class="bg-dark-surface border border-dark-border rounded-xl p-4 mb-4">
-        <h2 class="text-sm font-semibold text-text-primary mb-3">Distribución Muscular</h2>
-        <div class="h-48" role="img" aria-label="Gráfico de distribución de trabajo por grupo muscular">
-          <canvas id="muscleDistributionChart" aria-label="Gráfico circular de distribución muscular"></canvas>
-        </div>
-      </div>
-
-      <!-- Weight Progress -->
-      <div class="bg-dark-surface border border-dark-border rounded-xl p-4 mb-4">
-        <h2 class="text-sm font-semibold text-text-primary mb-3">Progreso por Ejercicio</h2>
-        <label for="exerciseChartSelect" class="sr-only">Seleccionar ejercicio para ver progreso</label>
-        <select id="exerciseChartSelect" class="w-full mb-3" aria-label="Seleccionar ejercicio para ver gráfico de progreso">
-          <option value="">-- Elige un ejercicio --</option>
-        </select>
-        <div class="h-48" role="img" aria-label="Gráfico de progreso de peso por ejercicio">
-          <canvas id="weightProgressChart" aria-label="Gráfico de progreso de peso"></canvas>
-        </div>
-      </div>
-
-      <!-- Weekly Comparison -->
-      <div class="bg-dark-surface border border-dark-border rounded-xl p-4">
-        <h2 class="text-sm font-semibold text-text-primary mb-3">Volumen Semanal</h2>
-        <div class="h-48" role="img" aria-label="Gráfico de comparación de volumen semanal">
-          <canvas id="weeklyComparisonChart" aria-label="Gráfico de barras de volumen semanal"></canvas>
-        </div>
-      </div>
+    <div id="chartsTab" class="tab-content hidden" role="region" aria-label="Gráficos de progreso">
+      <!-- G-01 lo pinta src/ui/hueso.ts. -->
+      <div id="fierroGraficos"></div>
     </div>
 
     <!-- ==========================================
          HISTORY TAB
          ========================================== -->
-    <div id="historyTab" class="tab-content hidden pb-24" role="region" aria-label="Historial de entrenamientos">
-      <!-- Navigation Bar -->
-      <div class="flex items-center gap-3 mb-6">
-        <button onclick="window.showHome()" class="w-11 h-11 flex items-center justify-center bg-dark-surface border border-dark-border rounded-xl active:scale-95 transition-transform focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-dark-bg" aria-label="Volver al inicio">
-          <i data-lucide="arrow-left" class="w-5 h-5 text-text-primary" aria-hidden="true"></i>
-        </button>
-        <h1 class="flex-1 text-xl font-display font-bold text-text-primary flex items-center gap-2">
-          <i data-lucide="history" class="w-6 h-6 text-purple-400" aria-hidden="true"></i>
-          Historial
-        </h1>
-        <button onclick="window.exportToExcel()" class="px-3 py-2 bg-dark-surface border border-dark-border rounded-lg text-text-secondary text-sm active:scale-95 transition-all flex items-center gap-2 focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-dark-bg" aria-label="Exportar historial a archivo CSV">
-          <i data-lucide="download" class="w-4 h-4" aria-hidden="true"></i>
-          Exportar
-        </button>
-      </div>
-      <!-- PUENTE PROVISIONAL (fase 3 → fase 5). La tab bar FIERRO tiene 4
-           destinos y ninguno es Récords ni Gráficos; el handoff los agrupa con
-           Historial en el mismo paso 5 y en la misma seccion Hueso, asi que
-           cuelgan de aqui hasta que la fase 5 los rehaga juntos. Sin este
-           puente, PR-01 y G-01 quedan inalcanzables. -->
-      <div class="flex items-center gap-2 mb-6" role="group" aria-label="Otras vistas del historial">
-        <button data-action="prs" class="flex-1 px-3 py-2 bg-dark-surface border border-dark-border rounded-lg text-text-secondary text-sm active:scale-95 transition-all focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-dark-bg">Récords</button>
-        <button data-action="charts" class="flex-1 px-3 py-2 bg-dark-surface border border-dark-border rounded-lg text-text-secondary text-sm active:scale-95 transition-all focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-dark-bg">Gráficos</button>
-      </div>
-      <div id="historyList" class="space-y-3" role="list" aria-label="Lista de entrenamientos anteriores"></div>
+    <div id="historyTab" class="tab-content hidden" role="region" aria-label="Historial de entrenamientos">
+      <!-- HI-01 y HI-02 los pinta src/ui/hueso.ts. -->
+      <div id="fierroHistorial"></div>
     </div>
 
     <!-- ==========================================
          PRS TAB
          ========================================== -->
-    <div id="prsTab" class="tab-content hidden pb-24" role="region" aria-label="Récords personales">
-      <!-- Navigation Bar -->
-      <div class="flex items-center gap-3 mb-6">
-        <button onclick="window.showHome()" class="w-11 h-11 flex items-center justify-center bg-dark-surface border border-dark-border rounded-xl active:scale-95 transition-transform focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-dark-bg" aria-label="Volver al inicio">
-          <i data-lucide="arrow-left" class="w-5 h-5 text-text-primary" aria-hidden="true"></i>
-        </button>
-        <h1 class="text-xl font-display font-bold text-text-primary flex items-center gap-2">
-          <i data-lucide="trophy" class="w-6 h-6 text-yellow-400" aria-hidden="true"></i>
-          Personal Records
-        </h1>
-      </div>
-      <div id="prsList" class="space-y-3" role="list" aria-label="Lista de récords personales"></div>
+    <div id="prsTab" class="tab-content hidden" role="region" aria-label="Récords personales">
+      <!-- PR-01 lo pinta src/ui/hueso.ts. -->
+      <div id="fierroRecords"></div>
     </div>
 
     <!-- ==========================================
@@ -326,10 +251,18 @@
           <i data-lucide="user" class="w-6 h-6 text-accent" aria-hidden="true"></i>
           Mi Perfil
         </h1>
-        <!-- PUENTE PROVISIONAL (fase 3 → fase 7). CA-01 se dibuja con flecha
-             "←" de vuelta, o sea pantalla empujada desde un padre que el
-             handoff no nombra; su paso de implementacion es el 7, junto a
-             Perfil. Hasta entonces entra por aqui en vez de quedar muerta. -->
+      </div>
+
+      <!-- PUENTE PROVISIONAL (hasta la fase 7). La tab bar FIERRO tiene cuatro
+           destinos y ninguno es Récords, Gráficos ni Calculadoras; el handoff
+           dibuja las tres pantallas y no dice de dónde cuelgan (CA-01 lleva
+           flecha "←", o sea que es una pantalla empujada desde un padre que
+           nadie nombra). Sin esto quedarían inalcanzables, que el contrato
+           prohíbe. Va aquí, en la única pantalla que aún no es FIERRO, para no
+           añadir un solo pixel a ninguna que sí lo sea. -->
+      <div class="grid grid-cols-3 gap-2 mb-6" role="group" aria-label="Otras secciones">
+        <button data-action="prs" class="px-3 py-2 bg-dark-surface border border-dark-border rounded-lg text-text-secondary text-sm active:scale-95 transition-all focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-dark-bg">Récords</button>
+        <button data-action="charts" class="px-3 py-2 bg-dark-surface border border-dark-border rounded-lg text-text-secondary text-sm active:scale-95 transition-all focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-dark-bg">Gráficos</button>
         <button data-action="calculators" class="px-3 py-2 bg-dark-surface border border-dark-border rounded-lg text-text-secondary text-sm active:scale-95 transition-all focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-dark-bg">Calculadoras</button>
       </div>
 

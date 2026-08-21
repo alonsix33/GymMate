@@ -17,7 +17,6 @@
     "verificar:comportamiento": "npm run build && node scripts/verificar-comportamiento.mjs"
   },
   "dependencies": {
-    "chart.js": "^4.4.0",
     "lucide": "^0.468.0"
   },
   "devDependencies": {

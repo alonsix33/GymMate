@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-  <meta name="theme-color" content="#08090B" />
+  <meta name="theme-color" content="%PAGE_BG%" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="description" content="GymMate - Tu compañero de entrenamiento personal. Tracking de volumen, PRs y progreso." />
@@ -27,11 +27,14 @@
 
   <!-- Critical inline CSS for fallback (colores y tipografia: src/styles/tokens.css) -->
   <style>
+    /* Pinta antes de que llegue el bundle, asi que NO puede depender de el:
+       los valores los inyecta vite desde src/styles/tokens.css,
+       que sigue siendo la unica fuente de verdad. */
     .hidden { display: none !important; }
     body {
-      background-color: var(--page-bg);
-      color: var(--text-primary);
-      font-family: var(--font-ui);
+      background-color: %PAGE_BG%;
+      color: %TEXT_PRIMARY%;
+      font-family: 'Instrument Sans', system-ui, -apple-system, sans-serif;
     }
     /* Skip Link - visible on focus */
     .skip-link {
@@ -39,17 +42,17 @@
       top: -100%;
       left: 50%;
       transform: translateX(-50%);
-      background: var(--fragua-500);
-      color: var(--on-fragua);
+      background: %ACCENT%;
+      color: %ON_ACCENT%;
       padding: 0.75rem 1.5rem;
-      border-radius: 0 0 var(--r-btn) var(--r-btn);
+      border-radius: 0 0 %RADIUS_BTN% %RADIUS_BTN%;
       font-weight: 700;
       z-index: 9999;
       transition: top 0.2s;
     }
     .skip-link:focus {
       top: 0;
-      outline: 3px solid var(--carbon-50);
+      outline: 3px solid %TEXT_PRIMARY%;
       outline-offset: 2px;
     }
   </style>

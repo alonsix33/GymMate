@@ -51,3 +51,36 @@
     U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020,
     U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
 }
+
+/* --------------------------------------------------------------------------
+   Subsets de simbolos.
+   Los subsets latin de Google no traen las flechas ni los comparadores, y el
+   handoff los pide como TEXTO ("los pocos glifos (←, ›, ✓, ✕, +, ⓘ, ↑) son
+   texto", README L173). Estos dos archivos se pidieron a Google con &text= y
+   cubren exactamente lo que a latin le falta y la fuente si tiene.
+
+   Lo que NINGUNA de las dos familias tiene, comprobado sobre el cmap:
+     ✓ U+2713 · ✕ U+2715 · ⓘ U+24D8   (y ± U+00B1 en Instrument Sans)
+   Esos caen a la fuente de simbolos del sistema. No es una decision nuestra:
+   es exactamente lo que hace el mockup aprobado, que carga estas mismas dos
+   familias. Queda anotado como pregunta abierta para el dueno del diseno.
+   -------------------------------------------------------------------------- */
+
+@font-face {
+  font-family: 'Archivo';
+  font-style: normal;
+  font-weight: 100 900;
+  font-stretch: 62.5% 125%;
+  font-display: swap;
+  src: url('/fonts/archivo-simbolos.woff2') format('woff2');
+  unicode-range: U+2039-203A, U+2190, U+2192, U+2264-2265;
+}
+
+@font-face {
+  font-family: 'Instrument Sans';
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url('/fonts/instrument-sans-simbolos.woff2') format('woff2');
+  unicode-range: U+2190, U+2192;
+}

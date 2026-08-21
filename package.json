@@ -9,7 +9,10 @@
     "preview": "vite preview",
     "test": "vitest",
     "test:ui": "vitest --ui",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "verificar:tokens": "node scripts/verificar-tokens.mjs",
+    "verificar:runtime": "npm run build && node scripts/verificar-runtime.mjs",
+    "verificar": "npm run verificar:tokens && tsc --noEmit && vitest run && npm run verificar:runtime"
   },
   "dependencies": {
     "chart.js": "^4.4.0",
@@ -19,6 +22,7 @@
     "@types/node": "^20.10.0",
     "autoprefixer": "^10.4.16",
     "jsdom": "^27.3.0",
+    "playwright": "^1.62.1",
     "postcss": "^8.4.32",
     "react-body-highlighter": "^2.0.5",
     "sharp": "^0.34.5",

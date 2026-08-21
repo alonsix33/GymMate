@@ -6,7 +6,9 @@ export default {
       colors: {
         // Paleta profesional - Negro puro para OLED
         dark: {
-          bg: '#000000',
+          // FIERRO: la utilidad bg-dark-bg del <body> gana por especificidad a
+          // la regla de main.css, asi que el suelo tambien sale del token.
+          bg: 'var(--page-bg)',
           surface: '#1e293b',
           border: 'rgba(255, 255, 255, 0.05)',
         },
@@ -28,8 +30,9 @@ export default {
         },
       },
       fontFamily: {
-        sans: ['Inter', 'system-ui', 'sans-serif'],
-        display: ['Oswald', 'system-ui', 'sans-serif'],
+        // FIERRO: las familias reales viven en src/styles/tokens.css.
+        sans: ['Instrument Sans', 'system-ui', '-apple-system', 'sans-serif'],
+        display: ['Archivo', 'system-ui', 'sans-serif'],
       },
       animation: {
         'fade-in': 'fadeIn 0.3s ease-in-out',

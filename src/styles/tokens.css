@@ -25,14 +25,25 @@
   --carbon-100: #cdd1d9;
   --carbon-50: #ebedf0; /* texto principal */
 
+  /* Dos pasos intermedios que los mockups usan y el README no enumera.
+     Se nombran en la rampa por su posicion real:
+       950 #0B0C0F < 925 #0E1013 < 900 #111318 < 850 #14161B < 800 #171A20 */
+  --carbon-925: #0e1013; /*                                          [REF] */
+  --carbon-850: #14161b; /*                                          [REF] */
+
   /* Superficies fuera de rampa */
   --page-bg: #08090b; /*                                          [README] */
   --divider-hairline: #1c2027; /* divisor fino                    [README] */
   --divider-soft: var(--carbon-800); /* divisor fino alterno      [README] */
   --frame-border: #262b34; /* marco de pantalla / partes neutras  [README] */
-  --tabbar-bg: #0e1013; /* fondo de la tab bar                       [REF] */
-  --stripe-alt: #14161b; /* trama diagonal de placeholder de foto    [REF] */
   --scrim: #08090be6; /* velo detrás de bottom sheets                [REF] */
+
+  /* Alias de rol de los dos grises intermedios. Cada hex sirve mas de un
+     sitio; el nombre no puede prometer uno solo. */
+  --surface-sunken: var(--carbon-925); /* tab bar [REF :123,:925] y campo de
+                                          composicion del coach [REF :1468] */
+  --surface-hatch: var(--carbon-850); /* trama diagonal del placeholder de
+                                         foto [REF] */
 
   /* ======================================================================
      02 · COLOR — Hueso (secciones claras: datos históricos)       [README]
@@ -82,8 +93,9 @@
   --zona-roja-hueso: #b5443f; /* rojo de texto sobre Hueso        [README] */
   --zona-verde-hueso: #3f8f5f; /* verde de texto sobre Hueso      [README] */
 
-  --zona-roja-border: #3d2626; /* borde de card en error             [REF] */
-  --zona-verde-border: #2c3d2f; /* borde de card en acierto          [REF] */
+  --zona-roja-border: #3d2626; /* borde de card en error          [README] */
+  --zona-verde-border: #2c3d2f; /* [REF Sistema:310] 1 solo uso, y en el doc
+                                   de sistema: NO aparece en ninguna pantalla */
 
   /* ======================================================================
      05 · COLOR — Rangos musculares (solo gamificación)            [README]
@@ -107,6 +119,12 @@
   --heat-q3: #c85510;
   --heat-q4: #ff6317;
   --heat-cardio-border: #c2440a; /* día solo-cardio, 1.5px, sin relleno */
+  /* El heatmap del estado vacío (O-01) trata la celda apagada distinto que el
+     de Home: #14161B con borde, en vez de #171A20 sin borde. Es una diferencia
+     real entre los dos mockups, no una interpretación — [REF Pantallas:1729].
+     PREGUNTA ABIERTA al dueño del diseño: ¿intencional o deriva del mockup? */
+  --heat-0-empty: var(--carbon-850);
+  --heat-0-empty-border: var(--divider-hairline);
 
   /* ======================================================================
      07 · COLOR — Alias semánticos (uso en componentes)
@@ -135,117 +153,222 @@
   --text-hueso-secondary: var(--hueso-text-secondary);
 
   /* ======================================================================
-     08 · TIPOGRAFÍA                                               [README]
+     08 · TIPOGRAFÍA — familias y roles semánticos                 [README]
      ====================================================================== */
   --font-display: 'Archivo', system-ui, sans-serif;
   --font-ui: 'Instrument Sans', system-ui, -apple-system, sans-serif;
   --font-mono: ui-monospace, Menlo, monospace;
 
-  /* Anchos de Archivo — siempre expandido */
-  --stretch-display-xl: 118%;
-  --stretch-display-m: 112%;
-  --stretch-cifra: 110%;
-  --stretch-cifra-alt: 115%;
-
   /* display-xl — Archivo 900 · 44/0.95 (héroe; 22–30px en headers móviles) */
-  --display-xl-size: 44px;
-  --display-xl-line: 0.95;
-  --display-xl-weight: 900;
-  --display-xl-tracking: -0.01em;
+  --display-xl-size: var(--fs-44);
+  --display-xl-line: var(--lh-_95);
+  --display-xl-weight: var(--w-900);
+  --display-xl-tracking: var(--ls-n_01);
+  --stretch-display-xl: var(--stretch-118);
 
   /* display-m — Archivo 800 · 30/1.05 (títulos de sección) */
-  --display-m-size: 30px;
-  --display-m-line: 1.05;
-  --display-m-weight: 800;
+  --display-m-size: var(--fs-30);
+  --display-m-line: var(--lh-1_05);
+  --display-m-weight: var(--w-800);
+  --stretch-display-m: var(--stretch-112);
 
   /* cifra — Archivo 800–900 · 18–72px tabular (dato protagonista) */
-  --cifra-weight: 800;
-  --cifra-weight-hero: 900;
-  --cifra-size-s: 18px;
-  --cifra-size-m: 24px;
-  --cifra-size-l: 40px;
-  --cifra-size-xl: 72px;
-  --cifra-unit-size-s: 11px;
-  --cifra-unit-size-m: 13px;
-  --cifra-unit-size-l: 18px;
-  --cifra-unit-weight: 600;
-  --cifra-unit-weight-strong: 700;
+  --cifra-weight: var(--w-800);
+  --cifra-weight-hero: var(--w-900);
+  --stretch-cifra: var(--stretch-110);
+  --stretch-cifra-alt: var(--stretch-115);
+  --cifra-size-s: var(--fs-18);
+  --cifra-size-m: var(--fs-24);
+  --cifra-size-l: var(--fs-40);
+  --cifra-size-xl: var(--fs-72);
+  --cifra-unit-size-s: var(--fs-11);
+  --cifra-unit-size-m: var(--fs-13);
+  --cifra-unit-size-l: var(--fs-18);
+  --cifra-unit-weight: var(--w-600);
+  --cifra-unit-weight-strong: var(--w-700);
 
   /* heading — Instrument 700 · 15–18px */
-  --heading-weight: 700;
-  --heading-size-s: 15px;
-  --heading-size-m: 16px;
-  --heading-size-l: 18px;
+  --heading-weight: var(--w-700);
+  --heading-size-s: var(--fs-15);
+  --heading-size-m: var(--fs-16);
+  --heading-size-l: var(--fs-18);
 
   /* body — Instrument 400–600 · 13–15px / 1.45–1.55 */
-  --body-size-s: 13px;
-  --body-size-m: 14px;
-  --body-size-l: 15px;
-  --body-line: 1.55;
-  --body-line-tight: 1.45;
+  --body-size-s: var(--fs-13);
+  --body-size-m: var(--fs-14);
+  --body-size-l: var(--fs-15);
+  --body-line: var(--lh-1_5); /* 43 usos en los mockups: el line-height real del cuerpo */
+  --body-line-loose: var(--lh-1_55);
+  --body-line-tight: var(--lh-1_45);
 
-  /* label — mono 600–700 · 9.5–11px caps · tracking .06–.16em */
-  --label-weight: 600;
-  --label-weight-strong: 700;
-  --label-size-xs: 9.5px;
-  --label-size-s: 10.5px;
-  --label-size-m: 11px;
-  --label-tracking-tight: 0.06em;
-  --label-tracking: 0.1em;
-  --label-tracking-wide: 0.12em;
-  --label-tracking-widest: 0.16em;
+  /* label — mono 600–700 caps.
+     El README se contradice: L43 dice 9–12px y L51 dice 9.5–11px. Los mockups
+     usan 9, 9.5, 10, 10.5, 11, 11.5 y 12 en contexto mono, o sea el rango de
+     L43. Los alias cubren los tamaños reales; ver --fs-* para el resto. */
+  --label-weight: var(--w-600);
+  --label-weight-strong: var(--w-700);
+  --label-size-xs: var(--fs-9_5);
+  --label-size-s: var(--fs-10_5);
+  --label-size-m: var(--fs-11);
+  --label-tracking-tabbar: var(--ls-_08); /* 65 usos: el tracking mono más frecuente */
+  --label-tracking-tight: var(--ls-_06);
+  --label-tracking: var(--ls-_1);
+  --label-tracking-wide: var(--ls-_12);
+  --label-tracking-widest: var(--ls-_16);
+
+  /* Escala tipografica y de forma — TODOS los valores usados en los mockups.
+     Generada por barrido de Pantallas Fierro.dc.html + Sistema Fierro.dc.html:
+     ningun valor elegido a mano, ninguno inventado. [REF] */
+
+  /* font-size (33) */
+  --fs-9: 9px;
+  --fs-9_5: 9.5px;
+  --fs-10: 10px;
+  --fs-10_5: 10.5px;
+  --fs-11: 11px;
+  --fs-11_5: 11.5px;
+  --fs-12: 12px;
+  --fs-12_5: 12.5px;
+  --fs-13: 13px;
+  --fs-13_5: 13.5px;
+  --fs-14: 14px;
+  --fs-14_5: 14.5px;
+  --fs-15: 15px;
+  --fs-15_5: 15.5px;
+  --fs-16: 16px;
+  --fs-16_5: 16.5px;
+  --fs-17: 17px;
+  --fs-18: 18px;
+  --fs-19: 19px;
+  --fs-20: 20px;
+  --fs-21: 21px;
+  --fs-22: 22px;
+  --fs-24: 24px;
+  --fs-26: 26px;
+  --fs-30: 30px;
+  --fs-36: 36px;
+  --fs-40: 40px;
+  --fs-44: 44px;
+  --fs-56: 56px;
+  --fs-58: 58px;
+  --fs-68: 68px;
+  --fs-72: 72px;
+  --fs-92: 92px;
+
+  /* letter-spacing (10) */
+  --ls-n_015: -.015em;
+  --ls-n_01: -.01em;
+  --ls-_04: .04em;
+  --ls-_06: .06em;
+  --ls-_08: .08em;
+  --ls-_1: .1em;
+  --ls-_12: .12em;
+  --ls-_14: .14em;
+  --ls-_16: .16em;
+  --ls-_2: .2em;
+
+  /* line-height (11) */
+  --lh-_92: .92;
+  --lh-_95: .95;
+  --lh-1: 1;
+  --lh-1_05: 1.05;
+  --lh-1_1: 1.1;
+  --lh-1_4: 1.4;
+  --lh-1_45: 1.45;
+  --lh-1_5: 1.5;
+  --lh-1_55: 1.55;
+  --lh-1_6: 1.6;
+  --lh-1_65: 1.65;
+
+  /* border-radius (18) */
+  --r-2: 2px;
+  --r-2_5: 2.5px;
+  --r-3: 3px;
+  --r-4: 4px;
+  --r-5: 5px;
+  --r-6: 6px;
+  --r-7: 7px;
+  --r-8: 8px;
+  --r-9: 9px;
+  --r-10: 10px;
+  --r-11: 11px;
+  --r-12: 12px;
+  --r-14: 14px;
+  --r-16: 16px;
+  --r-18: 18px;
+  --r-20: 20px;
+  --r-24: 24px;
+  --r-28: 28px;
+
+  /* font-stretch de Archivo (5) */
+  --stretch-100: 100%;
+  --stretch-110: 110%;
+  --stretch-112: 112%;
+  --stretch-115: 115%;
+  --stretch-118: 118%;
+
+  /* font-weight (6) */
+  --w-400: 400;
+  --w-500: 500;
+  --w-600: 600;
+  --w-700: 700;
+  --w-800: 800;
+  --w-900: 900;
 
   /* ======================================================================
-     09 · FORMA — el radio comunica peso del dato                  [README]
+     09 · FORMA — alias de rol sobre la escala de radios           [README]
      ====================================================================== */
-  --r-frame: 28px; /* marco de teléfono/pantalla */
-  --r-sheet: 24px; /* bottom sheet (solo arriba) */
-  --r-hero: 20px; /* card héroe */
-  --r-card: 14px; /* card métrica */
-  --r-card-l: 16px; /* card métrica (variante alta) */
-  --r-row: 10px; /* fila de dato */
-  --r-row-l: 12px; /* fila de dato (variante alta) */
-  --r-btn: 10px;
-  --r-btn-l: 12px;
-  --r-chip: 6px; /* chips / badges */
-  --r-chip-s: 5px;
-  --r-cell: 3px; /* celda de heatmap */
-  --r-pill: 50%;
+  --r-frame: var(--r-28); /* marco de teléfono/pantalla */
+  --r-sheet: var(--r-24); /* bottom sheet (solo arriba) */
+  --r-hero: var(--r-20); /* card héroe */
+  --r-card-l: var(--r-16); /* card métrica (variante alta) */
+  --r-card: var(--r-14); /* card métrica */
+  --r-row-l: var(--r-12); /* fila de dato (variante alta) */
+  --r-row: var(--r-10); /* fila de dato */
+  --r-btn-l: var(--r-12);
+  --r-btn: var(--r-10);
+  --r-chip: var(--r-6); /* chips / badges */
+  --r-chip-s: var(--r-5);
+  --r-bar: var(--r-3); /* barra de progreso de 6px de alto (62 usos) */
+  --r-cell: var(--r-2_5); /* celda de heatmap — 2.5px, NO 3px [REF Pantallas:55,1276] */
+  --r-pill: 50%; /* [REF] 26 usos; no está en el README */
 
   /* ======================================================================
      10 · ESPACIO Y TÁCTIL                                         [README]
+     Cada valor es el MODAL de los mockups dentro del rango del README,
+     no el punto medio de un rango elegido a dedo.
      ====================================================================== */
-  --pad-card: 16px; /* rango 14–20px */
+  --pad-card: 16px; /* rango README 14–20px · modal del HTML */
   --pad-card-s: 14px;
   --pad-card-l: 20px;
-  --gap-card: 10px; /* rango 8–12px */
+  --gap-card: 10px; /* rango README 8–12px · modal del HTML */
   --gap-card-s: 8px;
   --gap-card-l: 12px;
-  --pad-screen: 18px; /* rango 18–20px */
+  --pad-screen: 18px; /* rango README 18–20px · modal del HTML */
   --pad-screen-l: 20px;
   --touch-min: 44px;
-  --stepper-h: 56px; /* rango 46–56px */
+  --stepper-h: 56px; /* rango README 46–56px */
   --stepper-h-s: 46px;
-  --btn-pad-y: 15px; /* rango 15–16px */
-  --fab-size: 50px;
+  --btn-pad-y: 15px; /* rango README 15–16px */
+  --fab-size: 50px; /* [REF Pantallas:123] */
 
   --safe-area-inset-bottom: env(safe-area-inset-bottom, 0px);
 
   /* ======================================================================
-     11 · SOMBRAS                                                  [README]
+     11 · SOMBRAS
      ====================================================================== */
-  --shadow-toast: 0 8px 24px rgba(0, 0, 0, 0.5);
-  --shadow-knob: 0 0 0 1px var(--carbon-500);
+  --shadow-toast: 0 8px 24px rgba(0, 0, 0, 0.5); /* [README] y [REF] x3 */
+  --shadow-knob: 0 0 0 1px var(--carbon-500); /* [REF Pantallas:288] */
 
   /* ======================================================================
      12 · MOVIMIENTO — las únicas animaciones permitidas           [README]
      ====================================================================== */
-  --dur-blink: 0.9s; /* cursor de streaming del coach */
-  --dur-blink-slow: 1.3s; /* label PENSANDO */
-  --dur-pulse: 1.4s; /* celda de hoy / estado pendiente */
-  --dur-pulse-piramide: 1.6s; /* nivel activo de la pirámide */
-  --dur-zone-bar: 600ms; /* entrada del marcador de la barra de zonas */
-  --ease-zone-bar: cubic-bezier(0.22, 0.61, 0.36, 1); /* ease-out */
+  --dur-blink: 0.9s; /* [README] cursor de streaming del coach */
+  --dur-blink-slow: 1.3s; /* [README] label PENSANDO */
+  --dur-pulse: 1.6s; /* [REF] nivel activo de pirámide y celda de hoy */
+  --dur-pulse-sync: 1.4s; /* [REF Pantallas:1389] punto de estado pendiente */
+  --dur-zone-bar: 600ms; /* [README] entrada del marcador de la barra de zonas */
+  --ease-zone-bar: ease-out; /* [README L105] literal: "~600ms ease-out" */
 }
 
 /* --------------------------------------------------------------------------
@@ -271,12 +394,16 @@
   }
 }
 
+/* Accesibilidad: esto NO viene del handoff — es un anadido nuestro y esta
+   deliberadamente acotado. Un supresor global `*` tambien apagaria el anillo
+   de los timers de cardio y la entrada de la barra de zonas, que el README
+   exige (L105, L110): ahi el movimiento es la lectura del dato, no adorno.
+   Solo se detienen los dos latidos puramente decorativos. */
 @media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
+  [style*='fierro-pulse'],
+  [class*='fierro-pulse'],
+  [style*='fierro-blink'],
+  [class*='fierro-blink'] {
+    animation: none;
   }
 }

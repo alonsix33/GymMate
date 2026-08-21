@@ -9,7 +9,7 @@
 
 :root {
   /* Colores base - Negro puro para OLED */
-  --color-dark-bg: #000000;
+  --color-dark-bg: var(--page-bg); /* FIERRO: el suelo de la app sale de tokens.css */
   --color-dark-surface: #1e293b;
   --color-dark-border: rgba(255, 255, 255, 0.05);
 
@@ -28,8 +28,7 @@
   --color-error: #ef4444;
   --color-info: #06b6d4;
 
-  /* Safe area para iOS */
-  --safe-area-inset-bottom: env(safe-area-inset-bottom, 0px);
+  /* --safe-area-inset-bottom lo declara src/styles/tokens.css */
 }
 
 /* ==========================================
@@ -47,7 +46,7 @@ html {
 }
 
 body {
-  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  font-family: var(--font-ui);
   background-color: var(--color-dark-bg);
   color: var(--color-text-primary);
   min-height: 100vh;
@@ -63,7 +62,7 @@ body {
    ========================================== */
 
 .font-display {
-  font-family: 'Oswald', system-ui, sans-serif;
+  font-family: var(--font-display);
 }
 
 /* ==========================================

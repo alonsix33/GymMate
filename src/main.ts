@@ -935,11 +935,25 @@ if (document.readyState === 'loading') {
   init();
 }
 
-// Registrar Service Worker
-if ('serviceWorker' in navigator) {
+// El service worker lo registra vite-plugin-pwa (registerSW.js inyectado en
+// index.html). Registrarlo tambien a mano era un duplicado sin dueno claro.
+
+// Limpieza de una sola vez: los caches de runtime de Google Fonts que dejo la
+// version anterior. cleanupOutdatedCaches solo borra precaches viejos de
+// Workbox, no los de runtimeCaching, asi que sin esto sobreviven para siempre
+// (200-400 KiB muertos) y presionan la cuota del dispositivo, que es justo lo
+// que puede hacer que el navegador desaloje el precache que si importa.
+// FIERRO: 'legacy-google-fonts' se retira en la fase 9 junto con esta limpieza.
+const CACHES_HUERFANOS = ['google-fonts-cache', 'gstatic-fonts-cache'];
+if ('caches' in window) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').catch((error) => {
-      console.log('SW registration failed:', error);
-    });
+    caches
+      .keys()
+      .then((claves) =>
+        Promise.all(claves.filter((k) => CACHES_HUERFANOS.includes(k)).map((k) => caches.delete(k)))
+      )
+      .catch(() => {
+        /* offline-first: si falla, no pasa nada y no bloquea nada */
+      });
   });
 }

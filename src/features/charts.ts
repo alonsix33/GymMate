@@ -28,7 +28,9 @@ const baseChartOptions = {
       labels: {
         color: THEME_COLORS.text.secondary,
         font: {
-          family: 'Inter',
+          // Canvas no hereda el stack CSS: sin fallback explicito, si el
+          // woff2 no esta la leyenda sale en serif mientras el resto es sans.
+          family: "'Instrument Sans', system-ui, sans-serif",
         },
       },
     },

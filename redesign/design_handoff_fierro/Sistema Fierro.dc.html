@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62.5..125,100..900&amp;family=Instrument+Sans:ital,wght@0,400..700;1,400..700&amp;display=swap" rel="stylesheet">
+<style>body{margin:0;background:#0B0C0F}a{color:#FF6317}a:hover{color:#FF7E42}</style>
+</helmet>
+<div style="min-height:100vh;background:#0B0C0F;color:#EBEDF0;font-family:'Instrument Sans',sans-serif;padding:64px 40px 96px">
+<div style="max-width:1140px;margin:0 auto;display:flex;flex-direction:column;gap:0">
+
+<div style="display:flex;flex-direction:column;gap:20px;padding-bottom:48px">
+<div style="font:600 11px/1 ui-monospace,Menlo,monospace;letter-spacing:.12em;color:#FF6317">GYMMATE V2 · SISTEMA DE DISEÑO · PROPUESTA 01</div>
+<div style="font-family:Archivo,sans-serif;font-stretch:118%;font-weight:900;font-size:92px;line-height:.92;letter-spacing:-.015em">FIERRO<span style="color:#FF6317">.</span></div>
+<p style="margin:0;max-width:640px;font-size:15.5px;line-height:1.55;color:#A8AEB9">Fierro: lo que se levanta. También el rango inicial del sistema de rangos (Hierro) y el material del que está hecha la app — oscura, densa, con un solo punto de calor. Base negra para el estado del día, secciones claras para la lectura de datos históricos, y un único acento con rampa propia.</p>
+<div style="display:flex;flex-wrap:wrap;gap:8px">
+<span style="font:600 11.5px/1 ui-monospace,Menlo,monospace;padding:7px 11px;border:1px solid #2C323D;border-radius:6px;color:#A8AEB9">base oscura + secciones claras</span>
+<span style="font:600 11.5px/1 ui-monospace,Menlo,monospace;padding:7px 11px;border:1px solid #2C323D;border-radius:6px;color:#A8AEB9">un solo acento: Fragua</span>
+<span style="font:600 11.5px/1 ui-monospace,Menlo,monospace;padding:7px 11px;border:1px solid #2C323D;border-radius:6px;color:#A8AEB9">firma: heatmap de consistencia</span>
+<span style="font:600 11.5px/1 ui-monospace,Menlo,monospace;padding:7px 11px;border:1px solid #2C323D;border-radius:6px;color:#A8AEB9">Archivo + Instrument Sans</span>
+<span style="font:600 11.5px/1 ui-monospace,Menlo,monospace;padding:7px 11px;border:1px solid #2C323D;border-radius:6px;color:#A8AEB9">gamificación protagonista</span>
+</div>
+</div>
+
+<div style="border-top:1px solid #20242D;padding:52px 0;display:flex;flex-direction:column;gap:36px">
+<div style="display:flex;flex-direction:column;gap:10px">
+<div style="font:600 11px/1 ui-monospace,Menlo,monospace;letter-spacing:.12em;color:#FF6317">01 · COLOR</div>
+<div style="font-family:Archivo,sans-serif;font-stretch:112%;font-weight:800;font-size:30px;line-height:1.05">Tres rampas con nombre, cero color decorativo</div>
+<p style="margin:0;max-width:620px;font-size:14.5px;line-height:1.55;color:#A8AEB9">El color nunca identifica categorías al azar (adiós a los 5 colores de las 5 rutinas). Carbón estructura, Hueso da aire a los datos históricos, Fragua señala acción y esfuerzo. Las Zonas solo aparecen cuando el color significa algo: progresión contra tu propio pico.</p>
+</div>
+<div style="display:flex;flex-direction:column;gap:28px">
+<sc-for list="{{ ramps }}" as="ramp" hint-placeholder-count="3">
+<div style="display:flex;gap:28px;align-items:flex-start">
+<div style="width:210px;flex:none;display:flex;flex-direction:column;gap:6px">
+<div style="font-family:Archivo,sans-serif;font-stretch:110%;font-weight:800;font-size:19px">{{ ramp.name }}</div>
+<div style="font-size:12.5px;line-height:1.5;color:#7E8694">{{ ramp.note }}</div>
+</div>
+<div style="flex:1;display:flex;gap:4px">
+<sc-for list="{{ ramp.colors }}" as="c" hint-placeholder-count="8">
+<div style="flex:1;height:64px;border-radius:8px;background:{{ c.hex }};border:1px solid rgba(255,255,255,.06);display:flex;flex-direction:column;justify-content:flex-end;padding:6px 7px;gap:1px">
+<div style="font:700 10px/1 ui-monospace,Menlo,monospace;color:{{ c.t }}">{{ c.s }}</div>
+<div style="font:400 9px/1 ui-monospace,Menlo,monospace;color:{{ c.t }};opacity:.7">{{ c.hex }}</div>
+</div>
+</sc-for>
+</div>
+</div>
+</sc-for>
+<div style="display:flex;gap:28px;align-items:flex-start">
+<div style="width:210px;flex:none;display:flex;flex-direction:column;gap:6px">
+<div style="font-family:Archivo,sans-serif;font-stretch:110%;font-weight:800;font-size:19px">Zonas</div>
+<div style="font-size:12.5px;line-height:1.5;color:#7E8694">Semánticas, no decorativas. Solo en barras de progresión, rangos y RPE — siempre relativas a tu propio historial.</div>
+</div>
+<div style="flex:1;display:flex;gap:12px">
+<sc-for list="{{ zonas }}" as="z" hint-placeholder-count="3">
+<div style="flex:1;border:1px solid #20242D;border-radius:10px;padding:14px;display:flex;align-items:center;gap:12px">
+<div style="width:34px;height:34px;border-radius:8px;background:{{ z.hex }};flex:none"></div>
+<div style="display:flex;flex-direction:column;gap:3px">
+<div style="font-weight:700;font-size:13.5px">{{ z.n }}</div>
+<div style="font-size:11.5px;color:#7E8694">{{ z.u }} · <span style="font-family:ui-monospace,Menlo,monospace">{{ z.hex }}</span></div>
+</div>
+</div>
+</sc-for>
+</div>
+</div>
+</div>
+</div>
+
+<div style="border-top:1px solid #20242D;padding:52px 0;display:flex;flex-direction:column;gap:36px">
+<div style="display:flex;flex-direction:column;gap:10px">
+<div style="font:600 11px/1 ui-monospace,Menlo,monospace;letter-spacing:.12em;color:#FF6317">02 · TIPOGRAFÍA</div>
+<div style="font-family:Archivo,sans-serif;font-stretch:112%;font-weight:800;font-size:30px;line-height:1.05">Archivo para el peso, Instrument Sans para el resto</div>
+</div>
+<div style="display:grid;grid-template-columns:1.4fr 1fr;gap:16px">
+<div style="border:1px solid #20242D;border-radius:14px;padding:28px;display:flex;flex-direction:column;gap:18px">
+<div style="font:600 10.5px/1 ui-monospace,Menlo,monospace;letter-spacing:.1em;color:#7E8694">DISPLAY — ARCHIVO · EXPANDIDA · 800–900</div>
+<div style="font-family:Archivo,sans-serif;font-stretch:118%;font-weight:900;font-size:56px;line-height:.95;letter-spacing:-.01em">PRENSA<br>132.5 KG</div>
+<div style="font-size:12.5px;line-height:1.5;color:#7E8694">Titulares de pantalla, cifras héroe (volumen, PR, nivel). Siempre en pesos altos y ancho expandido — nunca en texto corrido.</div>
+</div>
+<div style="border:1px solid #20242D;border-radius:14px;padding:28px;display:flex;flex-direction:column;gap:18px">
+<div style="font:600 10.5px/1 ui-monospace,Menlo,monospace;letter-spacing:.1em;color:#7E8694">UI — INSTRUMENT SANS · 400–700</div>
+<p style="margin:0;font-size:15px;line-height:1.55">Última sesión de Piernas + Glúteos: 2,800 kg de volumen. Faltan 2.5 kg para superar tu PR.</p>
+<div style="display:flex;flex-direction:column;gap:4px;font-variant-numeric:tabular-nums;font-weight:600;font-size:15px;border-top:1px solid #20242D;padding-top:14px">
+<div style="display:flex;justify-content:space-between"><span style="color:#7E8694;font-weight:400">Volumen</span><span>8,325 kg</span></div>
+<div style="display:flex;justify-content:space-between"><span style="color:#7E8694;font-weight:400">1RM est.</span><span>92.5 kg</span></div>
+<div style="display:flex;justify-content:space-between"><span style="color:#7E8694;font-weight:400">Sets</span><span>24</span></div>
+</div>
+<div style="font-size:12.5px;line-height:1.5;color:#7E8694">Texto de interfaz y todos los números tabulares (<span style="font-family:ui-monospace,Menlo,monospace;font-size:11.5px">tabular-nums</span>): las columnas de kg alinean solas.</div>
+</div>
+</div>
+<div style="display:flex;flex-direction:column;border:1px solid #20242D;border-radius:14px;overflow:hidden">
+<sc-for list="{{ typeScale }}" as="t" hint-placeholder-count="6">
+<div style="display:flex;align-items:baseline;gap:24px;padding:14px 24px;border-bottom:1px solid #171A20">
+<div style="width:130px;flex:none;font:600 11px/1 ui-monospace,Menlo,monospace;color:#FF6317">{{ t.name }}</div>
+<div style="width:150px;flex:none;font:400 11px/1 ui-monospace,Menlo,monospace;color:#7E8694">{{ t.spec }}</div>
+<div style="{{ t.style }}">{{ t.sample }}</div>
+</div>
+</sc-for>
+</div>
+</div>
+
+<div style="border-top:1px solid #20242D;padding:52px 0;display:flex;flex-direction:column;gap:36px">
+<div style="display:flex;flex-direction:column;gap:10px">
+<div style="font:600 11px/1 ui-monospace,Menlo,monospace;letter-spacing:.12em;color:#FF6317">03 · FORMA Y JERARQUÍA</div>
+<div style="font-family:Archivo,sans-serif;font-stretch:112%;font-weight:800;font-size:30px;line-height:1.05">El radio y el tamaño comunican peso del dato</div>
+<p style="margin:0;max-width:620px;font-size:14.5px;line-height:1.55;color:#A8AEB9">Nada de radio uniforme: cuanto más contenedor, más radio. Y una card de volumen total no tiene la misma forma que la fila de un set — tres pesos de card, cada uno con su rol.</p>
+</div>
+<div style="display:flex;gap:16px;align-items:flex-end">
+<div style="flex:1.6;background:#111318;border:1px solid #2C323D;border-radius:20px;padding:24px;display:flex;flex-direction:column;gap:8px;min-height:150px;justify-content:flex-end">
+<div style="font:600 10.5px/1 ui-monospace,Menlo,monospace;letter-spacing:.1em;color:#7E8694">CARD HÉROE · R20</div>
+<div style="font-family:Archivo,sans-serif;font-stretch:115%;font-weight:900;font-size:40px;line-height:1">2,800 <span style="font-size:18px;font-stretch:100%;font-weight:700;color:#7E8694">kg</span></div>
+<div style="font-size:13px;color:#A8AEB9">Volumen de la sesión — un dato por pantalla merece este peso</div>
+</div>
+<div style="flex:1.1;background:#111318;border:1px solid #20242D;border-radius:14px;padding:18px;display:flex;flex-direction:column;gap:6px;min-height:104px;justify-content:flex-end">
+<div style="font:600 10.5px/1 ui-monospace,Menlo,monospace;letter-spacing:.1em;color:#7E8694">CARD MÉTRICA · R14</div>
+<div style="font-family:Archivo,sans-serif;font-stretch:110%;font-weight:800;font-size:24px;line-height:1">24 <span style="font-size:13px;font-stretch:100%;font-weight:600;color:#7E8694">sets</span></div>
+</div>
+<div style="flex:1.3;display:flex;flex-direction:column;gap:8px">
+<div style="background:transparent;border:1px solid #20242D;border-radius:10px;padding:12px 16px;display:flex;justify-content:space-between;align-items:center">
+<span style="font-size:13.5px">Set 3 · 12 reps</span><span style="font-variant-numeric:tabular-nums;font-weight:600;font-size:13.5px">120 kg</span>
+</div>
+<div style="font:600 10.5px/1 ui-monospace,Menlo,monospace;letter-spacing:.1em;color:#7E8694;padding-left:4px">FILA DE DATO · R10</div>
+</div>
+</div>
+</div>
+
+<div style="border-top:1px solid #20242D;padding:52px 0;display:flex;flex-direction:column;gap:36px">
+<div style="display:flex;flex-direction:column;gap:10px">
+<div style="font:600 11px/1 ui-monospace,Menlo,monospace;letter-spacing:.12em;color:#FF6317">04 · COMPONENTES BASE</div>
+<div style="font-family:Archivo,sans-serif;font-stretch:112%;font-weight:800;font-size:30px;line-height:1.05">Lo que se toca con las manos sudadas</div>
+<p style="margin:0;max-width:620px;font-size:14.5px;line-height:1.55;color:#A8AEB9">Targets de 44px mínimo, estados explícitos, un solo botón primario por pantalla. Sin íconos en círculos de color: el texto y la forma hacen el trabajo.</p>
+</div>
+<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:16px">
+<div style="border:1px solid #20242D;border-radius:14px;padding:24px;display:flex;flex-direction:column;gap:16px">
+<div style="font:600 10.5px/1 ui-monospace,Menlo,monospace;letter-spacing:.1em;color:#7E8694">BOTONES</div>
+<div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center">
+<button style="font-family:'Instrument Sans',sans-serif;font-weight:700;font-size:15px;background:#FF6317;color:#0B0C0F;border:none;border-radius:10px;padding:13px 22px;cursor:pointer" style-hover="background:#FF7E42">Guardar entrenamiento</button>
+<button style="font-family:'Instrument Sans',sans-serif;font-weight:600;font-size:15px;background:transparent;color:#EBEDF0;border:1px solid #3E4552;border-radius:10px;padding:12px 22px;cursor:pointer" style-hover="border-color:#5A6270">Terminar sesión</button>
+<button style="font-family:'Instrument Sans',sans-serif;font-weight:600;font-size:15px;background:transparent;color:#FF6317;border:none;padding:12px 8px;cursor:pointer">Ver historial</button>
+<button style="font-family:'Instrument Sans',sans-serif;font-weight:700;font-size:15px;background:#171A20;color:#5A6270;border:none;border-radius:10px;padding:13px 22px;cursor:default">Guardar entrenamiento</button>
+</div>
+<div style="font-size:12px;color:#7E8694">Primario Fragua (uno por pantalla) · secundario contorno · terciario texto · deshabilitado sin fantasmas: se ve que existe, se ve que no está listo.</div>
+</div>
+<div style="border:1px solid #20242D;border-radius:14px;padding:24px;display:flex;flex-direction:column;gap:16px">
+<div style="font:600 10.5px/1 ui-monospace,Menlo,monospace;letter-spacing:.1em;color:#7E8694">STEPPER NUMÉRICO · KG</div>
+<div style="display:flex;gap:8px;align-items:stretch;max-width:280px">
+<button style="width:52px;height:56px;flex:none;background:#171A20;border:1px solid #2C323D;border-radius:10px;color:#EBEDF0;font-size:22px;font-weight:600;cursor:pointer" style-hover="border-color:#FF6317">−</button>
+<div style="flex:1;background:#111318;border:1px solid #2C323D;border-radius:10px;display:flex;align-items:center;justify-content:center;font-family:Archivo,sans-serif;font-stretch:110%;font-weight:800;font-size:26px;font-variant-numeric:tabular-nums">72.5</div>
+<button style="width:52px;height:56px;flex:none;background:#171A20;border:1px solid #2C323D;border-radius:10px;color:#EBEDF0;font-size:22px;font-weight:600;cursor:pointer" style-hover="border-color:#FF6317">+</button>
+</div>
+<div style="font-size:12px;color:#7E8694">56px de alto: operable con guantes, entre sets, sin mirar dos veces. El valor en Archivo 800 — es el dato más importante de la fila.</div>
+</div>
+<div style="border:1px solid #20242D;border-radius:14px;padding:24px;display:flex;flex-direction:column;gap:16px">
+<div style="font:600 10.5px/1 ui-monospace,Menlo,monospace;letter-spacing:.1em;color:#7E8694">BADGES E INTENSIDAD</div>
+<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">
+<span style="font:600 11px/1 ui-monospace,Menlo,monospace;letter-spacing:.06em;padding:6px 10px;border:1px solid #3E4552;border-radius:6px;color:#A8AEB9">OPCIONAL</span>
+<span style="font:700 11px/1 ui-monospace,Menlo,monospace;letter-spacing:.06em;padding:6px 10px;background:#FF6317;border-radius:6px;color:#0B0C0F">PR</span>
+<span style="font:600 11px/1 ui-monospace,Menlo,monospace;letter-spacing:.06em;padding:6px 10px;border:1px solid #2C323D;border-radius:6px;color:#7E8694">SUAVE</span>
+<span style="font:600 11px/1 ui-monospace,Menlo,monospace;letter-spacing:.06em;padding:6px 10px;background:#52290F;border-radius:6px;color:#FF9C6B">MODERADA</span>
+<span style="font:700 11px/1 ui-monospace,Menlo,monospace;letter-spacing:.06em;padding:6px 10px;background:#FF6317;border-radius:6px;color:#0B0C0F">INTENSA</span>
+</div>
+<div style="font-size:12px;color:#7E8694">La intensidad escala dentro de Fragua — no roba los colores de Zonas, que son de progresión.</div>
+</div>
+<div style="border:1px solid #20242D;border-radius:14px;padding:24px;display:flex;flex-direction:column;gap:16px">
+<div style="font:600 10.5px/1 ui-monospace,Menlo,monospace;letter-spacing:.1em;color:#7E8694">VENTANA TEMPORAL + ESFUERZO</div>
+<div style="display:flex;background:#171A20;border-radius:10px;padding:4px;gap:2px;max-width:320px">
+<div style="flex:1;text-align:center;padding:9px 0;border-radius:7px;font-size:13px;font-weight:600;color:#7E8694">Día</div>
+<div style="flex:1;text-align:center;padding:9px 0;border-radius:7px;font-size:13px;font-weight:700;background:#EBEDF0;color:#0B0C0F">Semana</div>
+<div style="flex:1;text-align:center;padding:9px 0;border-radius:7px;font-size:13px;font-weight:600;color:#7E8694">Mes</div>
+<div style="flex:1;text-align:center;padding:9px 0;border-radius:7px;font-size:13px;font-weight:600;color:#7E8694">Todo</div>
+</div>
+<div style="display:flex;flex-direction:column;gap:8px;max-width:320px">
+<div style="display:flex;justify-content:space-between;font-size:12.5px"><span style="color:#7E8694">Esfuerzo</span><span style="font-weight:700;color:#DFA23A">RPE 7 · Exigente</span></div>
+<div style="position:relative;height:8px;border-radius:4px;background:linear-gradient(90deg,#43B97F,#DFA23A 55%,#E5484D);margin:7px 0">
+<div style="position:absolute;left:calc(11px + (100% - 22px) * 0.65);top:50%;transform:translate(-50%,-50%);width:22px;height:22px;border-radius:50%;background:#EBEDF0;border:5px solid #0B0C0F;box-shadow:0 0 0 1px #3E4552"></div>
+</div>
+</div>
+</div>
+</div>
+<div style="display:grid;grid-template-columns:300px 1fr;gap:16px">
+<div style="background:#111318;border:1px solid #20242D;border-radius:14px;overflow:hidden;display:flex;flex-direction:column">
+<div style="position:relative;height:150px;background:repeating-linear-gradient(45deg,#171A20,#171A20 10px,#14161B 10px,#14161B 20px);display:flex;align-items:center;justify-content:center">
+<span style="font:500 11px/1 ui-monospace,Menlo,monospace;color:#5A6270">foto — prensa de piernas</span>
+<span style="position:absolute;top:12px;right:12px;font:700 10.5px/1 ui-monospace,Menlo,monospace;letter-spacing:.06em;padding:6px 9px;background:#FF6317;border-radius:6px;color:#0B0C0F">INTENSA</span>
+</div>
+<div style="padding:16px;display:flex;flex-direction:column;gap:8px">
+<div style="font-weight:700;font-size:16px">Prensa de Piernas</div>
+<div style="display:flex;gap:6px;align-items:center">
+<span style="font:600 10.5px/1 ui-monospace,Menlo,monospace;padding:5px 8px;border:1px solid #2C323D;border-radius:6px;color:#A8AEB9">PIERNAS</span>
+<span style="font-size:12px;color:#7E8694">Última vez: 4×12 · 120 kg</span>
+</div>
+</div>
+</div>
+<div style="background:#F6F5F2;border-radius:14px;padding:24px;color:#16181C;display:flex;flex-direction:column;gap:14px">
+<div style="font:600 10.5px/1 ui-monospace,Menlo,monospace;letter-spacing:.1em;color:#8A877C">SECCIÓN CLARA · HUESO — DATOS HISTÓRICOS</div>
+<div style="display:flex;flex-direction:column;gap:8px">
+<div style="background:#FFFFFF;border:1px solid #E0DED7;border-radius:10px;padding:14px 18px;display:flex;justify-content:space-between;align-items:center">
+<div style="display:flex;flex-direction:column;gap:2px"><span style="font-weight:700;font-size:14.5px">Piernas + Glúteos</span><span style="font-size:12px;color:#8A877C">vie, 17 abr · 4/4 completados</span></div>
+<span style="font-family:Archivo,sans-serif;font-stretch:110%;font-weight:800;font-size:20px;font-variant-numeric:tabular-nums">8,325 <span style="font-size:12px;font-weight:600;color:#8A877C">kg</span></span>
+</div>
+<div style="background:#FFFFFF;border:1px solid #E0DED7;border-radius:10px;padding:14px 18px;display:flex;justify-content:space-between;align-items:center">
+<div style="display:flex;flex-direction:column;gap:2px"><span style="font-weight:700;font-size:14.5px">Espalda + Bíceps</span><span style="font-size:12px;color:#8A877C">dom, 19 abr · 1/1 completados</span></div>
+<span style="font-family:Archivo,sans-serif;font-stretch:110%;font-weight:800;font-size:20px;font-variant-numeric:tabular-nums">800 <span style="font-size:12px;font-weight:600;color:#8A877C">kg</span></span>
+</div>
+</div>
+<div style="font-size:12px;line-height:1.5;color:#8A877C">La división dura oscuro/claro (ref. Img 1): lo que pasa HOY vive en Carbón; lo que ya pasó se lee sobre Hueso. Jerarquía sin gradientes.</div>
+</div>
+</div>
+</div>
+
+<div style="border-top:1px solid #20242D;padding:52px 0;display:flex;flex-direction:column;gap:36px">
+<div style="display:flex;flex-direction:column;gap:10px">
+<div style="font:600 11px/1 ui-monospace,Menlo,monospace;letter-spacing:.12em;color:#FF6317">05 · LA FIRMA — HEATMAP DE CONSISTENCIA</div>
+<div style="font-family:Archivo,sans-serif;font-stretch:112%;font-weight:800;font-size:30px;line-height:1.05">Los huecos, imposibles de ignorar</div>
+</div>
+<div style="background:#111318;border:1px solid #2C323D;border-radius:20px;padding:32px;display:flex;flex-direction:column;gap:20px">
+<div style="display:flex;justify-content:space-between;align-items:baseline">
+<div style="display:flex;flex-direction:column;gap:4px">
+<div style="font-family:Archivo,sans-serif;font-stretch:112%;font-weight:800;font-size:22px">Últimas 26 semanas</div>
+<div style="font-size:13px;color:#7E8694">Cada celda: un día. El calor: volumen levantado.</div>
+</div>
+<div style="font-variant-numeric:tabular-nums;font-size:13px;color:#A8AEB9"><span style="font-weight:700;color:#EBEDF0">47</span> entrenos · racha actual <span style="font-weight:700;color:#FF6317">2</span></div>
+</div>
+<div style="display:flex;flex-direction:column;gap:10px">
+<div style="display:flex;gap:4px">
+<sc-for list="{{ heatWeeks }}" as="w" hint-placeholder-count="26">
+<div style="flex:1;display:flex;flex-direction:column;gap:4px">
+<sc-for list="{{ w.days }}" as="d" hint-placeholder-count="7">
+<div style="aspect-ratio:1;border-radius:3px;background:{{ d.c }}"></div>
+</sc-for>
+</div>
+</sc-for>
+</div>
+<div style="position:relative;height:26px">
+<div style="position:absolute;left:34.6%;width:25.4%;top:0;height:8px;border:1px solid #E5484D;border-top:none;border-radius:0 0 4px 4px"></div>
+<div style="position:absolute;left:34.6%;width:25.4%;top:12px;text-align:center;font:600 10.5px/1 ui-monospace,Menlo,monospace;color:#E5484D;letter-spacing:.04em">47 DÍAS SIN ENTRENAR</div>
+</div>
+</div>
+<div style="display:flex;justify-content:space-between;align-items:center">
+<div style="font-size:12.5px;line-height:1.5;color:#7E8694;max-width:560px">El hueco de marzo–abril que encontramos en tu CSV, visible de un vistazo. Va en Home, arriba del pliegue — es el componente que responde la pregunta que importa: ¿estoy siendo constante?</div>
+<div style="display:flex;gap:4px;align-items:center;flex:none">
+<span style="font-size:11px;color:#7E8694;margin-right:4px">menos</span>
+<div style="width:12px;height:12px;border-radius:3px;background:#171A20"></div>
+<div style="width:12px;height:12px;border-radius:3px;background:#52290F"></div>
+<div style="width:12px;height:12px;border-radius:3px;background:#8A3D0B"></div>
+<div style="width:12px;height:12px;border-radius:3px;background:#C85510"></div>
+<div style="width:12px;height:12px;border-radius:3px;background:#FF6317"></div>
+<span style="font-size:11px;color:#7E8694;margin-left:4px">más</span>
+</div>
+</div>
+</div>
+</div>
+
+<div style="border-top:1px solid #20242D;padding:52px 0;display:flex;flex-direction:column;gap:36px">
+<div style="display:flex;flex-direction:column;gap:10px">
+<div style="font:600 11px/1 ui-monospace,Menlo,monospace;letter-spacing:.12em;color:#FF6317">06 · CADA DATO, SU FORMA</div>
+<div style="font-family:Archivo,sans-serif;font-stretch:112%;font-weight:800;font-size:30px;line-height:1.05">Ninguna métrica repite visualización</div>
+</div>
+<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px">
+<div style="border:1px solid #20242D;border-radius:14px;padding:22px;display:flex;flex-direction:column;gap:14px">
+<div style="display:flex;justify-content:space-between;align-items:baseline"><span style="font:600 10.5px/1 ui-monospace,Menlo,monospace;letter-spacing:.1em;color:#7E8694">VOLUMEN → BARRAS</span><span style="font-family:Archivo,sans-serif;font-stretch:110%;font-weight:800;font-size:18px">9,240</span></div>
+<div style="display:flex;gap:6px;align-items:flex-end;height:64px">
+<div style="flex:1;height:40%;border-radius:4px 4px 2px 2px;background:#2C323D"></div>
+<div style="flex:1;height:55%;border-radius:4px 4px 2px 2px;background:#2C323D"></div>
+<div style="flex:1;height:35%;border-radius:4px 4px 2px 2px;background:#2C323D"></div>
+<div style="flex:1;height:70%;border-radius:4px 4px 2px 2px;background:#2C323D"></div>
+<div style="flex:1;height:52%;border-radius:4px 4px 2px 2px;background:#2C323D"></div>
+<div style="flex:1;height:64%;border-radius:4px 4px 2px 2px;background:#2C323D"></div>
+<div style="flex:1;height:88%;border-radius:4px 4px 2px 2px;background:#FF6317"></div>
+</div>
+<div style="font-size:12px;color:#7E8694">Semana actual siempre en Fragua; el resto, estructura.</div>
+</div>
+<div style="border:1px solid #20242D;border-radius:14px;padding:22px;display:flex;flex-direction:column;gap:14px">
+<div style="display:flex;justify-content:space-between;align-items:baseline"><span style="font:600 10.5px/1 ui-monospace,Menlo,monospace;letter-spacing:.1em;color:#7E8694">1RM VS PICO → ZONAS</span><span style="font-family:Archivo,sans-serif;font-stretch:110%;font-weight:800;font-size:18px">72.5 <span style="font-size:11px;font-weight:600;color:#7E8694">kg</span></span></div>
+<div style="display:flex;flex-direction:column;gap:6px;padding-top:14px">
+<div style="position:relative;height:12px;display:flex;gap:2px">
+<div style="width:63%;background:#E5484D2E;border-bottom:3px solid #E5484D;border-radius:6px 2px 2px 6px"></div>
+<div style="width:23%;background:#DFA23A2E;border-bottom:3px solid #DFA23A"></div>
+<div style="flex:1;background:#43B97F2E;border-bottom:3px solid #43B97F;border-radius:2px 6px 6px 2px"></div>
+<div style="position:absolute;left:77%;top:-6px;bottom:-4px;width:2.5px;background:#EBEDF0;border-radius:2px"></div>
+<div style="position:absolute;left:90.5%;top:-2px;bottom:0;width:1.5px;background:#7E8694"></div>
+</div>
+<div style="display:flex;justify-content:space-between;font-size:10.5px;font-family:ui-monospace,Menlo,monospace;color:#7E8694"><span>0</span><span>pico 90 kg</span></div>
+</div>
+<div style="font-size:12px;color:#7E8694">Dónde estás respecto a tu propio pico — no el número plano.</div>
+</div>
+<div style="border:1px solid #20242D;border-radius:14px;padding:22px;display:flex;flex-direction:column;gap:14px">
+<div style="display:flex;justify-content:space-between;align-items:baseline"><span style="font:600 10.5px/1 ui-monospace,Menlo,monospace;letter-spacing:.1em;color:#7E8694">RACHA → PUNTOS</span><span style="font-family:Archivo,sans-serif;font-stretch:110%;font-weight:800;font-size:18px">5 <span style="font-size:11px;font-weight:600;color:#7E8694">/ 7 días</span></span></div>
+<div style="display:flex;gap:8px;align-items:center;height:64px">
+<sc-for list="{{ streakDots }}" as="s" hint-placeholder-count="7">
+<div style="width:26px;height:26px;border-radius:50%;background:{{ s.bg }};border:{{ s.bd }};display:flex;align-items:center;justify-content:center;font:700 10px/1 ui-monospace,Menlo,monospace;color:{{ s.tc }}">{{ s.l }}</div>
+</sc-for>
+</div>
+<div style="font-size:12px;color:#7E8694">Objetivo semanal como puntos discretos — la racha es binaria, no continua.</div>
+</div>
+</div>
+</div>
+
+<div style="border-top:1px solid #20242D;padding:52px 0;display:flex;flex-direction:column;gap:36px">
+<div style="display:flex;flex-direction:column;gap:10px">
+<div style="font:600 11px/1 ui-monospace,Menlo,monospace;letter-spacing:.12em;color:#FF6317">07 · VOZ</div>
+<div style="font-family:Archivo,sans-serif;font-stretch:112%;font-weight:800;font-size:30px;line-height:1.05">Directa, con datos, sin porras</div>
+</div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+<div style="border:1px solid #2C3D2F;border-radius:14px;padding:22px;display:flex;flex-direction:column;gap:12px">
+<div style="font:700 10.5px/1 ui-monospace,Menlo,monospace;letter-spacing:.1em;color:#43B97F">SÍ — LA VOZ ACTUAL, PROTEGIDA</div>
+<div style="font-size:14px;line-height:1.6;display:flex;flex-direction:column;gap:8px">
+<div>"Faltan 2.5 kg para superar tu PR de Prensa."</div>
+<div>"Última sesión de este grupo: 2,800 kg. ¿Lo superamos?"</div>
+<div>"12 días sin entrenar espalda."</div>
+</div>
+</div>
+<div style="border:1px solid #3D2626;border-radius:14px;padding:22px;display:flex;flex-direction:column;gap:12px">
+<div style="font:700 10.5px/1 ui-monospace,Menlo,monospace;letter-spacing:.1em;color:#E5484D">NO — CLICHÉS PROHIBIDOS</div>
+<div style="font-size:14px;line-height:1.6;color:#7E8694;display:flex;flex-direction:column;gap:8px">
+<div style="text-decoration:line-through">"¡Desata tu potencial! 💪🔥"</div>
+<div style="text-decoration:line-through">"¡Ups! Algo salió mal 😅"</div>
+<div style="text-decoration:line-through">"No hay datos" <span style="text-decoration:none;font-size:12px">(→ estado vacío siempre con acción concreta)</span></div>
+</div>
+</div>
+</div>
+</div>
+
+<div style="border-top:1px solid #20242D;padding:40px 0 0;display:flex;justify-content:space-between;gap:24px;align-items:flex-start">
+<div style="font-size:13.5px;line-height:1.6;color:#7E8694;max-width:620px"><span style="color:#EBEDF0;font-weight:600">Siguiente:</span> con este sistema validado (o corregido), paso a pantallas — Home primero, con heatmap y gamificación protagonistas, luego sesión activa, cardio, historial, calculadoras y perfil. Todo lo de FEATURES.md queda cubierto módulo por módulo.</div>
+<div style="font:600 11px/1 ui-monospace,Menlo,monospace;letter-spacing:.12em;color:#FF6317;flex:none">FIERRO · 01</div>
+</div>
+
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  renderVals() {
+    const frac = x => x - Math.floor(x);
+    const lvl = (w, d) => {
+      if (w >= 9 && w < 16) return 0;
+      const f = frac(Math.abs(Math.sin(w * 12.7 + d * 5.3)) * 43.7585);
+      if (f < 0.48) return 0;
+      return 1 + (Math.floor(f * 17) % 4);
+    };
+    const heat = ['#171A20', '#52290F', '#8A3D0B', '#C85510', '#FF6317'];
+    const heatWeeks = Array.from({ length: 26 }, (_, w) => ({
+      days: Array.from({ length: 7 }, (_, d) => ({ c: heat[lvl(w, d)] }))
+    }));
+    const mk = (s, hex, t) => ({ s, hex, t });
+    const ramps = [
+      { name: 'Carbón', note: 'La base. Fondo de app, superficies, bordes y texto. Todo lo estructural vive aquí.', colors: [
+        mk('950', '#0B0C0F', '#7E8694'), mk('900', '#111318', '#7E8694'), mk('800', '#171A20', '#7E8694'), mk('700', '#20242D', '#A8AEB9'), mk('600', '#2C323D', '#A8AEB9'), mk('500', '#3E4552', '#CDD1D9'), mk('400', '#5A6270', '#EBEDF0'), mk('300', '#7E8694', '#111318'), mk('200', '#A8AEB9', '#111318'), mk('100', '#CDD1D9', '#111318'), mk('50', '#EBEDF0', '#111318')
+      ]},
+      { name: 'Hueso', note: 'Secciones claras: datos históricos y lectura larga (Historial, Gráficos). Blanco entibiado, saturación casi nula.', colors: [
+        mk('500', '#8A877C', '#F6F5F2'), mk('400', '#A9A69B', '#16181C'), mk('300', '#CBC8BE', '#16181C'), mk('200', '#E0DED7', '#16181C'), mk('100', '#EDECE7', '#16181C'), mk('50', '#F6F5F2', '#16181C')
+      ]},
+      { name: 'Fragua', note: 'El único acento: calor de metal trabajado. Acción primaria, día entrenado, PR, intensidad. Si todo es Fragua, nada lo es.', colors: [
+        mk('900', '#7A2604', '#FFBD9C'), mk('800', '#9C3407', '#FFDCC9'), mk('700', '#C2440A', '#FFF0E7'), mk('600', '#E5540F', '#0B0C0F'), mk('500', '#FF6317', '#0B0C0F'), mk('400', '#FF7E42', '#0B0C0F'), mk('300', '#FF9C6B', '#0B0C0F'), mk('200', '#FFBD9C', '#7A2604'), mk('100', '#FFDCC9', '#7A2604'), mk('50', '#FFF0E7', '#7A2604')
+      ]}
+    ];
+    const zonas = [
+      { n: 'Zona Roja', hex: '#E5484D', u: 'Retroceso vs. pico' },
+      { n: 'Zona Ámbar', hex: '#DFA23A', u: 'Manteniendo' },
+      { n: 'Zona Verde', hex: '#43B97F', u: 'Progresando / territorio PR' }
+    ];
+    const typeScale = [
+      { name: 'display-xl', spec: 'Archivo 900 · 44/0.95', style: "font-family:Archivo,sans-serif;font-stretch:118%;font-weight:900;font-size:44px;line-height:.95", sample: 'PIERNAS + GLÚTEOS' },
+      { name: 'display-m', spec: 'Archivo 800 · 30/1.05', style: 'font-family:Archivo,sans-serif;font-stretch:112%;font-weight:800;font-size:30px;line-height:1.05', sample: 'Historial' },
+      { name: 'cifra', spec: 'Archivo 800 · 24 tnum', style: 'font-family:Archivo,sans-serif;font-stretch:110%;font-weight:800;font-size:24px;font-variant-numeric:tabular-nums', sample: '2,800 kg' },
+      { name: 'heading', spec: 'Instrument 700 · 18', style: "font-family:'Instrument Sans',sans-serif;font-weight:700;font-size:18px", sample: 'Prensa de Piernas' },
+      { name: 'body', spec: 'Instrument 400 · 15/1.55', style: "font-family:'Instrument Sans',sans-serif;font-size:15px;line-height:1.55", sample: 'Última vez: 4×12 · 120 kg. Faltan 2.5 kg para tu PR.' },
+      { name: 'label', spec: 'Mono 600 · 11 caps', style: 'font:600 11px/1 ui-monospace,Menlo,monospace;letter-spacing:.1em;color:#7E8694', sample: 'VOLUMEN SEMANAL' }
+    ];
+    const streakDots = [
+      { l: 'L', bg: '#FF6317', bd: 'none', tc: '#0B0C0F' },
+      { l: 'M', bg: '#FF6317', bd: 'none', tc: '#0B0C0F' },
+      { l: 'X', bg: '#FF6317', bd: 'none', tc: '#0B0C0F' },
+      { l: 'J', bg: '#171A20', bd: '1px solid #2C323D', tc: '#5A6270' },
+      { l: 'V', bg: '#FF6317', bd: 'none', tc: '#0B0C0F' },
+      { l: 'S', bg: '#FF6317', bd: 'none', tc: '#0B0C0F' },
+      { l: 'D', bg: '#171A20', bd: '1px dashed #3E4552', tc: '#5A6270' }
+    ];
+    return { heatWeeks, ramps, zonas, typeScale, streakDots };
+  }
+}
+</script>
+</body>
+</html>

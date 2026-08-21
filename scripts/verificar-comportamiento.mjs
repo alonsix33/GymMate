@@ -76,6 +76,29 @@ async function abrir(semilla = {}) {
   return { ctx, pagina };
 }
 
+/**
+ * Historial minimo para que H-01 se pinte ENTERO. Sin esto la home entra en
+ * O-01 (vacio), donde faltan la mitad de las acciones: un chequeo que solo
+ * ve el estado vacio valida lo que el usuario real nunca toca.
+ */
+function historialDePrueba(dias = [1, 3, 5, 8, 12]) {
+  const hoy = new Date();
+  return dias.map((atras, i) => {
+    const d = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate() - atras, 19, 30);
+    return {
+      id: `s${i}`,
+      date: d.toISOString(),
+      savedAt: d.toISOString(),
+      grupo: 'GRUPO 1 - Piernas + Glúteos',
+      volumenTotal: 3000 + i * 800,
+      ejercicios: [
+        { nombre: 'Prensa de Piernas', sets: 4, reps: 12, peso: 100 + i * 5, volumen: 3000 + i * 800 },
+      ],
+      volumenPorGrupo: { piernas: 3000 + i * 800 },
+    };
+  });
+}
+
 const borradorDePrueba = {
   date: new Date().toISOString().split('T')[0],
   grupo: 'GRUPO 1 - Piernas + Glúteos',
@@ -287,7 +310,10 @@ const borradorDePrueba = {
     { id: 'w2', nombre: 'Espalda', ejercicios: [] },
     { id: 'w3', nombre: 'Piernas', ejercicios: [] },
   ];
-  const { ctx, pagina } = await abrir({ gymmate_custom_workouts: rutinas });
+  const { ctx, pagina } = await abrir({
+    gymmate_custom_workouts: rutinas,
+    gymmate_history: historialDePrueba(),
+  });
   const r = await pagina.evaluate(async () => {
     // Por su nombre REAL en window. Con optional chaining la prueba pasaba
     // por vacio: no se llamaba a nada y el "deshacer" salia verde sin hacer
@@ -296,10 +322,19 @@ const borradorDePrueba = {
     window.deleteCustomWorkout('w1');
     await new Promise((r) => setTimeout(r, 150));
     const tras = JSON.parse(localStorage.getItem('gymmate_custom_workouts') || '[]').map((w) => w.id);
+    // El almacenamiento era la mitad que ya funcionaba: la pintada era la
+    // rota. Sin mirar el DOM, borrar dejaba una card fantasma con botones
+    // muertos y la puerta seguia verde.
+    const enPantallaTras = [...document.querySelectorAll('#fierroHome [data-custom-workout]')].map(
+      (el) => el.dataset.customWorkout
+    );
     document.querySelector('.f-toast__deshacer')?.click();
     await new Promise((r) => setTimeout(r, 150));
     const restaurado = JSON.parse(localStorage.getItem('gymmate_custom_workouts') || '[]').map((w) => w.id);
-    return { tras, restaurado };
+    const enPantallaRestaurado = [...document.querySelectorAll('#fierroHome [data-custom-workout]')].map(
+      (el) => el.dataset.customWorkout
+    );
+    return { tras, restaurado, enPantallaTras, enPantallaRestaurado };
   });
   if (r.ausente) {
     chk('window.deleteCustomWorkout expuesta', false, 'no existe en window');
@@ -310,6 +345,16 @@ const borradorDePrueba = {
       JSON.stringify(r.restaurado) === JSON.stringify(['w1', 'w2', 'w3']),
       r.restaurado.join(',')
     );
+    chk(
+      'la card borrada desaparece de la pantalla',
+      JSON.stringify(r.enPantallaTras) === JSON.stringify(['w2', 'w3']),
+      r.enPantallaTras.join(',') || '(ninguna)'
+    );
+    chk(
+      'deshacer la vuelve a pintar en su sitio',
+      JSON.stringify(r.enPantallaRestaurado) === JSON.stringify(['w1', 'w2', 'w3']),
+      r.enPantallaRestaurado.join(',') || '(ninguna)'
+    );
   }
   await ctx.close();
 }
@@ -318,17 +363,33 @@ const borradorDePrueba = {
 // 6b. La reserva de espacio coincide con la altura real de la tab bar
 // --------------------------------------------------------------------------
 {
-  const { ctx, pagina } = await abrir();
-  const r = await pagina.evaluate(() => {
+  const { ctx, pagina } = await abrir({ gymmate_history: historialDePrueba() });
+  const r = await pagina.evaluate(async () => {
     const barra = document.querySelector('.f-tabbar');
     if (!barra) return { sinBarra: true };
+    // Hasta el fondo: en lo alto de la pagina la ultima card cae fuera de la
+    // ventana y la comparacion no medía nada. El scroll de la app es `smooth`,
+    // asi que se espera a que la posicion se estabilice — con una espera fija
+    // la medida se tomaba a mitad de camino y acusaba un solape inexistente.
+    let previo = -1;
+    for (let i = 0; i < 40 && previo !== window.scrollY; i++) {
+      previo = window.scrollY;
+      window.scrollTo(0, document.documentElement.scrollHeight);
+      await new Promise((r) => setTimeout(r, 50));
+    }
     const alto = +barra.getBoundingClientRect().height.toFixed(1);
     const token = parseFloat(
       getComputedStyle(document.documentElement).getPropertyValue('--h-nav-inferior')
     );
     // Ultimo elemento del contenido: no puede quedar debajo de la barra.
     const ultimo = document.querySelector('.f-home__cardio')?.getBoundingClientRect();
-    return { alto, token, tapado: ultimo ? ultimo.bottom > barra.getBoundingClientRect().top : null };
+    const topBarra = barra.getBoundingClientRect().top;
+    return {
+      alto,
+      token,
+      tapado: ultimo ? ultimo.bottom > topBarra : null,
+      holgura: ultimo ? +(topBarra - ultimo.bottom).toFixed(1) : null,
+    };
   });
   if (r.sinBarra) {
     chk('la tab bar FIERRO existe', false);
@@ -337,6 +398,12 @@ const borradorDePrueba = {
       '--h-nav-inferior coincide con la altura real de la tab bar',
       Math.abs(r.alto - r.token) < 1,
       `real ${r.alto}px | token ${r.token}px`
+    );
+    // Se calculaba y no se afirmaba: la medida existia solo para el informe.
+    chk(
+      'la ultima card no queda debajo de la tab bar',
+      r.tapado === false,
+      r.tapado === null ? 'no se encontro .f-home__cardio (home vacia)' : `holgura ${r.holgura}px`
     );
   }
   await ctx.close();
@@ -347,7 +414,9 @@ const borradorDePrueba = {
 //     global inexistente no hace nada y no avisa.
 // --------------------------------------------------------------------------
 {
-  const { ctx, pagina } = await abrir();
+  // Con la home vacia solo existe `importar`: las acciones que un usuario con
+  // datos si toca (progreso, cardio) nunca se comprobaban.
+  const { ctx, pagina } = await abrir({ gymmate_history: historialDePrueba() });
   const r = await pagina.evaluate(() => {
     const acciones = [...document.querySelectorAll('#fierroHome [data-accion]')].map(
       (el) => el.dataset.accion
@@ -363,6 +432,9 @@ const borradorDePrueba = {
     return { acciones, rotas };
   });
   chk('H-01 expone acciones', r.acciones.length > 0, r.acciones.join(', '));
+  for (const esperada of ['progreso', 'cardio']) {
+    chk(`H-01 con datos ofrece la accion "${esperada}"`, r.acciones.includes(esperada), r.acciones.join(', '));
+  }
   chk('ninguna accion de H-01 apunta a un global inexistente', r.rotas.length === 0, r.rotas.join(', '));
   await ctx.close();
 }
@@ -416,6 +488,62 @@ const borradorDePrueba = {
     return t.left >= b.left - 1 && t.right <= b.right + 1;
   });
   chk('a 900px el toast no se sale del cuerpo de la app', dentro);
+  await ctx.close();
+}
+
+// --------------------------------------------------------------------------
+// 9. Ninguna pantalla queda huerfana: si un modulo existe, se llega a el
+//    tocando. Al sustituir la barra legacy y el markup de la home,
+//    Calculadoras, Graficos y Records se quedaron sin ningun camino.
+// --------------------------------------------------------------------------
+{
+  const { ctx, pagina } = await abrir({ gymmate_history: historialDePrueba() });
+  for (const [destino, camino] of [
+    ['prs', ['[data-nav="history"]', '[data-action="prs"]']],
+    ['charts', ['[data-nav="history"]', '[data-action="charts"]']],
+    ['calculators', ['[data-nav="profile"]', '[data-action="calculators"]']],
+  ]) {
+    let visible = false;
+    let detalle = '';
+    try {
+      for (const paso of camino) {
+        await pagina.locator(paso).first().click({ timeout: 3000 });
+        await pagina.waitForTimeout(250);
+      }
+      visible = await pagina.locator(`#${destino}Tab`).first().isVisible();
+    } catch (e) {
+      detalle = String(e.message).split('\n')[0];
+    }
+    chk(`se puede llegar a #${destino}Tab tocando`, visible, detalle || camino.join(' → '));
+    await pagina.locator('[data-nav="home"]').first().click().catch(() => {});
+    await pagina.waitForTimeout(200);
+  }
+  await ctx.close();
+}
+
+// --------------------------------------------------------------------------
+// 10. Ninguna pantalla se queda pegada al borde. El padding vivia en <main>;
+//     al quitarlo, las vistas que no son .tab-content perdieron el suyo.
+// --------------------------------------------------------------------------
+{
+  const { ctx, pagina } = await abrir({ gymmate_history: historialDePrueba() });
+  const r = await pagina.evaluate(async () => {
+    window.showCardioSelector?.();
+    await new Promise((r) => setTimeout(r, 300));
+    const medir = (id) => {
+      const el = document.getElementById(id);
+      if (!el || el.classList.contains('hidden')) return null;
+      const p = getComputedStyle(el);
+      return { izq: parseFloat(p.paddingLeft), der: parseFloat(p.paddingRight) };
+    };
+    return { cardio: medir('cardioSelectorView'), ancho: document.documentElement.scrollWidth };
+  });
+  chk(
+    'el selector de cardio conserva su margen lateral',
+    r.cardio !== null && r.cardio.izq >= 16 && r.cardio.der >= 16,
+    r.cardio ? `izq ${r.cardio.izq} / der ${r.cardio.der}` : 'la vista no se abrio'
+  );
+  chk('sin desbordamiento horizontal en cardio', r.ancho <= 390, `scrollWidth ${r.ancho}`);
   await ctx.close();
 }
 

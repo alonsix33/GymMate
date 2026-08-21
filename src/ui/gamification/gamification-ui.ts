@@ -475,6 +475,34 @@ function toggleSection(sectionId: string): void {
 /**
  * Muestra el modal de gamificacion
  */
+/**
+ * La tab bar marca el destino activo con aria-current (el punto Fragua y el
+ * label en acento cuelgan de ese atributo). PROGRESO abre un modal, no un
+ * tab, asi que sin esto la pestana se quedaba siempre apagada aunque su
+ * pantalla estuviese delante.
+ */
+function marcarPestanaProgreso(activa: boolean): void {
+  const item = document.querySelector('[data-nav="progress"]');
+  const inicio = document.querySelector('[data-nav="home"]');
+  if (!item) return;
+  if (activa) {
+    document.querySelectorAll('[data-nav][aria-current]').forEach((otro) => {
+      if (otro !== item) {
+        (otro as HTMLElement).dataset.previo = 'si';
+        otro.removeAttribute('aria-current');
+      }
+    });
+    item.setAttribute('aria-current', 'page');
+    return;
+  }
+  item.removeAttribute('aria-current');
+  const previo = document.querySelector<HTMLElement>('[data-nav][data-previo="si"]') ?? (inicio as HTMLElement | null);
+  if (previo) {
+    previo.setAttribute('aria-current', 'page');
+    delete previo.dataset.previo;
+  }
+}
+
 export function showGamificationModal(): void {
   const existing = document.getElementById('gamification-modal');
   if (existing) {
@@ -484,6 +512,8 @@ export function showGamificationModal(): void {
   const modal = document.createElement('div');
   modal.innerHTML = renderGamificationModal();
   document.body.appendChild(modal.firstElementChild as Node);
+
+  marcarPestanaProgreso(true);
 
   // Animar entrada y refrescar iconos
   requestAnimationFrame(() => {
@@ -499,6 +529,7 @@ export function showGamificationModal(): void {
  * Oculta el modal de gamificacion
  */
 export function hideGamificationModal(): void {
+  marcarPestanaProgreso(false);
   const modal = document.getElementById('gamification-modal');
   if (modal) {
     modal.classList.add('animate-fade-out');

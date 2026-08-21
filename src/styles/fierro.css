@@ -1033,6 +1033,18 @@
   padding-bottom: calc(22px + var(--safe-area-inset-bottom));
 }
 
+/* Por encima de 640px el body se centra en el marco de la app; una barra fija
+   a left:0/right:0 se escapaba de ese marco y quedaba anclada a la ventana,
+   no a la app. */
+@media (min-width: 640px) {
+  .f-tabbar {
+    left: 50%;
+    right: auto;
+    width: var(--ancho-app);
+    transform: translateX(-50%);
+  }
+}
+
 /* Los elementos que llenan su contenedor van en border-box: con width:100%
    en content-box el padding se suma por fuera y la fila sale mas ancha que la
    pantalla. En el mockup son <div> de ancho automatico, donde el padding
@@ -1060,10 +1072,20 @@
 body {
   padding-bottom: calc(var(--h-nav-inferior) + var(--safe-area-inset-bottom));
 }
+/* Con el teclado virtual abierto la tab bar se oculta: la reserva sobra. */
+body.f-sin-tabbar {
+  padding-bottom: 0;
+}
 
 /* Las pantallas legacy conservan el padding que tenia <main> hasta que su
-   fase las reemplace. */
-.tab-content {
+   fase las reemplace. Las cuatro vistas de cardio no son .tab-content: son
+   hijas directas de <main>, asi que al retirar su padding quedaron de borde a
+   borde. Se listan aparte hasta que la fase 6 las rehaga. */
+.tab-content,
+#cardioSelectorView,
+#cardioConfigView,
+#cardioTimerView,
+#cardioSummaryView {
   padding: 1.5rem 1.25rem 1rem;
 }
 

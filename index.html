@@ -393,6 +393,15 @@
           Exportar
         </button>
       </div>
+      <!-- PUENTE PROVISIONAL (fase 3 → fase 5). La tab bar FIERRO tiene 4
+           destinos y ninguno es Récords ni Gráficos; el handoff los agrupa con
+           Historial en el mismo paso 5 y en la misma seccion Hueso, asi que
+           cuelgan de aqui hasta que la fase 5 los rehaga juntos. Sin este
+           puente, PR-01 y G-01 quedan inalcanzables. -->
+      <div class="flex items-center gap-2 mb-6" role="group" aria-label="Otras vistas del historial">
+        <button data-action="prs" class="flex-1 px-3 py-2 bg-dark-surface border border-dark-border rounded-lg text-text-secondary text-sm active:scale-95 transition-all focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-dark-bg">Récords</button>
+        <button data-action="charts" class="flex-1 px-3 py-2 bg-dark-surface border border-dark-border rounded-lg text-text-secondary text-sm active:scale-95 transition-all focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-dark-bg">Gráficos</button>
+      </div>
       <div id="historyList" class="space-y-3" role="list" aria-label="Lista de entrenamientos anteriores"></div>
     </div>
 
@@ -426,6 +435,11 @@
           <i data-lucide="user" class="w-6 h-6 text-accent" aria-hidden="true"></i>
           Mi Perfil
         </h1>
+        <!-- PUENTE PROVISIONAL (fase 3 → fase 7). CA-01 se dibuja con flecha
+             "←" de vuelta, o sea pantalla empujada desde un padre que el
+             handoff no nombra; su paso de implementacion es el 7, junto a
+             Perfil. Hasta entonces entra por aqui en vez de quedar muerta. -->
+        <button data-action="calculators" class="px-3 py-2 bg-dark-surface border border-dark-border rounded-lg text-text-secondary text-sm active:scale-95 transition-all focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-dark-bg">Calculadoras</button>
       </div>
 
       <form id="profileForm" class="bg-dark-surface border border-dark-border rounded-xl p-4 overflow-hidden" aria-label="Formulario de perfil">

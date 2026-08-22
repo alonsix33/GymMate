@@ -1,4 +1,5 @@
 import './styles/fonts.css';
+import { registrarNavegacionDePerfil } from '@/ui/perfil';
 import './styles/tokens.css';
 import './styles/main.css';
 // FIERRO va DESPUES del CSS legacy: durante la migracion tiene que ganar la
@@ -835,6 +836,23 @@ function init(): void {
   // FIERRO: toasts y confirmaciones. Va primero para que cualquier fallo
   // posterior tenga como reportarse sin recurrir a alert().
   inicializarFeedback();
+  // La navegacion entre Perfil, Medidas, Calculadoras, Records y Graficos la
+  // resuelve main.ts, que es quien conoce los contenedores; el modulo de
+  // render solo dice a donde quiere ir.
+  registrarNavegacionDePerfil((destino) => {
+    switchTab(
+      destino === 'medidas'
+        ? 'medidas'
+        : destino === 'calculadoras'
+          ? 'calculators'
+          : destino === 'records'
+            ? 'prs'
+            : destino === 'graficos'
+              ? 'charts'
+              : 'profile'
+    );
+  });
+
   exponerGanchosDeVerificacion();
 
   // Inicializar iconos Lucide

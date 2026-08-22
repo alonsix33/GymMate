@@ -201,4 +201,5 @@ export type TabName =
   | 'history'
   | 'prs'
   | 'profile'
+  | 'medidas'
   | 'workoutBuilder';

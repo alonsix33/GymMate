@@ -115,103 +115,10 @@
     </div>
 
     <!-- ==========================================
-         CALCULATORS TAB
+         CA-01 / CA-02 · CALCULADORAS  (render en src/ui/perfil.ts)
          ========================================== -->
-    <div id="calculatorsTab" class="tab-content hidden pb-24" role="region" aria-label="Calculadoras de fitness">
-      <!-- Navigation Bar -->
-      <div class="flex items-center gap-3 mb-6">
-        <button onclick="window.showHome()" class="w-11 h-11 flex items-center justify-center bg-dark-surface border border-dark-border rounded-xl active:scale-95 transition-transform focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-dark-bg" aria-label="Volver al inicio">
-          <i data-lucide="arrow-left" class="w-5 h-5 text-text-primary" aria-hidden="true"></i>
-        </button>
-        <h1 class="text-xl font-display font-bold text-text-primary flex items-center gap-2">
-          <i data-lucide="calculator" class="w-6 h-6 text-accent" aria-hidden="true"></i>
-          Calculadoras
-        </h1>
-      </div>
-
-      <!-- 1RM Calculator -->
-      <fieldset class="bg-dark-surface border border-dark-border rounded-xl p-4 mb-4">
-        <legend class="sr-only">Calculadora de 1RM</legend>
-        <h2 class="text-sm font-semibold text-text-primary mb-3 flex items-center gap-2">
-          <i data-lucide="dumbbell" class="w-4 h-4 text-accent" aria-hidden="true"></i>
-          Calculadora de 1RM
-        </h2>
-        <label for="rm1ExerciseSelect" class="sr-only">Seleccionar ejercicio para calcular 1RM</label>
-        <select id="rm1ExerciseSelect" class="w-full mb-3" aria-describedby="rm1Description">
-          <option value="">-- Elige un ejercicio --</option>
-        </select>
-        <p id="rm1Description" class="sr-only">Selecciona un ejercicio para ver tu repetición máxima estimada</p>
-        <div id="rm1Results" class="hidden" role="region" aria-live="polite" aria-label="Resultados de 1RM"></div>
-      </fieldset>
-
-      <!-- Calories Calculator -->
-      <fieldset class="bg-dark-surface border border-dark-border rounded-xl p-4 mb-4 overflow-hidden">
-        <legend class="sr-only">Calculadora de Calorías</legend>
-        <h2 class="text-sm font-semibold text-text-primary mb-3 flex items-center gap-2">
-          <i data-lucide="flame" class="w-4 h-4 text-status-warning" aria-hidden="true"></i>
-          Calculadora de Calorías
-        </h2>
-        <div class="space-y-3">
-          <div class="grid grid-cols-2 gap-2">
-            <div>
-              <label for="caloriesAge" class="sr-only">Edad</label>
-              <input type="number" id="caloriesAge" placeholder="Edad" class="w-full" inputmode="numeric" aria-label="Tu edad en años" />
-            </div>
-            <div>
-              <label for="caloriesGender" class="sr-only">Género</label>
-              <select id="caloriesGender" class="w-full" aria-label="Tu género">
-                <option value="male">Masculino</option>
-                <option value="female">Femenino</option>
-              </select>
-            </div>
-          </div>
-          <div class="grid grid-cols-2 gap-2">
-            <div>
-              <label for="caloriesWeight" class="sr-only">Peso en kilogramos</label>
-              <input type="number" id="caloriesWeight" placeholder="Peso (kg)" class="w-full" inputmode="decimal" aria-label="Tu peso en kilogramos" />
-            </div>
-            <div>
-              <label for="caloriesHeight" class="sr-only">Altura en centímetros</label>
-              <input type="number" id="caloriesHeight" placeholder="Altura (cm)" class="w-full" inputmode="numeric" aria-label="Tu altura en centímetros" />
-            </div>
-          </div>
-          <div>
-            <label for="caloriesActivity" class="sr-only">Nivel de actividad física</label>
-            <select id="caloriesActivity" class="w-full text-sm" aria-label="Tu nivel de actividad física">
-              <option value="1.2">Sedentario</option>
-              <option value="1.375">Ligero (1-3 días/sem)</option>
-              <option value="1.55">Moderado (3-5 días/sem)</option>
-              <option value="1.725">Activo (6-7 días/sem)</option>
-              <option value="1.9">Muy activo (atleta)</option>
-            </select>
-          </div>
-          <div class="grid grid-cols-2 gap-2">
-            <button id="prefillFromProfile" class="w-full py-2.5 px-3 bg-dark-bg border border-dark-border rounded-lg text-text-secondary text-sm active:scale-95 transition-all flex items-center justify-center gap-2 focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-dark-surface" aria-label="Cargar datos desde mi perfil">
-              <i data-lucide="user" class="w-4 h-4" aria-hidden="true"></i>
-              Perfil
-            </button>
-            <button id="calculateCaloriesBtn" class="w-full py-2.5 px-3 bg-accent text-white rounded-lg font-semibold text-sm active:scale-95 transition-all focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-accent" aria-label="Calcular calorías diarias recomendadas">
-              Calcular
-            </button>
-          </div>
-        </div>
-        <div id="caloriesResults" class="hidden mt-4" role="region" aria-live="polite" aria-label="Resultados de calorías"></div>
-      </fieldset>
-
-      <!-- Progressive Calculator -->
-      <fieldset class="bg-dark-surface border border-dark-border rounded-xl p-4">
-        <legend class="sr-only">Calculadora de Peso Progresivo</legend>
-        <h2 class="text-sm font-semibold text-text-primary mb-3 flex items-center gap-2">
-          <i data-lucide="trending-up" class="w-4 h-4 text-status-success" aria-hidden="true"></i>
-          Peso Progresivo
-        </h2>
-        <label for="progressiveExerciseSelect" class="sr-only">Seleccionar ejercicio para progresión</label>
-        <select id="progressiveExerciseSelect" class="w-full mb-3" aria-describedby="progressiveDescription">
-          <option value="">-- Elige un ejercicio --</option>
-        </select>
-        <p id="progressiveDescription" class="sr-only">Selecciona un ejercicio para ver sugerencias de progresión de peso</p>
-        <div id="progressiveResults" class="hidden" role="region" aria-live="polite" aria-label="Resultados de progresión"></div>
-      </fieldset>
+    <div id="calculatorsTab" class="tab-content hidden" role="region" aria-label="Calculadoras">
+      <!-- Rendered dynamically by ui/perfil.ts -->
     </div>
 
     <!-- ==========================================
@@ -241,121 +148,15 @@
     <!-- ==========================================
          PROFILE TAB
          ========================================== -->
-    <div id="profileTab" class="tab-content hidden pb-24" role="region" aria-label="Perfil de usuario">
-      <!-- Navigation Bar -->
-      <div class="flex items-center gap-3 mb-6">
-        <button onclick="window.showHome()" class="w-11 h-11 flex items-center justify-center bg-dark-surface border border-dark-border rounded-xl active:scale-95 transition-transform focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-dark-bg" aria-label="Volver al inicio">
-          <i data-lucide="arrow-left" class="w-5 h-5 text-text-primary" aria-hidden="true"></i>
-        </button>
-        <h1 class="text-xl font-display font-bold text-text-primary flex items-center gap-2">
-          <i data-lucide="user" class="w-6 h-6 text-accent" aria-hidden="true"></i>
-          Mi Perfil
-        </h1>
-      </div>
+    <div id="profileTab" class="tab-content hidden" role="region" aria-label="Perfil">
+      <!-- Rendered dynamically by ui/perfil.ts -->
+    </div>
 
-      <!-- PUENTE PROVISIONAL (hasta la fase 7). La tab bar FIERRO tiene cuatro
-           destinos y ninguno es Récords, Gráficos ni Calculadoras; el handoff
-           dibuja las tres pantallas y no dice de dónde cuelgan (CA-01 lleva
-           flecha "←", o sea que es una pantalla empujada desde un padre que
-           nadie nombra). Sin esto quedarían inalcanzables, que el contrato
-           prohíbe. Va aquí, en la única pantalla que aún no es FIERRO, para no
-           añadir un solo pixel a ninguna que sí lo sea. -->
-      <div class="grid grid-cols-3 gap-2 mb-6" role="group" aria-label="Otras secciones">
-        <button data-action="prs" class="px-3 py-2 bg-dark-surface border border-dark-border rounded-lg text-text-secondary text-sm active:scale-95 transition-all focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-dark-bg">Récords</button>
-        <button data-action="charts" class="px-3 py-2 bg-dark-surface border border-dark-border rounded-lg text-text-secondary text-sm active:scale-95 transition-all focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-dark-bg">Gráficos</button>
-        <button data-action="calculators" class="px-3 py-2 bg-dark-surface border border-dark-border rounded-lg text-text-secondary text-sm active:scale-95 transition-all focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-dark-bg">Calculadoras</button>
-      </div>
-
-      <form id="profileForm" class="bg-dark-surface border border-dark-border rounded-xl p-4 overflow-hidden" aria-label="Formulario de perfil">
-        <div class="space-y-4">
-          <div>
-            <label for="profileName" class="block text-sm text-text-secondary mb-1">Nombre</label>
-            <input type="text" id="profileName" placeholder="Tu nombre" class="w-full" autocomplete="name" />
-          </div>
-          <div>
-            <label for="profileBirthdate" class="block text-sm text-text-secondary mb-1">Fecha de nacimiento</label>
-            <input type="date" id="profileBirthdate" class="w-full" autocomplete="bday" />
-            <p class="text-xs text-text-muted mt-1" aria-live="polite">Edad: <span id="calculatedAge">-</span> años</p>
-          </div>
-          <div>
-            <label for="profileGender" class="block text-sm text-text-secondary mb-1">Género</label>
-            <select id="profileGender" class="w-full" autocomplete="sex">
-              <option value="male">Masculino</option>
-              <option value="female">Femenino</option>
-            </select>
-          </div>
-          <div class="grid grid-cols-2 gap-3">
-            <div>
-              <label for="profileWeight" class="block text-sm text-text-secondary mb-1">Peso (kg)</label>
-              <input type="number" id="profileWeight" placeholder="70" class="w-full" inputmode="decimal" />
-            </div>
-            <div>
-              <label for="profileHeight" class="block text-sm text-text-secondary mb-1">Altura (cm)</label>
-              <input type="number" id="profileHeight" placeholder="175" class="w-full" inputmode="decimal" />
-            </div>
-          </div>
-          <div>
-            <label for="profileActivity" class="block text-sm text-text-secondary mb-1">Nivel de actividad</label>
-            <select id="profileActivity" class="w-full">
-              <option value="1.2">Sedentario</option>
-              <option value="1.375">Ligero (1-3 días/semana)</option>
-              <option value="1.55">Moderado (3-5 días/semana)</option>
-              <option value="1.725">Activo (6-7 días/semana)</option>
-              <option value="1.9">Muy activo</option>
-            </select>
-          </div>
-          <button type="submit" class="w-full bg-accent hover:bg-accent-hover text-white font-semibold py-3 px-4 rounded-xl active:scale-95 transition-all flex items-center justify-center gap-2 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-accent" aria-label="Guardar cambios en el perfil">
-            <i data-lucide="save" class="w-5 h-5" aria-hidden="true"></i>
-            Guardar Perfil
-          </button>
-          <p id="profileSaveMessage" class="hidden text-center text-sm text-status-success py-2" role="status" aria-live="polite">
-            Perfil guardado correctamente
-          </p>
-        </div>
-      </form>
-
-      <!-- Body Measurements Section -->
-      <div class="mt-6 bg-dark-surface border border-dark-border rounded-xl p-4">
-        <h2 class="text-lg font-display font-semibold text-text-primary mb-3 flex items-center gap-2">
-          <i data-lucide="ruler" class="w-5 h-5 text-accent" aria-hidden="true"></i>
-          Medidas Corporales
-        </h2>
-        <p class="text-sm text-text-secondary mb-4">
-          Registra tus medidas para seguir tu progreso físico y calcular tu porcentaje de grasa corporal.
-        </p>
-        <div id="latestMeasurementPreview" class="mb-4 hidden">
-          <!-- Latest measurement preview will be rendered here -->
-        </div>
-        <button onclick="window.openMeasurementsModal()" class="w-full py-3 px-4 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-xl text-sm font-medium active:scale-95 transition-all flex items-center justify-center gap-2 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 focus:ring-offset-dark-surface" aria-label="Registrar medidas corporales">
-          <i data-lucide="plus" class="w-5 h-5" aria-hidden="true"></i>
-          Registrar Medidas
-        </button>
-        <button onclick="window.showMeasurementsHistory()" class="w-full mt-2 py-2 px-4 bg-dark-bg border border-dark-border rounded-xl text-text-secondary text-sm font-medium active:scale-95 transition-all flex items-center justify-center gap-2 focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-dark-surface" aria-label="Ver historial de medidas">
-          <i data-lucide="history" class="w-4 h-4" aria-hidden="true"></i>
-          Ver Historial
-        </button>
-      </div>
-
-      <!-- Backup Section -->
-      <div class="mt-6 bg-dark-surface border border-dark-border rounded-xl p-4">
-        <h2 class="text-lg font-display font-semibold text-text-primary mb-3 flex items-center gap-2">
-          <i data-lucide="database" class="w-5 h-5 text-accent" aria-hidden="true"></i>
-          Copia de seguridad
-        </h2>
-        <p class="text-sm text-text-secondary mb-4">
-          Exporta tu historial para guardarlo o importa un archivo CSV previamente exportado para restaurar tus datos.
-        </p>
-        <div class="grid grid-cols-2 gap-3">
-          <button onclick="window.exportToExcel()" class="py-3 px-4 bg-dark-bg border border-dark-border rounded-xl text-text-primary text-sm font-medium active:scale-95 transition-all flex items-center justify-center gap-2 focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-dark-surface" aria-label="Exportar historial a archivo CSV">
-            <i data-lucide="download" class="w-5 h-5 text-accent" aria-hidden="true"></i>
-            Exportar
-          </button>
-          <button onclick="window.importFromCSV()" class="py-3 px-4 bg-accent text-white rounded-xl text-sm font-medium active:scale-95 transition-all flex items-center justify-center gap-2 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-accent" aria-label="Importar historial desde archivo CSV">
-            <i data-lucide="upload" class="w-5 h-5" aria-hidden="true"></i>
-            Importar
-          </button>
-        </div>
-      </div>
+    <!-- ==========================================
+         P-03 · HISTORIAL DE MEDIDAS (Hueso)
+         ========================================== -->
+    <div id="medidasTab" class="tab-content hidden" role="region" aria-label="Historial de medidas">
+      <!-- Rendered dynamically by ui/perfil.ts -->
     </div>
 
     <!-- ==========================================

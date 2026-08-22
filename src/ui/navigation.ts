@@ -7,7 +7,7 @@ import { loadHistory, loadPRs } from '@/features/history';
 import { abrirDetalle } from '@/ui/hueso';
 import { initializeCharts } from '@/features/charts';
 import { initializeCalculators } from '@/features/calculators';
-import { loadProfile } from '@/features/profile';
+import { loadProfile, loadMedidas } from '@/features/profile';
 import { refreshIcons } from '@/utils/icons';
 
 // ==========================================
@@ -238,6 +238,9 @@ function loadTabData(tabName: TabName): void {
       break;
     case 'profile':
       loadProfile();
+      break;
+    case 'medidas':
+      loadMedidas();
       break;
   }
 }

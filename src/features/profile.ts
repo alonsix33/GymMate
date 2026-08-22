@@ -4,56 +4,25 @@ import { getProfile, saveProfile as saveProfileData, getLatestMeasurement, addBo
 import type { ProfileData, BodyMeasurement } from '@/types';
 import { refreshIcons } from '@/utils/icons';
 import { grasaNavy } from '@/utils/perfil-calc';
+import { renderPerfil, renderHistorialDeMedidas } from '@/ui/perfil';
 
 // ==========================================
 // CARGAR PERFIL
 // ==========================================
 
+/**
+ * P-01 · Perfil. El formulario legacy con sus ids sueltos se retira: el render
+ * vive en src/ui/perfil.ts, como el resto de FIERRO.
+ */
 export function loadProfile(): void {
-  const profile = getProfile();
+  const contenedor = document.getElementById('profileTab');
+  if (contenedor) renderPerfil(contenedor);
+}
 
-  if (profile.name) {
-    const nameInput = document.getElementById('profileName') as HTMLInputElement;
-    if (nameInput) nameInput.value = profile.name;
-  }
-
-  if (profile.birthdate) {
-    const birthdateInput = document.getElementById(
-      'profileBirthdate'
-    ) as HTMLInputElement;
-    if (birthdateInput) {
-      birthdateInput.value = profile.birthdate;
-      calculateAge();
-    }
-  }
-
-  if (profile.gender) {
-    const genderSelect = document.getElementById(
-      'profileGender'
-    ) as HTMLSelectElement;
-    if (genderSelect) genderSelect.value = profile.gender;
-  }
-
-  if (profile.weight) {
-    const weightInput = document.getElementById(
-      'profileWeight'
-    ) as HTMLInputElement;
-    if (weightInput) weightInput.value = String(profile.weight);
-  }
-
-  if (profile.height) {
-    const heightInput = document.getElementById(
-      'profileHeight'
-    ) as HTMLInputElement;
-    if (heightInput) heightInput.value = String(profile.height);
-  }
-
-  if (profile.activity) {
-    const activitySelect = document.getElementById(
-      'profileActivity'
-    ) as HTMLSelectElement;
-    if (activitySelect) activitySelect.value = String(profile.activity);
-  }
+/** P-03 · Historial de medidas, en seccion Hueso. */
+export function loadMedidas(): void {
+  const contenedor = document.getElementById('medidasTab');
+  if (contenedor) renderHistorialDeMedidas(contenedor);
 }
 
 // ==========================================

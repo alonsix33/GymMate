@@ -132,6 +132,14 @@ const servidor = createServer(async (q, r) => {
 await new Promise((r) => servidor.listen(0, '127.0.0.1', r));
 const URL_APP = `http://127.0.0.1:${servidor.address().port}/`;
 
+// Una excepcion a mitad de la suite dejaba sin correr todo lo que venia
+// despues, con un stack por toda señal: el silencio se lee igual que el exito.
+process.on('uncaughtException', (e) => {
+  console.error(`\nEXCEPCION que aborta la puerta: ${e?.message ?? e}`);
+  console.error('Los chequeos posteriores NO se ejecutaron. La corrida no vale como verde.');
+  process.exit(1);
+});
+
 const navegador = await chromium.launch({ executablePath: CHROME });
 const pagina = await navegador.newPage({ viewport: { width: 390, height: 844 } });
 await pagina.goto(URL_APP, { waitUntil: 'networkidle', timeout: 60000 });
@@ -177,8 +185,8 @@ async function cajaDelMockup(fragmento, contenedor = '') {
     // default heredado no dice nada, y ademas daria falsos rojos.
     const declarado = (el.getAttribute('style') || '').toLowerCase();
     const estilos = {};
-    for (const prop of ['border-radius', 'padding', 'border-color']) {
-      const raiz = prop === 'border-color' ? 'border' : prop;
+    for (const prop of ['border-radius', 'padding-top', 'padding-bottom']) {
+      const raiz = prop.startsWith('padding') ? 'padding' : prop;
       if (declarado.includes(raiz)) estilos[prop] = cs.getPropertyValue(prop);
     }
     marco.remove();
@@ -206,7 +214,7 @@ async function cajaDeLaApp(html, selector, contenedor = '') {
       const c = el.getBoundingClientRect();
       const cs = getComputedStyle(el);
       const estilos = {};
-      for (const prop of ['border-radius', 'padding', 'border-color']) {
+      for (const prop of ['border-radius', 'padding-top', 'padding-bottom']) {
         estilos[prop] = cs.getPropertyValue(prop);
       }
       return { width: +c.width.toFixed(2), height: +c.height.toFixed(2), estilos };
@@ -265,11 +273,18 @@ async function compararCaja(nombre, fragmento, htmlApp, selector, opciones = {})
       `mockup ${esperada[eje]} | app ${obtenida?.[eje]} (dif ${dif.toFixed(2)})`
     );
   }
-  // Ancho y alto solos dejaban pasar demasiado: cambiar el radio a 2px, el
-  // padding de 16 a 26 o el borde a un hex crudo no movia la caja ni un pixel
-  // y la puerta seguia verde. Estas tres si las declara el mockup en su
-  // `style=`, asi que se comparan cuando estan.
-  for (const prop of ['border-radius', 'padding', 'border-color']) {
+  // Ancho y alto solos dejaban pasar demasiado: cambiar el radio a 2px o el
+  // padding vertical de 16 a 26 no movia la caja y la puerta seguia verde.
+  //
+  // Solo estas dos, y por una razon: son las unicas que se pueden comparar sin
+  // ruido. `border-color` daba ocho falsos rojos porque los lados SIN borde
+  // heredan un default distinto en cada contexto (el mockup en su iframe cae a
+  // `currentColor`, la app al `#e5e7eb` del preflight de Tailwind), y el lado
+  // que si tiene borde ya coincidia. El hex crudo, que era el defecto que
+  // border-color pretendia cazar, lo caza mejor la regla estatica G3 de
+  // verificar-tokens.mjs. Y el padding horizontal de un boton a ancho completo
+  // no se ve, asi que se comparan arriba y abajo, que si.
+  for (const prop of ['border-radius', 'padding-top', 'padding-bottom']) {
     const esp = esperada.estilos?.[prop];
     if (esp === undefined) continue;
     const got = obtenida?.estilos?.[prop];
@@ -1139,8 +1154,8 @@ console.log('\n--- Hueso en su pagina real ---');
 
   for (const [nombre, camino] of [
     ['HI-01', ['[data-nav="history"]']],
-    ['PR-01', ['[data-nav="profile"]', '[data-action="prs"]']],
-    ['G-01', ['[data-nav="profile"]', '[data-action="charts"]']],
+    ['PR-01', ['[data-nav="profile"]', '[data-perfil="records"]']],
+    ['G-01', ['[data-nav="profile"]', '[data-perfil="graficos"]']],
   ]) {
     for (const paso of camino) {
       await paginaH.locator(paso).first().click();

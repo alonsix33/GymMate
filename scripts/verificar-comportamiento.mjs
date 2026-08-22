@@ -563,8 +563,12 @@ const borradorDePrueba = {
     const f = window.fierroFeedback;
     for (const t of ['A', 'B', 'C']) f.mostrarToast({ tipo: 'exito', titulo: t, duracion: 0 });
     f.preguntar({ titulo: '¿Eliminar?', cuerpo: 'x', cancelar: 'Conservar', confirmar: 'Eliminar' });
+    // DENTRO de la hoja: `document.querySelector` cogia el primer boton del
+    // documento, y en cuanto otra pantalla oculta declaro un secundario, la
+    // medida se hacia sobre un elemento que ni siquiera estaba en pantalla.
     const sobre = (sel) => {
-      const c = document.querySelector(sel).getBoundingClientRect();
+      const hoja = document.querySelector('.f-scrim');
+      const c = hoja.querySelector(sel).getBoundingClientRect();
       const el = document.elementFromPoint(c.x + c.width / 2, c.y + c.height / 2);
       return el?.className ?? el?.tagName ?? '';
     };
@@ -614,9 +618,9 @@ const borradorDePrueba = {
 {
   const { ctx, pagina } = await abrir({ gymmate_history: historialDePrueba() });
   for (const [destino, camino] of [
-    ['prs', ['[data-nav="profile"]', '[data-action="prs"]']],
-    ['charts', ['[data-nav="profile"]', '[data-action="charts"]']],
-    ['calculators', ['[data-nav="profile"]', '[data-action="calculators"]']],
+    ['prs', ['[data-nav="profile"]', '[data-perfil="records"]']],
+    ['charts', ['[data-nav="profile"]', '[data-perfil="graficos"]']],
+    ['calculators', ['[data-nav="profile"]', '[data-perfil="calculadoras"]']],
   ]) {
     let visible = false;
     let detalle = '';
@@ -1133,7 +1137,7 @@ const borradorDePrueba = {
   });
   await pagina.locator('[data-nav="profile"]').click();
   await pagina.waitForTimeout(300);
-  await pagina.locator('[data-action="prs"]').click();
+  await pagina.locator('[data-perfil="records"]').click();
   await pagina.waitForTimeout(600);
   const r = await pagina.evaluate(() => {
     const marcador = document.querySelector('.f-zonas__marcador');
@@ -1173,7 +1177,7 @@ const borradorDePrueba = {
   const { ctx, pagina } = await abrir({ gymmate_history: historialDePrueba([1, 1, 4, 8, 40, 70]) });
   await pagina.locator('[data-nav="profile"]').click();
   await pagina.waitForTimeout(300);
-  await pagina.locator('[data-action="charts"]').click();
+  await pagina.locator('[data-perfil="graficos"]').click();
   await pagina.waitForTimeout(600);
   const leer = () =>
     pagina.evaluate(() => ({
@@ -1235,8 +1239,8 @@ const borradorDePrueba = {
   const { ctx, pagina } = await abrir();
   for (const [nombre, camino] of [
     ['historial', ['[data-nav="history"]']],
-    ['récords', ['[data-nav="profile"]', '[data-action="prs"]']],
-    ['gráficos', ['[data-nav="profile"]', '[data-action="charts"]']],
+    ['récords', ['[data-nav="profile"]', '[data-perfil="records"]']],
+    ['gráficos', ['[data-nav="profile"]', '[data-perfil="graficos"]']],
   ]) {
     for (const paso of camino) {
       await pagina.locator(paso).first().click();
@@ -2046,7 +2050,7 @@ const borradorDePrueba = {
   });
   await pagina.locator('[data-nav="profile"]').click();
   await pagina.waitForTimeout(300);
-  await pagina.locator('[data-action="prs"]').click();
+  await pagina.locator('[data-perfil="records"]').click();
   await pagina.waitForTimeout(600);
   const r = await pagina.evaluate(() => {
     const cards = [...document.querySelectorAll('#fierroRecords .f-hueso__card')];
@@ -2072,6 +2076,162 @@ const borradorDePrueba = {
   await ctx.close();
 }
 
+// --------------------------------------------------------------------------
+// 41. CA-01 / CA-02 / P-01 / P-03 se dibujan de verdad, y sus cifras cuadran.
+//
+//     La leccion de la fase 6: una pantalla que ninguna puerta renderiza puede
+//     reventar entera y todo sigue verde.
+// --------------------------------------------------------------------------
+{
+  const hoy = new Date();
+  const atras = (n, h = 12) => {
+    const d = new Date(hoy);
+    d.setDate(d.getDate() - n);
+    d.setHours(h, 0, 0, 0);
+    return d.toISOString();
+  };
+  const hist = [0, 3, 7].map((n, i) => ({
+    sessionId: `w${i}`,
+    date: atras(n),
+    savedAt: atras(n),
+    grupo: 'Piernas',
+    type: 'weights',
+    volumenTotal: 4800,
+    volumenPorGrupo: { Piernas: 4800 },
+    ejercicios: [
+      { nombre: 'Press Banca', sets: 4, reps: 8, peso: 60, volumen: 1920, completado: true, esMancuerna: false, grupoMuscular: 'Pecho' },
+    ],
+  }));
+  const medidas = [
+    { date: atras(180), weight: 77.4, neck: 38, chest: 96, waist: 85, hips: 97, armRight: 34.5, thighRight: 55.5 },
+    { date: atras(2), weight: 75.0, neck: 38, chest: 98, waist: 82, hips: 96, armRight: 36, thighRight: 58 },
+  ];
+
+  const { ctx, pagina } = await abrir({
+    gymmate_history: hist,
+    gymmate_body_measurements: medidas,
+    gymmate_profile: { name: 'Alonso', birthdate: '1998-03-10', gender: 'male', weight: 75, height: 176, activity: 1.55 },
+  });
+  const errores = [];
+  pagina.on('pageerror', (e) => errores.push(String(e)));
+  pagina.on('console', (m) => {
+    if (m.type() === 'error') errores.push(m.text());
+  });
+
+  // --- P-01 ---
+  await pagina.evaluate(() => window.switchTab('profile'));
+  await pagina.waitForTimeout(600);
+  const p01 = await pagina.evaluate(() => ({
+    texto: document.getElementById('profileTab')?.innerText ?? '',
+    nombre: document.querySelector('[data-perfil-dato="name"]')?.value ?? '',
+    peso: document.querySelector('[data-perfil-dato="weight"]')?.value ?? '',
+    marcador: document.querySelector('.f-grasa__marcador')?.style.getPropertyValue('--t') ?? '',
+  }));
+  chk('P-01 se dibuja con los datos del perfil', p01.nombre === 'Alonso' && p01.peso === '75',
+    `${p01.nombre} / ${p01.peso}`);
+  chk('P-01 enseña el resumen de medidas', /PESO[\s\S]*PECHO[\s\S]*CINTURA[\s\S]*BRAZO/.test(p01.texto));
+  // 14.4 % sobre escala 0-35 -> 0.4114. La barra anima desde 0, asi que llega
+  // con valor: un marcador en 0 seria la animacion sin arrancar.
+  chk('P-01 · el marcador de grasa cae donde dice la escala',
+    Math.abs(Number(p01.marcador) - 0.4114) < 0.01, p01.marcador);
+
+  // --- CA-01 y sus tres pestañas ---
+  await pagina.evaluate(() => window.switchTab('calculators'));
+  await pagina.waitForTimeout(600);
+  const ca01 = await pagina.evaluate(() => document.getElementById('calculatorsTab')?.innerText ?? '');
+  // Press Banca 60 kg x 8 -> Epley 76.0, Brzycki 74.5, Lombardi 73.9, media 74.8.
+  // Son las cifras que CA-01 dibuja en el mockup.
+  chk('CA-01 · el 1RM reproduce las cuatro cifras del mockup',
+    ca01.includes('74.8') && ca01.includes('76.0') && ca01.includes('74.5') && ca01.includes('73.9'),
+    ca01.replace(/\n/g, ' | ').slice(0, 200));
+
+  await pagina.locator('[data-pestana="calorias"]').click();
+  await pagina.waitForTimeout(400);
+  const ca02 = await pagina.evaluate(() => document.getElementById('calculatorsTab')?.innerText ?? '');
+  // 28 años, 75 kg, 176 cm, 1.55 -> BMR 1,715 / TDEE 2,658 / -20% 2,126 / +20% 3,190.
+  chk('CA-02 · reproduce las cuatro cifras del mockup',
+    ['1,715', '2,658', '2,126', '3,190'].every((c) => ca02.includes(c)),
+    ca02.replace(/\n/g, ' | ').slice(0, 220));
+
+  await pagina.locator('[data-pestana="progresivo"]').click();
+  await pagina.waitForTimeout(400);
+  const ca03 = await pagina.evaluate(() => document.getElementById('calculatorsTab')?.innerText ?? '');
+  chk('CA-01 · el progresivo dibuja sus tres opciones',
+    /Conservador[\s\S]*Moderado[\s\S]*Agresivo/.test(ca03), ca03.replace(/\n/g, ' | ').slice(0, 200));
+  chk('y no escribe un decimal de mas', !/\b\d+\.0\b/.test(ca03.split('PRÓXIMO')[1] ?? ''),
+    (ca03.split('PRÓXIMO')[1] ?? '').replace(/\n/g, ' | ').slice(0, 120));
+
+  // --- P-03 ---
+  await pagina.evaluate(() => window.switchTab('medidas'));
+  await pagina.waitForTimeout(600);
+  const p03 = await pagina.evaluate(() => ({
+    texto: document.getElementById('medidasTab')?.innerText ?? '',
+    fondo: getComputedStyle(document.body).backgroundColor,
+    puntos: document.querySelectorAll('#medidasTab polyline').length,
+  }));
+  chk('P-03 · vive en seccion Hueso', p03.fondo === 'rgb(246, 245, 242)', p03.fondo);
+  chk('P-03 · dibuja las dos tendencias', p03.puntos === 2, String(p03.puntos));
+  chk('P-03 · el cambio de perimetros sale de los datos',
+    ['+2', '−3', '+1.5', '+2.5'].every((d) => p03.texto.includes(d)),
+    p03.texto.replace(/\n/g, ' | ').slice(0, 240));
+  // El pie es una afirmacion GENERADA: con estos datos dice lo del mockup.
+  chk('P-03 · el pie afirma lo que los datos sostienen',
+    p03.texto.includes('Brazo y muslo creciendo, cintura bajando'),
+    (p03.texto.match(/Brazo[^\n]*/) || ['(no esta)'])[0]);
+
+  chk('ninguna pantalla de perfil deja errores en consola', errores.length === 0, errores.slice(0, 3).join(' | '));
+  await ctx.close();
+}
+
+// --------------------------------------------------------------------------
+// 42. Cambiar el peso corporal RECALCULA los rangos (README §6, el bug
+//     `onBodyweightChange`: la funcion existia y no la llamaba nadie).
+// --------------------------------------------------------------------------
+{
+  const hoy = new Date();
+  const d = new Date(hoy);
+  d.setDate(d.getDate() - 1);
+  d.setHours(12, 0, 0, 0);
+  const { ctx, pagina } = await abrir({
+    gymmate_history: [
+      {
+        sessionId: 'w1',
+        date: d.toISOString(),
+        savedAt: d.toISOString(),
+        grupo: 'Piernas',
+        type: 'weights',
+        volumenTotal: 8640,
+        volumenPorGrupo: { Piernas: 8640 },
+        ejercicios: [
+          { nombre: 'Sentadilla', sets: 4, reps: 8, peso: 100, volumen: 3200, completado: true, esMancuerna: false, grupoMuscular: 'Piernas' },
+        ],
+      },
+    ],
+    gymmate_prs: { Sentadilla: { peso: 100, sets: 4, reps: 8, volumen: 3200, date: d.toISOString() } },
+    gymmate_profile: { name: 'A', birthdate: '1998-03-10', gender: 'male', weight: 100, height: 176, activity: 1.55 },
+  });
+  await pagina.evaluate(() => window.switchTab('profile'));
+  await pagina.waitForTimeout(700);
+  const ratioAntes = await pagina.evaluate(
+    () => JSON.parse(localStorage.getItem('gymmate_gamification') || '{}').muscleRanks?.piernas?.ratio ?? -1
+  );
+
+  // Mitad de peso corporal = el doble de ratio, con el mismo 1RM.
+  await pagina.fill('[data-perfil-dato="weight"]', '50');
+  await pagina.locator('[data-perfil="guardar"]').click();
+  await pagina.waitForTimeout(900);
+  const ratioDespues = await pagina.evaluate(
+    () => JSON.parse(localStorage.getItem('gymmate_gamification') || '{}').muscleRanks?.piernas?.ratio ?? -1
+  );
+
+  chk('el ratio de piernas existia antes de tocar nada', ratioAntes > 0, String(ratioAntes));
+  chk('bajar el peso corporal a la mitad DUPLICA el ratio',
+    ratioAntes > 0 && Math.abs(ratioDespues / ratioAntes - 2) < 0.05,
+    `${ratioAntes} -> ${ratioDespues}`);
+  await ctx.close();
+}
+
+// --------------------------------------------------------------------------
 clearTimeout(abortar);
 await navegador.close();
 servidor.close();

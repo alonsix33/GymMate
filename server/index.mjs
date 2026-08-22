@@ -31,6 +31,22 @@ const PUERTO = Number(process.env.PORT) || 3000;
 const TOKEN = process.env.GYMMATE_TOKEN || '';
 const LIMITE_CUERPO = 8 * 1024 * 1024; // 8 MB: un historial largo cabe de sobra
 
+/**
+ * Los origenes que pueden hablar con esta API desde otro dominio.
+ *
+ * Vacio = solo mismo origen, que es lo que habia antes de esto. Se listan
+ * separados por coma en la variable del servicio, por ejemplo:
+ *   ORIGEN_PERMITIDO=https://gymmate.netlify.app,https://gymmate.app
+ *
+ * Nunca `*`. Con `*` cualquier pagina que visites podria pedirle tu historial
+ * a este servidor; el token no salva de eso porque el navegador se lo manda
+ * igual si la propia pagina lo tiene. Un origen concreto sí.
+ */
+const ORIGENES = (process.env.ORIGEN_PERMITIDO || '')
+  .split(',')
+  .map((o) => o.trim().replace(/\/$/, ''))
+  .filter(Boolean);
+
 const MIME = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
@@ -48,6 +64,40 @@ const json = (res, codigo, cuerpo) => {
   res.writeHead(codigo, { 'Content-Type': 'application/json; charset=utf-8' });
   res.end(JSON.stringify(cuerpo));
 };
+
+/**
+ * Deja las cabeceras CORS puestas si el origen del pedido esta en la lista.
+ *
+ * Se llama al principio de TODO pedido: `writeHead` fusiona lo que ya esta
+ * puesto con `setHeader`, asi que el streaming del coach y los 401 tambien
+ * las llevan. Una respuesta de error sin cabeceras CORS le llega al navegador
+ * como un fallo de red generico y la app pinta "sin conexion" cuando en
+ * realidad el token estaba mal.
+ *
+ * `Vary: Origin` va siempre que haya `Origin`, tambien cuando NO se permite:
+ * sin el, una cache intermedia puede servirle a un origen la respuesta que
+ * calculo para otro.
+ */
+function aplicarCors(req, res) {
+  const origen = (req.headers.origin || '').replace(/\/$/, '');
+  if (!origen) return false;
+  res.setHeader('Vary', 'Origin');
+  if (!ORIGENES.includes(origen)) return false;
+  res.setHeader('Access-Control-Allow-Origin', origen);
+  return true;
+}
+
+/**
+ * El permiso previo que el navegador pide solo, antes del pedido de verdad.
+ *
+ * Aqui NO se puede exigir el token: el navegador no manda `Authorization` en
+ * un preflight, asi que pedirlo lo condena al 401 y el pedido real no llega a
+ * salir nunca. Es lo que rompia la app servida desde Netlify. No entrega
+ * ningun dato: solo dice que metodos y cabeceras se aceptan.
+ */
+function esPreflight(req) {
+  return req.method === 'OPTIONS' && typeof req.headers['access-control-request-method'] === 'string';
+}
 
 function autorizado(req) {
   if (!TOKEN) return false;
@@ -114,6 +164,17 @@ async function servirEstatico(req, res, ruta) {
 
 const servidor = createServer(async (req, res) => {
   const ruta = (req.url ?? '/').split('?')[0];
+  const permitido = aplicarCors(req, res);
+
+  if (esPreflight(req)) {
+    if (!permitido) return json(res, 403, { error: 'origen no permitido' });
+    res.writeHead(204, {
+      'Access-Control-Allow-Methods': 'GET, PUT, POST, OPTIONS',
+      'Access-Control-Allow-Headers': 'Authorization, Content-Type',
+      'Access-Control-Max-Age': '86400',
+    });
+    return res.end();
+  }
 
   if (ruta === '/api/salud') {
     return json(res, 200, {
@@ -124,7 +185,10 @@ const servidor = createServer(async (req, res) => {
       protegido: Boolean(TOKEN),
       // Se dice en voz alta lo que falta, en vez de fingir que todo esta bien.
       avisos: [
-        !TOKEN && 'Falta GYMMATE_TOKEN: la API está abierta a cualquiera.',
+        // Decia "la API está abierta a cualquiera", que es al reves de lo que
+        // hace `autorizado()`: sin token devuelve 401 a todo. Un aviso que
+        // miente sobre el riesgo hace tomar la decision equivocada.
+        !TOKEN && 'Falta GYMMATE_TOKEN: la API no acepta a nadie hasta que la configures.',
         modoAlmacen() === 'efimero' &&
           'Sin Postgres ni volumen: lo que guardes se borra en el próximo despliegue.',
         !process.env.ANTHROPIC_API_KEY && 'Falta ANTHROPIC_API_KEY: el coach responde en local.',
@@ -176,4 +240,5 @@ servidor.listen(PUERTO, '0.0.0.0', () => {
   console.log(`  almacenamiento : ${modo}${modo === 'efimero' ? '  ← SE BORRA en cada despliegue' : ''}`);
   console.log(`  coach          : ${process.env.ANTHROPIC_API_KEY ? 'con modelo' : 'sin clave (responde en local)'}`);
   console.log(`  API protegida  : ${TOKEN ? 'sí' : 'NO — falta GYMMATE_TOKEN'}`);
+  console.log(`  origenes CORS  : ${ORIGENES.length ? ORIGENES.join(', ') : 'ninguno (solo mismo origen)'}`);
 });

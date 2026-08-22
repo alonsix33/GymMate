@@ -17,9 +17,11 @@
  * "conversación del coach (persistente local)"), y las preguntas que no se
  * pudieron enviar quedan en cola.
  */
-import { getHistory, getPRs } from '@/utils/storage';
-import { pesoActual, picoDe, sesionesSinSubir, posicionEnZonas, zonaDe } from '@/utils/zonas';
-import { estimateOneRM } from '@/features/gamification';
+import { getHistory, getPRs, getBodyMeasurements } from '@/utils/storage';
+import {
+  pesoActual, picoDe, sesionesSinSubir, posicionEnZonas, zonaDe, fechaDe, distribucionMuscular,
+} from '@/utils/zonas';
+import { estimateOneRM, getStreakInfo } from '@/features/gamification';
 import { unaRepMaxPromedio } from '@/utils/calculations';
 import type { HistorySession } from '@/types';
 
@@ -154,6 +156,170 @@ function repsDeLaSerieActual(nombre: string, historial: HistorySession[], peso: 
   return 1;
 }
 
+// ==========================================
+// EL CONTEXTO COMPLETO
+// ==========================================
+
+/**
+ * Todo lo que el coach necesita saber, sin elegir nada.
+ *
+ * Antes se mandaba UN ejercicio, y solo si la pregunta contenia su nombre
+ * literal completo. "¿como voy en banca?" no encontraba "Press Banca", y
+ * "¿como va mi progreso este mes?" no encontraba nada: el modelo respondia
+ * que no tenia datos, con doce meses de datos al lado.
+ *
+ * Ahora viaja el año entero. Medido sobre 208 sesiones: la bitacora en texto
+ * compacto pesa ~7.500 tokens frente a ~57.000 del mismo historial en JSON,
+ * porque el JSON repite las claves en cada serie. Con eso, mandarlo todo en
+ * cada pregunta cuesta centimos, y con el bloque cacheado, decimas de centimo.
+ *
+ * Van DOS piezas, y la separacion es deliberada:
+ *
+ *   - `panorama` — la aritmetica, ya calculada aqui con las mismas funciones
+ *     que pintan PR-01 y G-01. Es la unica verdad para cualquier cifra.
+ *   - `bitacora` — el registro crudo, para preguntas de memoria ("¿que hice
+ *     el 3 de marzo?"). El modelo NO debe calcular sobre ella: si lo hace,
+ *     saca 1RM por Epley y contradice a la pantalla, que promedia tres
+ *     formulas. Ese defecto ya ocurrio con 168 kg contra 165.
+ */
+export interface PanoramaEjercicio extends DatoDeEjercicio {
+  /** Fecha de la ultima sesion en que aparece, para saber si esta vigente. */
+  ultimaVez: string;
+  sesiones: number;
+}
+
+export interface ContextoCoach {
+  panorama: PanoramaEjercicio[];
+  resumen: {
+    sesiones: number;
+    desde: string | null;
+    hasta: string | null;
+    racha: number;
+    mejorRacha: number;
+    volumenPorGrupo: Record<string, number>;
+    pesoCorporal: number | null;
+    grasaCorporal: number | null;
+  };
+  bitacora: string;
+}
+
+/** Cuantos meses de historial viajan. Un año: mas atras el dato ya no dice
+ *  nada de la forma actual, y la bitacora crece sin darle nada al modelo. */
+export const MESES_DE_CONTEXTO = 12;
+
+function desdeHaceMeses(meses: number): Date {
+  // Se construye por componentes locales, nunca desde una cadena: en Lima
+  // (UTC-5) `new Date('2026-08-22')` se interpreta como UTC y cae en el dia
+  // anterior. El mediodia es la convencion del resto del proyecto
+  // (`fechaDeClaveLocal`) para no quedar pegado a un cambio de hora; aqui, con
+  // una ventana de un año, no cambia que entre o salga ninguna sesion.
+  const hoy = new Date();
+  const d = new Date(hoy.getFullYear(), hoy.getMonth() - meses, hoy.getDate(), 12, 0, 0, 0);
+  return d;
+}
+
+/**
+ * El contexto entero, calculado en el dispositivo.
+ *
+ * Devuelve null si no hay ni una sesion en la ventana: un contexto de ceros
+ * se leeria como "tu 1RM es 0" y es peor que no mandar nada.
+ */
+export function contextoCompleto(
+  historial: HistorySession[] = getHistory(),
+  meses = MESES_DE_CONTEXTO
+): ContextoCoach | null {
+  const corte = desdeHaceMeses(meses);
+  const dentro = historial.filter((s) => {
+    const f = new Date(fechaDe(s));
+    return !Number.isNaN(f.getTime()) && f >= corte;
+  });
+  if (dentro.length === 0) return null;
+
+  // Ordenadas de mas nueva a mas vieja: es lo que asumen `pesoActual` y
+  // `repsDeLaSerieActual`, que leen "la primera que encuentran".
+  const orden = [...dentro].sort((a, b) => fechaDe(b).getTime() - fechaDe(a).getTime());
+
+  const nombres = new Set<string>();
+  for (const s of orden) for (const e of s.ejercicios ?? []) if (e.nombre) nombres.add(e.nombre);
+
+  const panorama: PanoramaEjercicio[] = [];
+  for (const nombre of nombres) {
+    const dato = datosDelEjercicio(nombre, orden);
+    if (!dato) continue;
+    const suyas = orden.filter((s) => (s.ejercicios ?? []).some((e) => e.nombre === nombre));
+    panorama.push({
+      ...dato,
+      sesiones: suyas.length,
+      ultimaVez: suyas[0] ? diaDe(suyas[0]) : '',
+    });
+  }
+  panorama.sort((a, b) => b.sesiones - a.sesiones);
+
+  const racha = getStreakInfo();
+  const medidas = getBodyMeasurements()
+    .filter((m) => typeof m.weight === 'number' || typeof m.bodyFat === 'number')
+    .sort((a, b) => (a.date < b.date ? 1 : -1));
+  const ultima = medidas[0];
+
+  const volumenPorGrupo: Record<string, number> = {};
+  for (const { musculo, volumen } of distribucionMuscular(orden)) {
+    volumenPorGrupo[musculo] = Math.round(volumen);
+  }
+
+  return {
+    panorama,
+    resumen: {
+      sesiones: orden.length,
+      hasta: orden[0] ? diaDe(orden[0]) : null,
+      desde: orden[orden.length - 1] ? diaDe(orden[orden.length - 1]) : null,
+      racha: racha.current,
+      mejorRacha: racha.best,
+      volumenPorGrupo,
+      pesoCorporal: typeof ultima?.weight === 'number' ? ultima.weight : null,
+      grasaCorporal: typeof ultima?.bodyFat === 'number' ? Math.round(ultima.bodyFat * 10) / 10 : null,
+    },
+    bitacora: bitacoraDe(orden),
+  };
+}
+
+/** El dia local de una sesion, en ISO corto. */
+function diaDe(sesion: HistorySession): string {
+  const f = fechaDe(sesion);
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${f.getFullYear()}-${p(f.getMonth() + 1)}-${p(f.getDate())}`;
+}
+
+/**
+ * El historial en texto, una linea por sesion.
+ *
+ *   2026-08-18 Pecho · Press Banca 4x8@100; Aperturas 3x12@22
+ *   2026-08-16 cardio · carrera 32 min
+ *
+ * Este formato pesa 7,6 veces menos que el mismo historial en JSON y dice lo
+ * mismo. Va de la sesion mas ANTIGUA a la mas reciente porque asi se lee una
+ * progresion.
+ */
+function bitacoraDe(sesionesNuevaPrimero: HistorySession[]): string {
+  const lineas: string[] = [];
+  for (let i = sesionesNuevaPrimero.length - 1; i >= 0; i--) {
+    const s = sesionesNuevaPrimero[i];
+    if (s.type === 'cardio') {
+      // `totalTime` esta en SEGUNDOS —lo confirma `hueso.ts:125`, que lo
+      // llama `segundos` y lo pasa a `formatearTiempo`—.
+      const min = s.stats?.totalTime ? Math.round(s.stats.totalTime / 60) : null;
+      lineas.push(`${diaDe(s)} cardio${s.mode ? ' ' + s.mode : ''}${min ? ` ${min} min` : ''}`);
+      continue;
+    }
+    const ejs = (s.ejercicios ?? [])
+      .filter((e) => e.nombre)
+      .map((e) => `${e.nombre} ${e.sets}x${e.reps}@${e.peso}`)
+      .join('; ');
+    if (!ejs) continue;
+    lineas.push(`${diaDe(s)} ${s.grupo || 'sesion'} · ${ejs}`);
+  }
+  return lineas.join('\n');
+}
+
 /** El ejercicio del que habla una pregunta, si nombra alguno del historial. */
 export function ejercicioMencionado(pregunta: string, historial: HistorySession[] = getHistory()): string | null {
   const texto = pregunta.toLowerCase();
@@ -262,7 +428,13 @@ export class CoachRemoto implements AdaptadorCoach {
       body: JSON.stringify({
         pregunta,
         historial: historial.slice(-12).map((t) => ({ autor: t.autor, texto: t.texto })),
+        // El ejercicio de la pregunta, si lo hay: es el que se pinta como
+        // tarjeta al lado de la respuesta.
         datos: this.datosPara(pregunta),
+        // Y el año entero, sin elegir. Va en cada peticion porque la API no
+        // guarda estado; el servidor lo marca como bloque cacheable, asi que
+        // de la segunda pregunta en adelante se lee de cache a 0,1x.
+        contexto: contextoCompleto(),
       }),
     });
     if (!r.ok || !r.body) {

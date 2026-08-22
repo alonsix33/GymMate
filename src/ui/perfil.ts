@@ -960,7 +960,15 @@ function alTocarPerfil(el: HTMLElement, contenedor: HTMLElement): void {
       void estadoBackend().then((e) => {
         if (!e) {
           if (marca) marca.textContent = 'no responde';
-          mostrarToast({ tipo: 'aviso', titulo: 'El servidor no responde', detalle: 'Revisa la URL. La app sigue funcionando sin él.' });
+          // "Revisa la URL" mandaba a mirar donde casi nunca esta el fallo.
+          // Desde otro dominio, la causa numero uno es que al servidor le
+          // falte ORIGEN_PERMITIDO: el navegador bloquea la peticion y esto
+          // se ve exactamente igual que un servidor caido.
+          mostrarToast({
+            tipo: 'aviso',
+            titulo: 'El servidor no responde',
+            detalle: 'Revisa la URL y que ORIGEN_PERMITIDO tenga tu dominio. La app sigue funcionando sin él.',
+          });
           return;
         }
         // Se dice lo que el servidor dice de si mismo, incluidos sus avisos:

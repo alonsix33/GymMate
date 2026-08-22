@@ -15,11 +15,12 @@
     "test:coverage": "TZ=America/Lima vitest run --coverage",
     "verificar:tokens": "node scripts/verificar-tokens.mjs",
     "verificar:runtime": "npm run build && TZ=America/Lima node scripts/verificar-runtime.mjs",
-    "verificar": "npm run verificar:tokens && tsc --noEmit && TZ=America/Lima vitest run && npm run build && TZ=America/Lima node scripts/verificar-runtime.mjs && TZ=America/Lima node scripts/verificar-fidelidad.mjs && TZ=America/Lima node scripts/verificar-comportamiento.mjs",
+    "verificar": "npm run verificar:tokens && tsc --noEmit && TZ=America/Lima vitest run && npm run build && TZ=America/Lima node scripts/verificar-runtime.mjs && TZ=America/Lima node scripts/verificar-fidelidad.mjs && TZ=America/Lima node scripts/verificar-comportamiento.mjs && node scripts/verificar-servidor.mjs",
     "verificar:fidelidad": "npm run build && TZ=America/Lima node scripts/verificar-fidelidad.mjs",
     "verificar:comportamiento": "npm run build && TZ=America/Lima node scripts/verificar-comportamiento.mjs",
     "start": "node server/index.mjs",
-    "servidor": "npm run build && node server/index.mjs"
+    "servidor": "npm run build && node server/index.mjs",
+    "verificar:servidor": "node scripts/verificar-servidor.mjs"
   },
   "dependencies": {
     "pg": "^8.13.1"

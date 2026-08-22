@@ -3,6 +3,7 @@ import { confirmarDestructivo, mostrarToast } from '@/ui/feedback';
 import { getProfile, saveProfile as saveProfileData, getLatestMeasurement, addBodyMeasurement, getBodyMeasurements, deleteMeasurement } from '@/utils/storage';
 import type { ProfileData, BodyMeasurement } from '@/types';
 import { refreshIcons } from '@/utils/icons';
+import { grasaNavy } from '@/utils/perfil-calc';
 
 // ==========================================
 // CARGAR PERFIL
@@ -290,24 +291,12 @@ function calculateBodyFat(): void {
 
   if (!estimateEl || !valueEl || !height) return;
 
-  // Navy method requires: height, waist, neck, and hips (for women)
-  let bodyFat: number | null = null;
+  // Una sola implementacion, la de @/utils/perfil-calc: aqui habia una copia a
+  // mano de la formula, y en `saveMeasurement` otra. Tres sitios que podian
+  // discrepar, y la que se guardaba no tenia por que ser la que se enseño.
+  const bodyFat = grasaNavy({ waist, neck, hips }, height, gender);
 
-  if (waist > 0 && neck > 0 && height > 0) {
-    if (gender === 'male') {
-      // Male formula: 86.010 * log10(waist - neck) - 70.041 * log10(height) + 36.76
-      if (waist > neck) {
-        bodyFat = 86.010 * Math.log10(waist - neck) - 70.041 * Math.log10(height) + 36.76;
-      }
-    } else {
-      // Female formula: 163.205 * log10(waist + hips - neck) - 97.684 * log10(height) - 78.387
-      if (hips > 0 && (waist + hips) > neck) {
-        bodyFat = 163.205 * Math.log10(waist + hips - neck) - 97.684 * Math.log10(height) - 78.387;
-      }
-    }
-  }
-
-  if (bodyFat !== null && bodyFat > 0 && bodyFat < 60) {
+  if (bodyFat !== null) {
     estimateEl.classList.remove('hidden');
     valueEl.textContent = bodyFat.toFixed(1) + '%';
   } else {
@@ -331,22 +320,10 @@ function saveMeasurement(): void {
     thighRight: parseFloat((document.getElementById('measureThighRight') as HTMLInputElement)?.value || '0') || undefined,
   };
 
-  // Calculate body fat if possible
+  // La misma funcion que pinta el % en vivo: lo que se guarda es lo que se vio.
   const height = profile.height;
   const gender = profile.gender || 'male';
-
-  if (measurement.waist && measurement.neck && height) {
-    if (gender === 'male' && measurement.waist > measurement.neck) {
-      measurement.bodyFat = 86.010 * Math.log10(measurement.waist - measurement.neck) - 70.041 * Math.log10(height) + 36.76;
-    } else if (gender === 'female' && measurement.hips && (measurement.waist + measurement.hips) > measurement.neck) {
-      measurement.bodyFat = 163.205 * Math.log10(measurement.waist + measurement.hips - measurement.neck) - 97.684 * Math.log10(height) - 78.387;
-    }
-
-    // Validate body fat range
-    if (measurement.bodyFat && (measurement.bodyFat < 0 || measurement.bodyFat > 60)) {
-      measurement.bodyFat = undefined;
-    }
-  }
+  measurement.bodyFat = grasaNavy(measurement, height ?? 0, gender) ?? undefined;
 
   addBodyMeasurement(measurement);
 

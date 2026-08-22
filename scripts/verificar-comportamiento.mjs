@@ -137,6 +137,16 @@ const URL_APP = `http://127.0.0.1:${servidor.address().port}/`;
 // recorrido de los seis modos son otros ~20s. El tope sigue siendo un tope: si
 // se dispara, es que algo se colgo.
 const PRESUPUESTO_MS = 420000;
+
+// Una excepcion a mitad de la suite abortaba el proceso y dejaba SIN CORRER
+// todos los casos siguientes, con un stack por toda señal. Eso es la trampa de
+// "el silencio parece exito": la salida no decia cuantos casos se habian
+// quedado fuera. Ahora se cuenta como fallo y se dice, en voz alta.
+process.on('uncaughtException', (e) => {
+  console.error(`\nEXCEPCION que aborta la puerta: ${e?.message ?? e}`);
+  console.error('Los casos posteriores NO se ejecutaron. La corrida no vale como verde.');
+  process.exit(1);
+});
 const abortar = setTimeout(() => {
   console.error(`\nLa puerta excedio ${PRESUPUESTO_MS / 1000}s y se aborta.`);
   process.exit(1);
@@ -1632,7 +1642,8 @@ const borradorDePrueba = {
 // 27e. Un tap en "+" de la duracion de AMRAP sube UN minuto, no sesenta.
 // --------------------------------------------------------------------------
 {
-  const { ctx, pagina } = await abrir();
+  // Con historial: sin el, la home entra en O-01 y ahi no hay entrada a cardio.
+  const { ctx, pagina } = await abrir({ gymmate_history: historialDePrueba([1, 4]) });
   await pagina.locator('[data-accion="cardio"]').click();
   await pagina.waitForTimeout(320);
   await pagina.locator('[data-modo="amrap"]').click();
@@ -1665,7 +1676,12 @@ const borradorDePrueba = {
     await pagina.locator(`[data-modo="${modo}"]`).click();
     await pagina.waitForTimeout(280);
     const t = await pagina.evaluate(() => document.body.innerText);
-    if (/\p{Extended_Pictographic}/u.test(t)) sospechosos.push(`${modo}: emoji`);
+    // `Emoji_Presentation`, no `Extended_Pictographic`: el segundo marca
+    // tambien las flechas ↗ ↘, que el README autoriza expresamente como texto
+    // ("los pocos glifos (←, ›, ✓, ✕, +, ⓘ, ↑) son texto"). Un chequeo que
+    // prohibe lo que el contrato permite es un falso rojo, y un falso rojo
+    // gasta la misma confianza que un falso verde.
+    if (/\p{Emoji_Presentation}|\uFE0F/u.test(t)) sospechosos.push(`${modo}: emoji`);
     if (/!!|¡¡/.test(t)) sospechosos.push(`${modo}: doble exclamacion`);
     await pagina.locator('[data-cardio="volver-selector"]').click();
     await pagina.waitForTimeout(200);

@@ -1,7 +1,8 @@
 import { LOWER_BODY_KEYWORDS } from '@/constants';
-import type { ExerciseData, OneRMResult, ProgressiveResult } from '@/types';
+import type { ExerciseData, MuscleGroup, OneRMResult, ProgressiveResult } from '@/types';
 import { getHistory, getPR } from './storage';
 import { normalizeExerciseName, isSameExercise } from './exercise-normalizer';
+import { getExerciseInfo } from '@/data/exercises';
 
 // ==========================================
 // CÁLCULO DE VOLUMEN
@@ -114,22 +115,55 @@ export function calculateCalories(
     bmr = 10 * weight + 6.25 * height - 5 * age - 161;
   }
 
-  const tdee = bmr * activityLevel;
-  const deficit = tdee * 0.8;
-  const surplus = tdee * 1.2;
+  // El deficit y el superavit salen del TDEE YA REDONDEADO, que es la cifra
+  // que el usuario ve arriba. Desde el sin redondear, 1715 x 1.55 x 0.8 da
+  // 2126.6 -> 2,127, y CA-02 del mockup escribe 2,126 (= 2658 x 0.8). Un kcal,
+  // pero la cifra del handoff manda y ademas asi las tres filas son coherentes
+  // entre si: el usuario puede rehacer la cuenta con la que tiene delante.
+  const tdee = Math.round(bmr * activityLevel);
+  const deficit = Math.round(tdee * 0.8);
+  const surplus = Math.round(tdee * 1.2);
 
   return {
     bmr: Math.round(bmr),
-    tdee: Math.round(tdee),
-    deficit: Math.round(deficit),
-    maintenance: Math.round(tdee),
-    surplus: Math.round(surplus),
+    tdee,
+    deficit,
+    maintenance: tdee,
+    surplus,
   };
 }
 
 // ==========================================
 // CÁLCULO DE PESO PROGRESIVO (ACSM/NSCA)
 // ==========================================
+
+/**
+ * Tren inferior por el grupo muscular real del ejercicio.
+ *
+ * Primero el historial, que es donde el ejercicio ya viaja con su
+ * `grupoMuscular`; luego el catalogo. Solo si el ejercicio no existe en
+ * ninguno de los dos se cae a las keywords, y eso se anota: un ejercicio
+ * inventado por el usuario no tiene grupo en ningun sitio.
+ */
+export function esTrenInferior(exerciseName: string): boolean {
+  const GRUPOS_INFERIORES = new Set<MuscleGroup>(['Piernas', 'Glúteos']);
+  const normalizado = normalizeExerciseName(exerciseName);
+
+  for (const sesion of getHistory()) {
+    for (const ej of sesion.ejercicios ?? []) {
+      if (isSameExercise(ej.nombre, normalizado) && ej.grupoMuscular) {
+        return GRUPOS_INFERIORES.has(ej.grupoMuscular);
+      }
+    }
+  }
+
+  const info = getExerciseInfo(exerciseName);
+  if (info) return GRUPOS_INFERIORES.has(info.grupoMuscular);
+
+  // Ultimo recurso para ejercicios que no estan ni en el historial ni en el
+  // catalogo: no hay grupo que consultar.
+  return LOWER_BODY_KEYWORDS.some((k) => exerciseName.toLowerCase().includes(k));
+}
 
 export function calculateProgressive(
   exerciseName: string
@@ -142,10 +176,11 @@ export function calculateProgressive(
 
   const currentWeight = exercisePR.peso;
 
-  // Detectar si es tren inferior basado en el nombre del ejercicio
-  const isLowerBody = LOWER_BODY_KEYWORDS.some((keyword) =>
-    exerciseName.toLowerCase().includes(keyword)
-  );
+  // Cambio aprobado nº 3 del handoff: clasificar por el GRUPO MUSCULAR REAL,
+  // no por keywords del nombre. "Peso Muerto Rumano" no contiene ninguna
+  // palabra de pierna y es tren inferior; "Prensa militar" contiene "prensa" y
+  // es tren superior.
+  const isLowerBody = esTrenInferior(exerciseName);
 
   let conservative: number, moderate: number, aggressive: number;
 

@@ -414,7 +414,7 @@ table {
   background: var(--surface-sunken);
   display: flex;
   align-items: center;
-  padding: 12px var(--pad-screen) 22px;
+  padding: 12px var(--pad-screen) var(--hueco-inferior);
   gap: 4px; /* [REF Pantallas:123] */
 }
 
@@ -507,7 +507,7 @@ table {
   border-top: 1px solid var(--border-sheet-top);
   border-radius: var(--r-sheet) var(--r-sheet) 0 0;
   /* [REF Pantallas] las tres hojas del mockup usan 24px 22px 30px, gap 18px */
-  padding: 24px 22px calc(30px + var(--safe-area-inset-bottom));
+  padding: 24px 22px max(30px, var(--safe-area-inset-bottom));
   display: flex;
   flex-direction: column;
   gap: 18px; /* [REF Pantallas:250,276,939] */
@@ -600,7 +600,7 @@ table {
   /* Por encima de la barra inferior legacy: si el toast la tapa, tocar
      "Historial" dispara DESHACER y el borrado se revierte en silencio.
      --h-nav-inferior lo redefine la fase 3 al montar la tab bar FIERRO. */
-  bottom: calc(var(--h-nav-inferior) + var(--pad-screen) + var(--safe-area-inset-bottom));
+  bottom: calc(var(--h-nav-inferior) + var(--pad-screen));
   z-index: 950;
   display: flex;
   flex-direction: column;
@@ -749,7 +749,7 @@ table {
    Valores literales de Pantallas Fierro.dc.html (lineas 31-129).
    ========================================================================== */
 .f-home {
-  padding: 14px var(--pad-screen-l) 24px; /* [REF :33] */
+  padding: calc(14px + var(--safe-area-inset-top)) var(--pad-screen-l) 24px; /* [REF :33] */
   display: flex;
   flex-direction: column;
   gap: var(--r-18); /* [REF :33] gap 18px */
@@ -1164,7 +1164,7 @@ table {
   right: 0;
   bottom: 0;
   z-index: 40;
-  padding-bottom: calc(22px + var(--safe-area-inset-bottom));
+  padding-bottom: var(--hueco-inferior);
 }
 
 /* Por encima de 640px el body se centra en el marco de la app; una barra fija
@@ -1229,7 +1229,7 @@ table {
    quedan debajo de ella. Solo aqui: el pb-28 legacy de <main> se retiro, o la
    reserva quedaba duplicada y dejaba 217px muertos bajo la ultima card. */
 body {
-  padding-bottom: calc(var(--h-nav-inferior) + var(--safe-area-inset-bottom));
+  padding-bottom: var(--h-nav-inferior);
 }
 /* Con el teclado virtual abierto la tab bar se oculta: la reserva sobra. */
 body.f-sin-tabbar {
@@ -1348,7 +1348,7 @@ body.f-sin-tabbar {
    11 · W-01 — Sesion activa  [REF Pantallas:151-243]
    -------------------------------------------------------------------------- */
 .f-sesion {
-  padding: 10px var(--pad-screen-l) 24px;
+  padding: calc(10px + var(--safe-area-inset-top)) var(--pad-screen-l) 24px;
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -2189,7 +2189,7 @@ body:has(#chartsTab:not(.hidden)) {
 .f-hueso__header {
   background: var(--bg-app);
   color: var(--text-primary);
-  padding: 14px 22px 18px;
+  padding: calc(14px + var(--safe-area-inset-top)) 22px 18px;
   display: flex;
   flex-direction: column;
   gap: var(--gap-card-l);
@@ -2791,13 +2791,13 @@ body:has(#chartsTab:not(.hidden)) {
    16 · Cardio & HIIT — C-01…C-08  [REF Pantallas:340-617]
    -------------------------------------------------------------------------- */
 .f-cardio {
-  padding: 10px var(--pad-screen-l) 28px;
+  padding: calc(10px + var(--safe-area-inset-top)) var(--pad-screen-l) 28px;
   display: flex;
   flex-direction: column;
   gap: var(--pad-card);
 }
 .f-cardio--config {
-  padding: 24px var(--pad-screen-l) 28px;
+  padding: calc(24px + var(--safe-area-inset-top)) var(--pad-screen-l) 28px;
   gap: 18px;
 }
 /* C-07 y C-08 declaran gap 16 donde C-02 y C-05 declaran 18. [REF Pantallas] */
@@ -3692,13 +3692,13 @@ body:has(#chartsTab:not(.hidden)) {
    -------------------------------------------------------------------------- */
 .f-calc,
 .f-perfil {
-  padding: 24px var(--pad-screen-l) 28px;
+  padding: calc(24px + var(--safe-area-inset-top)) var(--pad-screen-l) 28px;
   display: flex;
   flex-direction: column;
   gap: var(--pad-card);
 }
 .f-perfil {
-  padding-top: 10px;
+  padding-top: calc(10px + var(--safe-area-inset-top));
 }
 .f-calc__cabecera {
   display: flex;
@@ -4318,7 +4318,7 @@ body:has(#medidasTab:not(.hidden)) {
   overflow-y: auto;
   background: var(--bg-app);
   color: var(--text-primary);
-  padding: 24px var(--pad-screen-l) 28px;
+  padding: calc(24px + var(--safe-area-inset-top)) var(--pad-screen-l) 28px;
   display: flex;
   flex-direction: column;
   gap: 18px;
@@ -4952,7 +4952,7 @@ body:has(#medidasTab:not(.hidden)) {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 20px var(--pad-screen-l) 14px;
+  padding: calc(20px + var(--safe-area-inset-top)) var(--pad-screen-l) 14px;
   border-bottom: 1px solid var(--bg-elevated);
   flex: none;
 }
@@ -5102,7 +5102,7 @@ body:has(#medidasTab:not(.hidden)) {
 .f-coach__compositor {
   display: flex;
   gap: 8px;
-  padding: 14px var(--pad-screen-l) calc(26px + var(--safe-area-inset-bottom));
+  padding: 14px var(--pad-screen-l) max(26px, var(--safe-area-inset-bottom));
   border-top: 1px solid var(--bg-elevated);
   flex: none;
 }

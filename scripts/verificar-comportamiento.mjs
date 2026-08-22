@@ -533,9 +533,16 @@ const borradorDePrueba = {
       await new Promise((r) => setTimeout(r, 50));
     }
     const alto = +barra.getBoundingClientRect().height.toFixed(1);
-    const token = parseFloat(
-      getComputedStyle(document.documentElement).getPropertyValue('--h-nav-inferior')
-    );
+    // El token es un `calc()` con `max()` dentro (depende del indicador de
+    // inicio), y para una propiedad personalizada `getComputedStyle` devuelve
+    // el TEXTO sin resolver: `parseFloat` daba NaN y la comparacion se volvia
+    // imposible de cumplir. Se resuelve pidiendoselo al motor sobre un nodo
+    // de prueba, que es la unica forma de leer el valor de verdad.
+    const sonda = document.createElement('div');
+    sonda.style.cssText = 'position:absolute;visibility:hidden;height:var(--h-nav-inferior)';
+    document.body.appendChild(sonda);
+    const token = parseFloat(getComputedStyle(sonda).height);
+    sonda.remove();
     // Ultimo elemento del contenido: no puede quedar debajo de la barra.
     const ultimo = document.querySelector('.f-home__cardio')?.getBoundingClientRect();
     const topBarra = barra.getBoundingClientRect().top;
@@ -1997,6 +2004,17 @@ const borradorDePrueba = {
     // Y una sesion de CARDIO. Sin ella, borrar entera la seccion de cardio del
     // exportador dejaba las cuatro puertas en verde, y el chequeo "el toast no
     // anuncia cardio que no entro" no podia fallar: no habia cardio.
+    // Un ejercicio creado a mano, la conversacion del coach y la progresion:
+    // las tres cosas que el CSV NO se llevaba. Sin ellas en la semilla, borrar
+    // esas secciones del exportador pasaria las cuatro puertas en verde.
+    gymmate_custom_exercises: [
+      { id: 'ce1', nombre: 'Remo Gironda', grupoMuscular: 'Espalda', esMancuerna: false,
+        createdAt: '2026-05-02T12:00:00.000Z' },
+    ],
+    gymmate_coach_conversacion: [
+      { id: 't1', autor: 'coach', texto: 'Tu volumen subió 12%', fecha: '2026-08-01T10:00:00.000Z' },
+      { id: 't2', autor: 'usuario', texto: '¿y las piernas?', fecha: '2026-08-01T10:01:00.000Z' },
+    ],
     gymmate_custom_workouts: [
       {
         id: 'propia_1',
@@ -2023,6 +2041,12 @@ const borradorDePrueba = {
       stats: { totalTime: 240, workTime: 160, restTime: 80, roundsCompleted: 8, calories: 48 },
     });
     localStorage.setItem('gymmate_history', JSON.stringify(h));
+    // Una mejor racha que el historial NO puede rederivar: dos sesiones
+    // sueltas dan racha 1, asi que si el 5 sobrevive es porque viajo en el CSV.
+    const g = JSON.parse(localStorage.getItem('gymmate_gamification'));
+    g.streakData.bestStreak = 5;
+    g.streakData.streakMilestones = [3];
+    localStorage.setItem('gymmate_gamification', JSON.stringify(g));
   });
 
   // 1) Exportar y quedarse con el contenido.
@@ -2047,6 +2071,11 @@ const borradorDePrueba = {
     'un set registrado y no completado desaparecia del backup');
   chk('el CSV incluye las SESIONES DE CARDIO', /=== SESIONES DE CARDIO ===/.test(csv) && /Tabata/.test(csv),
     'media app son los seis modos de cardio');
+  chk('el CSV incluye los EJERCICIOS PROPIOS', /=== EJERCICIOS PROPIOS ===/.test(csv) && /Remo Gironda/.test(csv),
+    'sin ellos, las rutinas apuntan a nombres que no existen');
+  chk('el CSV incluye la PROGRESIÓN que no se rederiva', /=== PROGRESIÓN ===/.test(csv) && /bestStreak/.test(csv),
+    'hitos de racha, mejor racha y fechas de logro');
+  chk('el CSV incluye la CONVERSACIÓN DEL COACH', /=== CONVERSACIÓN DEL COACH ===/.test(csv) && /volumen subió/.test(csv));
 
   // 2) Importarlo de vuelta en una app vacia: tiene que entrar.
   await ctx.close();
@@ -2066,6 +2095,8 @@ const borradorDePrueba = {
       prs: JSON.parse(localStorage.getItem('gymmate_prs') || '{}'),
       rutinas: JSON.parse(localStorage.getItem('gymmate_custom_workouts') || '[]'),
       medidas: JSON.parse(localStorage.getItem('gymmate_body_measurements') || '[]'),
+      propios: JSON.parse(localStorage.getItem('gymmate_custom_exercises') || '[]').map((e) => e.nombre),
+      turnos: JSON.parse(localStorage.getItem('gymmate_coach_conversacion') || '[]').length,
       gam: JSON.parse(localStorage.getItem('gymmate_gamification') || '{}'),
       cardio: JSON.parse(localStorage.getItem('gymmate_history') || '[]')
         .filter((x) => x.type === 'cardio')
@@ -2092,6 +2123,12 @@ const borradorDePrueba = {
       r.rutinas[0]?.ejercicios?.length === 1 && r.rutinas[0]?.opcionales?.length === 1,
       JSON.stringify({ e: r.rutinas[0]?.ejercicios?.length, o: r.rutinas[0]?.opcionales?.length }));
     chk('restaurar recupera las medidas', r.medidas.length === 1, `${r.medidas.length} mediciones`);
+    chk('restaurar recupera los ejercicios propios',
+      r.propios.includes('Remo Gironda'), JSON.stringify(r.propios));
+    chk('restaurar recupera la conversacion del coach', r.turnos === 2, `${r.turnos} turnos`);
+    chk('restaurar recupera la mejor racha y los hitos, que no se rederivan',
+      (r.gam?.streakData?.bestStreak ?? 0) >= 5,
+      `mejor racha ${r.gam?.streakData?.bestStreak} · hitos ${JSON.stringify(r.gam?.streakData?.streakMilestones)}`);
     // `saveHistory` canonicaliza el nombre ("Peso Muerto" -> "Peso Muerto
     // Convencional"), asi que se comprueba que el ejercicio SIGUE AHI, no su
     // literal: son dos sesiones y la primera tenia dos ejercicios.
@@ -3002,6 +3039,119 @@ const borradorDePrueba = {
   );
   chk('G-01 · un ejercicio con comillas no se trunca en el selector',
     opciones.includes('Press "Militar"'), JSON.stringify(opciones));
+  await ctx.close();
+}
+
+// --------------------------------------------------------------------------
+// 49. Zonas seguras del sistema. En un iPhone la barra de estado y el
+//     indicador de inicio se comen franjas de la pantalla, y iOS se queda los
+//     toques que caen ahi. La app se pinta debajo a proposito
+//     (`viewport-fit=cover` + `black-translucent`), asi que apartar el
+//     contenido es responsabilidad nuestra — y arriba no se hacia: el saludo
+//     quedaba bajo la hora y la ✕ de las superposiciones era INTOCABLE. Habia
+//     que matar la app para salir de PROGRESO.
+//
+//     `env()` no se puede fijar desde Playwright, pero todo el CSS deriva de
+//     dos tokens: se fuerzan a los valores reales de un iPhone con Dynamic
+//     Island (59pt arriba, 34pt abajo). Si algo dejara de derivar de ellos,
+//     este caso no lo moveria — y por eso tambien se comprueba que la barra
+//     CAMBIA de alto al forzarlos.
+// --------------------------------------------------------------------------
+{
+  const ARRIBA = 59;
+  const ABAJO = 34;
+  const ctx = await navegador.newContext({ viewport: { width: 402, height: 874 }, ...ZONA });
+  const pagina = await ctx.newPage();
+  await pagina.addInitScript(
+    ({ h, arriba, abajo }) => {
+      localStorage.setItem('gymmate_history', JSON.stringify(h));
+      localStorage.setItem(
+        'gymmate_profile',
+        JSON.stringify({ name: 'A', birthdate: '1998-03-10', gender: 'male', weight: 75, height: 176, activity: 1.55 })
+      );
+      addEventListener('DOMContentLoaded', () => {
+        document.documentElement.style.setProperty('--safe-area-inset-top', arriba + 'px');
+        document.documentElement.style.setProperty('--safe-area-inset-bottom', abajo + 'px');
+      });
+    },
+    { h: historialDePrueba(), arriba: ARRIBA, abajo: ABAJO }
+  );
+  pagina.setDefaultTimeout(4000);
+  await pagina.goto(URL_APP, { waitUntil: 'networkidle', timeout: 60000 });
+  await pagina.waitForTimeout(900);
+
+  // La barra crece con el indicador, y el cuerpo reserva EXACTAMENTE su alto.
+  // Sumar 22px + 34px daba 56px de vacio y el cuerpo reservaba 22px de mas.
+  const barra = await pagina.evaluate(() => {
+    const n = document.querySelector('nav.f-tabbar');
+    return {
+      alto: +n.getBoundingClientRect().height.toFixed(1),
+      pad: parseFloat(getComputedStyle(n).paddingBottom),
+      reserva: parseFloat(getComputedStyle(document.body).paddingBottom),
+    };
+  });
+  chk('zonas seguras · el hueco de abajo es el del indicador, no la suma',
+    barra.pad === ABAJO, `padding-bottom ${barra.pad}px (deberia ser ${ABAJO}, no ${22 + ABAJO})`);
+  chk('zonas seguras · el cuerpo reserva justo el alto de la barra',
+    Math.abs(barra.reserva - barra.alto) < 0.5, `reserva ${barra.reserva} vs barra ${barra.alto}`);
+  chk('zonas seguras · la barra CRECE con el indicador (los tokens mandan de verdad)',
+    barra.alto === 59 + ABAJO, `${barra.alto}px`);
+
+  // Nada que se lea o se toque puede empezar dentro de la franja de arriba.
+  const invade = async (nombre) => {
+    const dentro = await pagina.evaluate((arriba) => {
+      const malos = [];
+      for (const e of document.querySelectorAll('body *')) {
+        const r = e.getBoundingClientRect();
+        if (r.width <= 0 || r.height <= 0 || r.top >= arriba) continue;
+        const cs = getComputedStyle(e);
+        if (cs.visibility === 'hidden' || cs.opacity === '0') continue;
+        // El enlace de salto vive fuera de pantalla hasta que recibe el foco.
+        if (e.classList.contains('skip-link')) continue;
+        const tocable = e.matches('button,a,input,select,textarea,[role="button"]');
+        const conTexto = e.children.length === 0 && (e.textContent || '').trim() !== '';
+        if (tocable || conTexto) malos.push(`${e.className || e.tagName}@${Math.round(r.top)}`);
+      }
+      return [...new Set(malos)].slice(0, 4);
+    }, ARRIBA);
+    chk(`zonas seguras · ${nombre} no mete nada bajo la barra de estado`,
+      dentro.length === 0, dentro.join(', '));
+  };
+
+  await invade('H-01');
+  await pagina.evaluate(() => window.switchTab('history'));
+  await pagina.waitForTimeout(500);
+  await invade('HISTORIAL');
+  await pagina.evaluate(() => window.switchTab('profile'));
+  await pagina.waitForTimeout(500);
+  await invade('PERFIL');
+  await pagina.evaluate(() => window.switchTab('home'));
+  await pagina.waitForTimeout(500);
+
+  // Los cerradores de las tres superposiciones: el defecto que obligaba a
+  // matar la app. No basta con que esten pintados — tienen que RECIBIR el
+  // toque en su centro.
+  const cerrador = async (nombre, abrir, sel) => {
+    await abrir();
+    await pagina.waitForTimeout(600);
+    const r = await pagina.evaluate((sel) => {
+      const b = document.querySelector(sel);
+      if (!b) return null;
+      const q = b.getBoundingClientRect();
+      const en = document.elementFromPoint(q.left + q.width / 2, q.top + q.height / 2);
+      return { top: +q.top.toFixed(1), recibe: en === b || b.contains(en) };
+    }, sel);
+    chk(`zonas seguras · el cerrador de ${nombre} cae fuera de la franja del sistema`,
+      r !== null && r.top >= ARRIBA, r ? `top ${r.top}px (minimo ${ARRIBA})` : `sin ${sel}`);
+    chk(`zonas seguras · y recibe el toque en su centro`, r?.recibe === true);
+  };
+  await cerrador('PROGRESO', () => pagina.locator('[data-nav="progress"]').click(), '[data-prog="cerrar"]');
+  await pagina.locator('[data-prog="cerrar"]').click();
+  await pagina.waitForTimeout(400);
+  await cerrador('el coach', () => pagina.locator('.f-home__coach').first().click(), '[data-coach="cerrar"]');
+  await pagina.locator('[data-coach="cerrar"]').click();
+  await pagina.waitForTimeout(400);
+  await cerrador('el builder', () => pagina.locator('#fabButton').click(), '[data-builder="cerrar"]');
   await ctx.close();
 }
 

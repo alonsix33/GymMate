@@ -1,3 +1,4 @@
+import { configurarBackend, tokenBackend, urlBackend, estadoBackend, subirCopia, bajarCopia } from '@/features/backend';
 import { SIN_FECHA, fechaLegible } from '@/utils/fecha';
 /**
  * FIERRO · Calculadoras, Perfil y Medidas — CA-01, CA-02, P-01, P-02, P-03.
@@ -16,7 +17,7 @@ import type { BodyMeasurement, ProfileData } from '@/types';
 import { calculate1RM, calculateCalories, calculateProgressive } from '@/utils/calculations';
 import { cifra, escapar } from '@/utils/formato';
 import { abrirHoja } from '@/ui/session-screens';
-import { mostrarToast } from '@/ui/feedback';
+import { mostrarToast, confirmarDestructivo } from '@/ui/feedback';
 import {
   GRASA_AMBAR_HASTA,
   GRASA_VERDE_HASTA,
@@ -496,12 +497,13 @@ export function renderPerfil(contenedor: HTMLElement): void {
       ${tarjetaDeMedidas()}
       <section class="f-card-perfil">
         <span class="f-card-perfil__titulo">Copia de seguridad</span>
-        <span class="f-card-perfil__cuerpo">El CSV ahora incluye perfil y medidas — antes solo cubría el historial y podías perderlo todo.</span>
+        <span class="f-card-perfil__cuerpo">El CSV se lleva todo: historial, cardio, perfil, medidas, récords, rutinas, ejercicios propios, tu progresión y la conversación del coach.</span>
         <div class="f-card-perfil__acciones">
           <button type="button" class="f-btn f-btn--primario f-btn--medida" data-perfil="exportar">Exportar todo</button>
           <button type="button" class="f-btn f-btn--secundario f-btn--medida" data-perfil="importar">Importar CSV</button>
         </div>
       </section>
+      ${tarjetaDeServidor()}
       <div class="f-perfil__puente" role="group" aria-label="Otras secciones">
         <button type="button" class="f-btn f-btn--secundario f-btn--medida" data-perfil="records">Récords</button>
         <button type="button" class="f-btn f-btn--secundario f-btn--medida" data-perfil="graficos">Gráficos</button>
@@ -511,6 +513,45 @@ export function renderPerfil(contenedor: HTMLElement): void {
   `;
   enganchar(contenedor, (el) => alTocarPerfil(el, contenedor));
   animarGrasa(contenedor);
+}
+
+/**
+ * Servidor. NO esta en el mockup del handoff: el handoff describe una app
+ * offline-first sin backend, y esta puerta existe porque el backend se pidio
+ * despues. Por eso no inventa ni un componente: es la misma
+ * `.f-card-perfil` con el mismo campo y los mismos botones que el resto de
+ * P-01, y sin backend configurado se lee como lo que es —algo apagado— en vez
+ * de pedir atencion.
+ */
+function tarjetaDeServidor(): string {
+  const token = tokenBackend();
+  const url = urlBackend();
+  return `
+    <section class="f-card-perfil">
+      <div class="f-card-perfil__cabecera">
+        <span class="f-card-perfil__titulo">Servidor</span>
+        <span class="f-card-perfil__meta" id="perfilServidorEstado">${
+          token ? 'comprobando…' : 'sin conectar'
+        }</span>
+      </div>
+      <span class="f-card-perfil__cuerpo">Guarda una copia fuera del teléfono y enciende el coach con modelo. Sin esto la app funciona igual, entera y sin red.</span>
+      <div class="f-campo">
+        <label class="f-campo__label" for="perfilBackendToken">TOKEN</label>
+        <input class="f-campo__caja" type="password" id="perfilBackendToken" autocomplete="off"
+          value="${escapar(token)}" placeholder="el GYMMATE_TOKEN de tu servicio" aria-label="Token del servidor" />
+      </div>
+      <div class="f-campo">
+        <label class="f-campo__label" for="perfilBackendUrl">URL</label>
+        <input class="f-campo__caja" type="url" id="perfilBackendUrl" autocomplete="off" inputmode="url"
+          value="${escapar(url)}" placeholder="https://gymmate.up.railway.app" aria-label="URL del servidor" />
+      </div>
+      <div class="f-card-perfil__acciones">
+        <button type="button" class="f-btn f-btn--secundario f-btn--medida" data-perfil="conectar">Conectar</button>
+        <button type="button" class="f-btn f-btn--medida f-btn--tenue" data-perfil="subir" ${token ? '' : 'disabled'}>Subir copia</button>
+        <button type="button" class="f-btn f-btn--medida f-btn--tenue" data-perfil="bajar" ${token ? '' : 'disabled'}>Restaurar</button>
+      </div>
+    </section>
+  `;
 }
 
 /** El marcador entra desde 0, como la barra de zonas de PR-01. */
@@ -910,6 +951,62 @@ function perfilDesdeLaPantalla(raiz: HTMLElement): ProfileData {
 function alTocarPerfil(el: HTMLElement, contenedor: HTMLElement): void {
   const accion = el.dataset.perfil;
   switch (accion) {
+    case 'conectar': {
+      const token = (document.getElementById('perfilBackendToken') as HTMLInputElement | null)?.value ?? '';
+      const url = (document.getElementById('perfilBackendUrl') as HTMLInputElement | null)?.value ?? '';
+      configurarBackend(token, url);
+      const marca = document.getElementById('perfilServidorEstado');
+      if (marca) marca.textContent = token ? 'comprobando…' : 'sin conectar';
+      void estadoBackend().then((e) => {
+        if (!e) {
+          if (marca) marca.textContent = 'no responde';
+          mostrarToast({ tipo: 'aviso', titulo: 'El servidor no responde', detalle: 'Revisa la URL. La app sigue funcionando sin él.' });
+          return;
+        }
+        // Se dice lo que el servidor dice de si mismo, incluidos sus avisos:
+        // un servidor sin almacenamiento persistente parece funcionar y borra
+        // la copia en el siguiente despliegue.
+        if (marca) marca.textContent = e.coach ? 'conectado · coach con modelo' : 'conectado · coach en local';
+        mostrarToast({
+          tipo: (e.avisos?.length ?? 0) > 0 ? 'aviso' : 'exito',
+          titulo: 'Servidor conectado',
+          detalle: e.avisos?.length ? e.avisos.join(' · ') : `Copia en ${e.almacenamiento}.`,
+        });
+        renderPerfil(contenedor);
+      });
+      break;
+    }
+
+    case 'subir':
+      void subirCopia().then((r) =>
+        mostrarToast(
+          r.ok
+            ? { tipo: 'exito' as const, titulo: 'Copia subida' }
+            : { tipo: 'aviso' as const, titulo: 'No se pudo subir la copia', detalle: r.error }
+        )
+      );
+      break;
+
+    case 'bajar':
+      void confirmarDestructivo({
+        titulo: '¿Restaurar desde el servidor?',
+        cuerpo: 'Lo que hay en este teléfono se reemplaza por la última copia guardada. Exporta un CSV antes si no estás seguro.',
+        cancelar: 'Cancelar',
+        confirmar: 'Restaurar',
+      }).then(async (sigue) => {
+        if (!sigue) return;
+        const r = await bajarCopia();
+        if (!r.ok) {
+          mostrarToast({ tipo: 'aviso', titulo: 'No se pudo restaurar', detalle: r.error });
+          return;
+        }
+        const { fusionarGamificacion } = await import('@/features/gamification');
+        fusionarGamificacion();
+        mostrarToast({ tipo: 'exito', titulo: `Restaurado · ${r.claves} bloques`, detalle: 'Recargando…' });
+        window.setTimeout(() => window.location.reload(), 900);
+      });
+      break;
+
     case 'pestana':
       pestanaActiva = (el.dataset.pestana as Pestana) ?? 'rm';
       renderCalculadoras(contenedor);

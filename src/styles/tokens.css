@@ -375,13 +375,43 @@
   --btn-pad-x: 22px; /* horizontal del boton en linea [REF Sistema:142] */
   --fab-size: 50px; /* [REF Pantallas:123] */
 
+  /* ----------------------------------------------------------------------
+     ZONAS SEGURAS DEL SISTEMA
+     ----------------------------------------------------------------------
+     El `viewport-fit=cover` de index.html y el
+     `apple-mobile-web-app-status-bar-style: black-translucent` hacen que la
+     app se pinte DEBAJO de la barra de estado y del indicador de inicio. Eso
+     es lo que se quiere —el fondo llega hasta el borde— pero obliga a
+     apartar el contenido a mano, y no se estaba haciendo arriba: el saludo
+     quedaba tapado por la hora, y la ✕ de la esquina superior derecha caia
+     en la franja donde iOS se queda los toques. No se podia cerrar esas
+     pantallas sin matar la app.
+
+     Valores reales del sistema (iOS 17-18):
+       - Dynamic Island (iPhone 14 Pro y posteriores): 59pt arriba
+       - Notch (iPhone X a 13):                        47pt arriba
+       - Sin notch:                                    20pt arriba
+       - Indicador de inicio:                          34pt abajo
+     No se teclean: los da `env()`. Fuera de iOS valen 0 y el diseño queda
+     exactamente como el mockup. */
+  --safe-area-inset-top: env(safe-area-inset-top, 0px);
   --safe-area-inset-bottom: env(safe-area-inset-bottom, 0px);
+
+  /* El hueco de abajo se toma con `max()`, NO sumando.
+     Sumar daba 22 + 34 = 56px de vacio bajo la tab bar en un iPhone: el
+     doble de lo que dibuja el mockup, y se veia. Los 34pt del indicador YA
+     son espacio respirable; el 22px del diseño solo hace falta cuando no hay
+     indicador. */
+  --hueco-inferior: max(22px, var(--safe-area-inset-bottom));
+
   /* Alto real de la tab bar FIERRO: 12px de padding superior + 47px de
-     contenido (el FAB de 50px con margin-top -4px) + 22px inferior.
+     contenido (el FAB de 50px con margin-top -4px) + el hueco inferior.
      El contenido y los toasts reservan este espacio. La puerta de
      comportamiento comprueba que coincide con la altura medida: si la barra
-     cambia y esto no, el contenido queda tapado sin avisar. */
-  --h-nav-inferior: 81px;
+     cambia y esto no, el contenido queda tapado sin avisar.
+     Antes eran 81px fijos, asi que en un iPhone el cuerpo reservaba 81+34
+     mientras la barra media 93: 22px de scroll muerto de propina. */
+  --h-nav-inferior: calc(59px + var(--hueco-inferior));
   /* Ancho maximo del cuerpo de la app; hoy lo fija main.css legacy. */
   --ancho-app: 640px;
 

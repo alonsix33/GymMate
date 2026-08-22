@@ -15,6 +15,8 @@ import {
   getCustomWorkouts,
   saveCustomWorkouts,
   savePRs,
+  getCustomExercises,
+  saveCustomExercises,
 } from '@/utils/storage';
 import type { CustomWorkout } from '@/utils/storage';
 import { renderHistorial, renderRecords, abrirDetalle, animarZonas } from '@/ui/hueso';
@@ -349,6 +351,62 @@ export function exportToCSV(): void {
     }
   }
 
+  // ==========================================
+  // SECCIÓN 7: EJERCICIOS PROPIOS
+  // Los que el usuario creo a mano. Sin ellos, sus rutinas y su historial
+  // apuntan a nombres que ya no estan en el catalogo al restaurar.
+  // ==========================================
+  const propios = getCustomExercises();
+  if (propios.length > 0) {
+    rows.push([]);
+    rows.push(['=== EJERCICIOS PROPIOS ===']);
+    rows.push(['Id', 'Ejercicio', 'Grupo Muscular', 'Es Mancuerna', 'Creado']);
+    for (const e of propios) {
+      rows.push([e.id, e.nombre, e.grupoMuscular, e.esMancuerna ? 'Sí' : 'No', e.createdAt ?? '']);
+    }
+  }
+
+  // ==========================================
+  // SECCIÓN 8: PROGRESIÓN
+  // Lo unico de la gamificacion que NO se puede rederivar del historial: los
+  // hitos de racha ya cobrados, la mejor racha historica y la fecha en que se
+  // consiguio cada logro. El XP, el nivel y los rangos salen del historial y
+  // por eso no se escriben aqui.
+  // ==========================================
+  try {
+    const g = JSON.parse(localStorage.getItem('gymmate_gamification') || 'null');
+    if (g?.initialized) {
+      rows.push([]);
+      rows.push(['=== PROGRESIÓN ===']);
+      rows.push(['Campo', 'Valor']);
+      rows.push(['totalXP', String(g.playerStats?.totalXP ?? 0)]);
+      rows.push(['bestStreak', String(g.streakData?.bestStreak ?? 0)]);
+      rows.push(['streakMilestones', (g.streakData?.streakMilestones ?? []).join('|')]);
+      for (const a of g.achievements ?? []) {
+        if (a.unlockedAt) rows.push([`logro:${a.id}`, a.unlockedAt]);
+      }
+    }
+  } catch {
+    // Un estado corrupto no puede impedir el backup del resto.
+  }
+
+  // ==========================================
+  // SECCIÓN 9: CONVERSACIÓN DEL COACH
+  // ==========================================
+  try {
+    const turnos = JSON.parse(localStorage.getItem('gymmate_coach_conversacion') || '[]');
+    if (Array.isArray(turnos) && turnos.length > 0) {
+      rows.push([]);
+      rows.push(['=== CONVERSACIÓN DEL COACH ===']);
+      rows.push(['Id', 'Autor', 'Fecha', 'Texto']);
+      for (const t of turnos) {
+        rows.push([String(t.id ?? ''), String(t.autor ?? ''), String(t.fecha ?? ''), String(t.texto ?? '')]);
+      }
+    }
+  } catch {
+    // idem
+  }
+
   if (rows.length === 0) {
     mostrarToast({
       tipo: 'aviso',
@@ -477,6 +535,10 @@ export interface ResultadoImport {
   medidasIlegibles: number;
   records: number;
   rutinas: number;
+  ejercicios: number;
+  turnos: number;
+  /** Campos de progresion rescatados (hitos, mejor racha, fechas de logro). */
+  progresion: number;
 }
 
 function partirEnSecciones(lines: string[]): Map<string, string[]> {
@@ -690,6 +752,116 @@ function importarRutinas(filas: string[]): number {
   return enConstruccion.size;
 }
 
+/** Ejercicios que el usuario creo a mano. Se dedupican por id. */
+function importarEjerciciosPropios(filas: string[]): number {
+  if (filas.length < 2) return 0;
+  const cab = parseCSVLine(filas[0]).map((c) => c.trim().toLowerCase());
+  if (cab[0] !== 'id' || !cab[1]?.startsWith('ejercicio')) return 0;
+  const existentes = getCustomExercises();
+  const ids = new Set(existentes.map((e) => e.id));
+  const nombres = new Set(existentes.map((e) => e.nombre.toLowerCase()));
+  let nuevos = 0;
+  for (const linea of filas.slice(1)) {
+    const v = parseCSVLine(linea);
+    if (v.length < 4 || !v[0].trim() || !v[1].trim()) continue;
+    if (ids.has(v[0].trim()) || nombres.has(v[1].trim().toLowerCase())) continue;
+    existentes.push({
+      id: v[0].trim(),
+      nombre: v[1].trim(),
+      grupoMuscular: v[2]?.trim() || 'Core',
+      esMancuerna: v[3]?.toLowerCase() === 'sí' || v[3]?.toLowerCase() === 'si',
+      createdAt: fechaDeMedida(v[4] ?? '') ?? new Date().toISOString(),
+    });
+    ids.add(v[0].trim());
+    nombres.add(v[1].trim().toLowerCase());
+    nuevos++;
+  }
+  if (nuevos > 0) saveCustomExercises(existentes);
+  return nuevos;
+}
+
+/**
+ * Lo que la gamificacion NO puede rederivar del historial: hitos de racha
+ * cobrados, mejor racha y fechas de desbloqueo.
+ *
+ * Se escribe DENTRO del estado guardado, antes de que `fusionarGamificacion()`
+ * corra: esa funcion toma el maximo de lo que encuentra con lo que rederiva,
+ * asi que rescatar aqui es suficiente y nada puede bajar.
+ */
+function importarProgresion(filas: string[]): number {
+  if (filas.length < 2) return 0;
+  const cab = parseCSVLine(filas[0]).map((c) => c.trim().toLowerCase());
+  if (cab[0] !== 'campo') return 0;
+  let estado: Record<string, unknown>;
+  try {
+    estado = JSON.parse(localStorage.getItem('gymmate_gamification') || 'null') ?? {};
+  } catch {
+    estado = {};
+  }
+  const stats = (estado.playerStats ??= {}) as Record<string, unknown>;
+  const racha = (estado.streakData ??= {}) as Record<string, unknown>;
+  const logros = (estado.achievements ??= []) as Array<Record<string, unknown>>;
+  let campos = 0;
+  for (const linea of filas.slice(1)) {
+    const v = parseCSVLine(linea);
+    if (v.length < 2 || !v[0].trim()) continue;
+    const campo = v[0].trim();
+    const bruto = v[1].trim();
+    if (campo === 'totalXP') {
+      stats.totalXP = Math.max(Number(stats.totalXP) || 0, Number.parseInt(bruto, 10) || 0);
+    } else if (campo === 'bestStreak') {
+      racha.bestStreak = Math.max(Number(racha.bestStreak) || 0, Number.parseInt(bruto, 10) || 0);
+    } else if (campo === 'streakMilestones') {
+      const previos = Array.isArray(racha.streakMilestones) ? (racha.streakMilestones as number[]) : [];
+      const leidos = bruto.split('|').map((n) => Number.parseInt(n, 10)).filter((n) => n > 0);
+      racha.streakMilestones = [...new Set([...previos, ...leidos])].sort((a, b) => a - b);
+    } else if (campo.startsWith('logro:')) {
+      const id = campo.slice(6);
+      const existente = logros.find((a) => a.id === id);
+      if (existente) existente.unlockedAt ??= bruto;
+      else logros.push({ id, unlockedAt: bruto });
+    } else {
+      continue;
+    }
+    campos++;
+  }
+  if (campos > 0) {
+    estado.initialized = true;
+    localStorage.setItem('gymmate_gamification', JSON.stringify(estado));
+  }
+  return campos;
+}
+
+/** La conversacion con el coach. Se dedupica por id de turno. */
+function importarConversacion(filas: string[]): number {
+  if (filas.length < 2) return 0;
+  const cab = parseCSVLine(filas[0]).map((c) => c.trim().toLowerCase());
+  if (cab[0] !== 'id' || cab[1] !== 'autor') return 0;
+  let previos: Array<Record<string, unknown>>;
+  try {
+    const bruto = JSON.parse(localStorage.getItem('gymmate_coach_conversacion') || '[]');
+    previos = Array.isArray(bruto) ? bruto : [];
+  } catch {
+    previos = [];
+  }
+  const ids = new Set(previos.map((t) => t.id));
+  let nuevos = 0;
+  for (const linea of filas.slice(1)) {
+    const v = parseCSVLine(linea);
+    if (v.length < 4 || !v[0].trim()) continue;
+    if (ids.has(v[0].trim())) continue;
+    if (v[1].trim() !== 'coach' && v[1].trim() !== 'usuario') continue;
+    previos.push({ id: v[0].trim(), autor: v[1].trim(), fecha: v[2].trim(), texto: v[3] });
+    ids.add(v[0].trim());
+    nuevos++;
+  }
+  if (nuevos > 0) {
+    previos.sort((a, b) => String(a.fecha).localeCompare(String(b.fecha)));
+    localStorage.setItem('gymmate_coach_conversacion', JSON.stringify(previos));
+  }
+  return nuevos;
+}
+
 export function importFromCSV(
   file: File
 ): Promise<ResultadoImport> {
@@ -731,6 +903,11 @@ export function importFromCSV(
         const medidasNuevas = medidas.nuevas;
         const recordsNuevos = importarRecords(secciones.get('RÉCORDS') ?? secciones.get('RECORDS') ?? []);
         const rutinasNuevas = importarRutinas(secciones.get('RUTINAS PROPIAS') ?? []);
+        const ejerciciosNuevos = importarEjerciciosPropios(secciones.get('EJERCICIOS PROPIOS') ?? []);
+        const turnosNuevos = importarConversacion(secciones.get('CONVERSACIÓN DEL COACH') ?? secciones.get('CONVERSACION DEL COACH') ?? []);
+        // ANTES de tocar el historial: `fusionarGamificacion()` corre despues y
+        // toma el maximo de lo que encuentre guardado.
+        const progresion = importarProgresion(secciones.get('PROGRESIÓN') ?? secciones.get('PROGRESION') ?? []);
 
         // Un CSV de quien solo hace cardio no tiene seccion de pesas, y se
         // rechazaba culpando al archivo que la propia app habia generado.
@@ -740,7 +917,10 @@ export function importFromCSV(
           camposPerfil > 0 ||
           medidasNuevas > 0 ||
           recordsNuevos > 0 ||
-          rutinasNuevas > 0;
+          rutinasNuevas > 0 ||
+          ejerciciosNuevos > 0 ||
+          turnosNuevos > 0 ||
+          progresion > 0;
         if (!hayAlgo) {
           reject(new Error('El archivo CSV no tiene el formato correcto de GymMate'));
           return;
@@ -906,7 +1086,7 @@ export function importFromCSV(
         // escalon real de sus PRs, los ascensos de rango y su mejor racha:
         // importar UNA sesion vieja le bajaba el nivel. Ninguna cifra puede
         // bajar por importar un archivo.
-        if (newSessions.length > 0) {
+        if (newSessions.length > 0 || progresion > 0) {
           try {
             const { fusionarGamificacion } = await import('@/features/gamification');
             fusionarGamificacion();
@@ -925,6 +1105,9 @@ export function importFromCSV(
           medidasIlegibles: medidas.ilegibles,
           records: recordsNuevos,
           rutinas: rutinasNuevas,
+          ejercicios: ejerciciosNuevos,
+          turnos: turnosNuevos,
+          progresion,
         });
       } catch (error) {
         reject(new Error('Error al procesar el archivo CSV: ' + (error as Error).message));
@@ -983,6 +1166,17 @@ export function triggerCSVImport(): void {
       }
       if (result.rutinas > 0) {
         recuperado.push(`${result.rutinas} ${result.rutinas === 1 ? 'rutina' : 'rutinas'}`);
+      }
+      if (result.ejercicios > 0) {
+        recuperado.push(
+          `${result.ejercicios} ${result.ejercicios === 1 ? 'ejercicio propio' : 'ejercicios propios'}`
+        );
+      }
+      if (result.progresion > 0) {
+        recuperado.push('progresión');
+      }
+      if (result.turnos > 0) {
+        recuperado.push(`${result.turnos} ${result.turnos === 1 ? 'turno del coach' : 'turnos del coach'}`);
       }
 
       mostrarToast({

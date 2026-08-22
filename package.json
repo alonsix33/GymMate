@@ -3,6 +3,9 @@
   "private": true,
   "version": "3.1.0",
   "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
@@ -14,7 +17,12 @@
     "verificar:runtime": "npm run build && TZ=America/Lima node scripts/verificar-runtime.mjs",
     "verificar": "npm run verificar:tokens && tsc --noEmit && TZ=America/Lima vitest run && npm run build && TZ=America/Lima node scripts/verificar-runtime.mjs && TZ=America/Lima node scripts/verificar-fidelidad.mjs && TZ=America/Lima node scripts/verificar-comportamiento.mjs",
     "verificar:fidelidad": "npm run build && TZ=America/Lima node scripts/verificar-fidelidad.mjs",
-    "verificar:comportamiento": "npm run build && TZ=America/Lima node scripts/verificar-comportamiento.mjs"
+    "verificar:comportamiento": "npm run build && TZ=America/Lima node scripts/verificar-comportamiento.mjs",
+    "start": "node server/index.mjs",
+    "servidor": "npm run build && node server/index.mjs"
+  },
+  "dependencies": {
+    "pg": "^8.13.1"
   },
   "devDependencies": {
     "@types/node": "^20.10.0",

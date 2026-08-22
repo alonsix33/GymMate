@@ -187,13 +187,21 @@ export function fusionarGamificacion(): GamificationState {
   // Se lee lo PERSISTIDO, no el `_state` en memoria: la importacion acaba de
   // reescribir localStorage por debajo, y ese es el estado que hay que
   // respetar. Ademas hace la funcion comprobable sin montar la app entera.
-  const previo = loadGamificationState();
+  const crudo = loadGamificationState();
   const rederivado = migrateExistingData();
 
-  if (!previo.initialized) {
-    persistState(rederivado);
-    return rederivado;
-  }
+  // `loadGamificationState` devuelve lo que haya en localStorage tal cual, y la
+  // importacion de un CSV escribe ahi un estado PARCIAL (solo el XP, la mejor
+  // racha, los hitos y las fechas de logro: lo unico que el historial no sabe
+  // rederivar). Sin estos rellenos, el `spread` de `xpHistory` reventaba.
+  const previo: GamificationState = {
+    ...rederivado,
+    ...crudo,
+    playerStats: { ...rederivado.playerStats, ...(crudo.playerStats ?? {}) },
+    streakData: { ...rederivado.streakData, ...(crudo.streakData ?? {}) },
+    achievements: Array.isArray(crudo.achievements) ? crudo.achievements : [],
+    xpHistory: Array.isArray(crudo.xpHistory) ? crudo.xpHistory : [],
+  };
 
   const totalXP = Math.max(previo.playerStats.totalXP, rederivado.playerStats.totalXP);
   const level = calculateLevel(totalXP);
@@ -224,7 +232,10 @@ export function fusionarGamificacion(): GamificationState {
       ...rederivado.streakData,
       bestStreak: Math.max(previo.streakData.bestStreak, rederivado.streakData.bestStreak),
       streakMilestones: [
-        ...new Set([...previo.streakData.streakMilestones, ...rederivado.streakData.streakMilestones]),
+        ...new Set([
+          ...(previo.streakData.streakMilestones ?? []),
+          ...(rederivado.streakData.streakMilestones ?? []),
+        ]),
       ].sort((a, b) => a - b),
     },
     achievements,

@@ -388,6 +388,19 @@ function init(): void {
 
   exponerGanchosDeVerificacion();
 
+  // Si hay backend configurado Y responde con clave del modelo, el coach pasa
+  // a hablar con el. Si no —sin token, sin red, sin clave— se queda el local,
+  // que es lo que ha estado corriendo hasta ahora. Nada bloquea el arranque:
+  // esto ocurre en segundo plano y la app ya esta usable.
+  void (async () => {
+    const { hayBackend, estadoBackend, urlBackend, tokenBackend } = await import('@/features/backend');
+    if (!hayBackend()) return;
+    const estado = await estadoBackend();
+    if (!estado?.coach) return;
+    const { CoachRemoto, usarAdaptador: instalar } = await import('@/features/coach-ia');
+    instalar(new CoachRemoto(urlBackend(), tokenBackend()));
+  })();
+
   // Inicializar iconos Lucide
 
   // Inicializar navegación

@@ -234,6 +234,54 @@ export class CoachLocal implements AdaptadorCoach {
   }
 }
 
+/**
+ * El adaptador que habla con el servidor de Railway.
+ *
+ * La aritmetica NO viaja para que el modelo la rehaga: viaja ya calculada,
+ * dentro de `datos`, y el servidor le dice al modelo que la use tal cual. Si
+ * el modelo se equivoca en una cifra, la tarjeta que se pinta al lado sigue
+ * diciendo la verdad porque sale de `datosPara`, que corre aqui.
+ */
+export class CoachRemoto implements AdaptadorCoach {
+  readonly enLinea = true;
+
+  constructor(
+    private readonly url: string,
+    private readonly token: string
+  ) {}
+
+  datosPara(pregunta: string): DatoDeEjercicio | null {
+    const ejercicio = ejercicioMencionado(pregunta);
+    return ejercicio ? datosDelEjercicio(ejercicio) : null;
+  }
+
+  async *responder(pregunta: string, historial: TurnoCoach[]): AsyncIterable<string> {
+    const r = await fetch(`${this.url}/api/coach`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${this.token}` },
+      body: JSON.stringify({
+        pregunta,
+        historial: historial.slice(-12).map((t) => ({ autor: t.autor, texto: t.texto })),
+        datos: this.datosPara(pregunta),
+      }),
+    });
+    if (!r.ok || !r.body) {
+      // Se lanza a proposito: `coach-chat.ts` lo trata como caida de red,
+      // guarda la pregunta en la cola y pinta CO-03. Es el comportamiento que
+      // el handoff pide y ya esta comprobado.
+      throw new Error(`el coach respondió ${r.status}`);
+    }
+    const lector = r.body.getReader();
+    const dec = new TextDecoder();
+    for (;;) {
+      const { done, value } = await lector.read();
+      if (done) break;
+      const trozo = dec.decode(value, { stream: true });
+      if (trozo) yield trozo;
+    }
+  }
+}
+
 let adaptador: AdaptadorCoach = new CoachLocal();
 
 export function usarAdaptador(nuevo: AdaptadorCoach): void {

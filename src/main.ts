@@ -41,10 +41,7 @@ import {
   skipRPE,
 } from '@/features/workout';
 import { initGamification, reinitGamification } from '@/features/gamification';
-import {
-  showGamificationModal,
-  hideGamificationModal,
-} from '@/ui/gamification';
+import { abrirProgreso, cerrarProgreso } from '@/ui/progreso';
 import {
   showCardioSelector,
   selectCardioMode,
@@ -149,8 +146,8 @@ declare global {
     deleteMeasurementEntry: typeof deleteMeasurementEntry;
 
     // Gamification
-    showGamificationModal: typeof showGamificationModal;
-    hideGamificationModal: typeof hideGamificationModal;
+    showGamificationModal: typeof abrirProgreso;
+    hideGamificationModal: typeof cerrarProgreso;
     recalculateXP: () => void;
   }
 }
@@ -222,8 +219,10 @@ window.closeMeasurementsModal = closeMeasurementsModal;
 window.showMeasurementsHistory = showMeasurementsHistory;
 window.closeMeasurementsHistoryModal = closeMeasurementsHistoryModal;
 window.deleteMeasurementEntry = deleteMeasurementEntry;
-window.showGamificationModal = showGamificationModal;
-window.hideGamificationModal = hideGamificationModal;
+// GM-01 se abre desde PROGRESO en la tab bar. El nombre global se conserva
+// porque index.html y navigation.ts lo llaman por ahi.
+window.showGamificationModal = abrirProgreso;
+window.hideGamificationModal = cerrarProgreso;
 
 // Utility to recalculate all XP from history (for recovery)
 window.recalculateXP = (): void => {

@@ -24,7 +24,7 @@ import {
   ultimaMedida,
   zonaDeGrasa,
 } from '@/utils/perfil-calc';
-import { calculateCalories } from '@/utils/calculations';
+import { calculate1RM, calculateCalories, calculateProgressive } from '@/utils/calculations';
 import type { BodyMeasurement } from '@/types';
 
 const dia = (iso: string, extra: Partial<BodyMeasurement> = {}): BodyMeasurement =>
@@ -53,6 +53,82 @@ describe('CA-02 · calorias (Mifflin-St Jeor)', () => {
       expect(r.deficit).toBe(Math.round(r.tdee * 0.8));
       expect(r.surplus).toBe(Math.round(r.tdee * 1.2));
     }
+  });
+});
+
+describe('CA-01 · las dos calculadoras no pueden discrepar', () => {
+  it('el progresivo cae al historial cuando no hay tabla de PRs', () => {
+    // Pasa de verdad con un CSV importado: trae las sesiones y no reescribe
+    // los PRs. `calculate1RM` daba su cifra y el progresivo decia "todavia no
+    // tiene récord" del MISMO ejercicio, en la misma pantalla.
+    const hist = [
+      {
+        sessionId: 'w1',
+        date: '2026-08-10T12:00:00',
+        savedAt: '2026-08-10T12:00:00',
+        grupo: 'Pecho',
+        type: 'weights',
+        volumenTotal: 1920,
+        volumenPorGrupo: { Pecho: 1920 },
+        ejercicios: [
+          {
+            nombre: 'Press Banca',
+            sets: 4,
+            reps: 8,
+            peso: 60,
+            volumen: 1920,
+            completado: true,
+            esMancuerna: false,
+            grupoMuscular: 'Pecho',
+          },
+        ],
+      },
+    ];
+    localStorage.setItem('gymmate_history', JSON.stringify(hist));
+    localStorage.removeItem('gymmate_prs');
+
+    expect(calculate1RM('Press Banca')).not.toBeNull();
+    const prog = calculateProgressive('Press Banca');
+    expect(prog).not.toBeNull();
+    expect(prog?.current).toBe(60);
+    // Tren superior: 60 x1.025 / x1.05 / x1.075, techo a multiplos de 2.5.
+    expect(prog?.conservative).toBe('62.5');
+    expect(prog?.moderate).toBe('65.0');
+    expect(prog?.aggressive).toBe('65.0');
+    expect(prog?.exerciseType).toBe('Tren Superior');
+    localStorage.clear();
+  });
+
+  it('clasifica por grupo muscular real, no por keywords del nombre', () => {
+    // "RDL / Peso Muerto Rumano" no lleva ninguna palabra de pierna y es tren
+    // inferior; con keywords caia en tren superior.
+    const hist = [
+      {
+        sessionId: 'w1',
+        date: '2026-08-10T12:00:00',
+        savedAt: '2026-08-10T12:00:00',
+        grupo: 'Piernas',
+        type: 'weights',
+        volumenTotal: 2100,
+        volumenPorGrupo: { Glúteos: 2100 },
+        ejercicios: [
+          {
+            nombre: 'RDL / Peso Muerto Rumano',
+            sets: 3,
+            reps: 10,
+            peso: 70,
+            volumen: 2100,
+            completado: true,
+            esMancuerna: false,
+            grupoMuscular: 'Glúteos',
+          },
+        ],
+      },
+    ];
+    localStorage.setItem('gymmate_history', JSON.stringify(hist));
+    localStorage.removeItem('gymmate_prs');
+    expect(calculateProgressive('RDL / Peso Muerto Rumano')?.exerciseType).toBe('Tren Inferior');
+    localStorage.clear();
   });
 });
 

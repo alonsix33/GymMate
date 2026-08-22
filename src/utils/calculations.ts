@@ -137,6 +137,18 @@ export function calculateCalories(
 // CÁLCULO DE PESO PROGRESIVO (ACSM/NSCA)
 // ==========================================
 
+/** El peso mas alto registrado para un ejercicio en todo el historial. */
+function mejorPesoDelHistorial(exerciseName: string): number {
+  const normalizado = normalizeExerciseName(exerciseName);
+  let mejor = 0;
+  for (const sesion of getHistory()) {
+    for (const ej of sesion.ejercicios ?? []) {
+      if (isSameExercise(ej.nombre, normalizado) && ej.peso > mejor) mejor = ej.peso;
+    }
+  }
+  return mejor;
+}
+
 /**
  * Tren inferior por el grupo muscular real del ejercicio.
  *
@@ -168,13 +180,17 @@ export function esTrenInferior(exerciseName: string): boolean {
 export function calculateProgressive(
   exerciseName: string
 ): ProgressiveResult | null {
-  const exercisePR = getPR(exerciseName);
-
-  if (!exercisePR) {
+  // El PR si existe; si no, el mejor peso del historial.
+  //
+  // Las dos calculadoras viven en la MISMA pantalla y no pueden discrepar
+  // sobre si has levantado algo: `calculate1RM` deriva del historial y daba su
+  // cifra, mientras el progresivo decia "todavia no tiene récord" del mismo
+  // ejercicio. Pasa de verdad con un historial importado por CSV, que trae las
+  // sesiones pero no reescribe la tabla de PRs.
+  const currentWeight = getPR(exerciseName)?.peso ?? mejorPesoDelHistorial(exerciseName);
+  if (!(currentWeight > 0)) {
     return null;
   }
-
-  const currentWeight = exercisePR.peso;
 
   // Cambio aprobado nº 3 del handoff: clasificar por el GRUPO MUSCULAR REAL,
   // no por keywords del nombre. "Peso Muerto Rumano" no contiene ninguna

@@ -221,55 +221,63 @@ describe('armarMensajes — que ve el modelo', () => {
   });
 });
 
-describe('SISTEMA — la regla acota, no paraliza', () => {
-  // La regla estaba tan ancha que el coach se negaba a decir "no has
-  // entrenado este mes" teniendo las fechas delante: leer un calendario no es
-  // estimar una metrica.
-  it('deja claro que responder con las cifras del RESUMEN es obligatorio', () => {
-    expect(SISTEMA).toMatch(/no has entrenado este mes/i);
+describe('SISTEMA — es un coach, no un formulario', () => {
+  // El prompt anterior empezaba por "la regla mas importante: NO calcules
+  // NADA" y era 80% prohibiciones. El modelo se comportaba en consecuencia:
+  // pedia permiso —"¿quieres que te sugiera un grupo?"— en vez de entrenar.
+  // Estos casos fijan que el trabajo va PRIMERO y el limite al final.
+
+  it('lo primero que lee es su trabajo, no una prohibicion', () => {
+    const primeras = SISTEMA.split('\n').slice(0, 4).join(' ');
+    expect(primeras).toMatch(/coach de GymMate/);
+    expect(primeras).not.toMatch(/NO calcules|prohibid|no puedes/i);
   });
 
-  it('permite leer y comparar fechas de la bitacora', () => {
-    expect(SISTEMA).toMatch(/Leer y comparar FECHAS/);
-    expect(SISTEMA).toMatch(/leer un calendario, no estimar una métrica/i);
+  it('le manda formar una opinion y darla', () => {
+    expect(SISTEMA).toMatch(/Forma una opinión y dila/i);
+    expect(SISTEMA).toMatch(/no con "¿quieres que te sugiera uno\?"/i);
   });
 
-  it('y dice donde esta la linea exacta', () => {
-    expect(SISTEMA).toMatch(/no se estira a "no puedo contar días"/i);
-  });
-});
-
-describe('SISTEMA — la regla cardinal del handoff', () => {
-  // Se podia cambiar "NO calcules NADA" por "Calcula lo que haga falta" y la
-  // suite entera seguia en verde: `SISTEMA` no se exportaba, asi que ningun
-  // test podia verlo.
-  it('prohibe calcular', () => {
-    expect(SISTEMA).toMatch(/NO calcules NADA/);
+  it('le manda ir mas alla de lo que le preguntan', () => {
+    expect(SISTEMA).toMatch(/Ve un paso más allá/i);
+    expect(SISTEMA).toMatch(/sin que te lo pidan/i);
   });
 
-  it('prohibe calcular sobre la bitacora, que es lo que rompe la coherencia', () => {
-    expect(SISTEMA).toMatch(/NO hagas\s+aritmética sobre él/i);
+  it('le manda explicar el porque, no soltar el numero', () => {
+    expect(SISTEMA).toMatch(/Explica el porqué/i);
+    expect(SISTEMA).toMatch(/Enseña cuando haga falta/i);
   });
 
-  it('manda copiar de PANORAMA y RESUMEN', () => {
-    expect(SISTEMA).toMatch(/PANORAMA/);
-    expect(SISTEMA).toMatch(/RESUMEN/);
+  it('le permite discrepar', () => {
+    expect(SISTEMA).toMatch(/Discrepa/i);
   });
 
-  it('distingue las dos cifras de 1RM y prohibe promediarlas', () => {
-    expect(SISTEMA).toMatch(/Las dos cifras de 1RM:/);
-    expect(SISTEMA).toMatch(/NO son intercambiables/);
-    // El texto va envuelto: la expresion tiene que admitir el salto de linea.
-    expect(SISTEMA).toMatch(/[Nn]unca las\s+promedies/);
+  it('le prohibe el tic de preguntar al final de cada mensaje', () => {
+    // "¿Quieres que te sugiera un grupo o prefieres decidir tu?" al cierre de
+    // cada respuesta es lo que lo hacia sentir un chatbot.
+    expect(SISTEMA).toMatch(/NO termines cada mensaje con una pregunta/i);
+    expect(SISTEMA).toMatch(/Propón y calla/i);
   });
 
-  it('manda decir que no hay dato en vez de rellenar', () => {
-    expect(SISTEMA).toMatch(/no está en PANORAMA ni en\s+RESUMEN, dilo/);
+  it('deja claro que cruzar y sacar conclusiones NO es pedir permiso', () => {
+    expect(SISTEMA).toMatch(/no una licencia que tengas que pedir/i);
   });
 
-  it('mantiene la voz del handoff: sin porras, sin emojis, peso objetivo', () => {
-    expect(SISTEMA).toMatch(/[Ss]in emojis/);
-    expect(SISTEMA).toMatch(/nunca la diferencia/);
+  it('el limite se enuncia UNA vez y al final, no como identidad', () => {
+    const pos = SISTEMA.indexOf('Un solo límite');
+    expect(pos).toBeGreaterThan(SISTEMA.length / 2);
+    expect(SISTEMA.match(/Un solo límite/g)).toHaveLength(1);
+  });
+
+  it('y sigue siendo el mismo limite: no recalcular lo que la app enseña', () => {
+    expect(SISTEMA).toMatch(/las COPIAS de PANORAMA y RESUMEN/);
+    expect(SISTEMA).toMatch(/No las\s+recalculas ni las estimas/);
+    expect(SISTEMA).toMatch(/dos números para lo mismo destruyen la confianza/i);
+  });
+
+  it('con la frontera dicha en positivo: contar dias no es calcular metricas', () => {
+    expect(SISTEMA).toMatch(/Leer fechas, comparar periodos, contar días/);
+    expect(SISTEMA).toMatch(/eso no es calcular\s+métricas, es entrenar/);
   });
 });
 

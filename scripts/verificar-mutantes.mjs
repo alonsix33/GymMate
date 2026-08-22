@@ -125,7 +125,7 @@ const MUTANTES = [
     nombre: 'el modo pensante se queda encendido',
     porque: 'En DeepSeek viene encendido por defecto. Para tres frases sobre numeros ya calculados es pagar y esperar por nada.',
     archivo: 'server/coach.mjs',
-    de: "        thinking: { type: 'disabled' },",
+    de: "        thinking: { type: process.env.COACH_PENSAR === '1' ? 'enabled' : 'disabled' },",
     a: "        thinking: { type: 'enabled' },",
     minimo: 1,
   },
@@ -162,11 +162,35 @@ const MUTANTES = [
     minimo: 1,
   },
   {
-    nombre: 'la regla vuelve a prohibir leer un calendario',
-    porque: 'Con la regla ancha el coach se negaba a decir "no has entrenado este mes" con las fechas delante. Prudencia mal calibrada tambien es una respuesta inutil.',
+    nombre: 'la frontera deja de decirse en positivo',
+    porque: 'Con la regla ancha el coach se negaba a decir "no has entrenado este mes" con las fechas delante. Prudencia mal calibrada es tan inutil como inventar.',
     archivo: 'server/coach.mjs',
-    de: 'Lo que la regla NO prohíbe, y tienes que hacer:',
-    a: 'Nada mas:',
+    de: 'Todo lo demás es tuyo. Leer fechas, comparar periodos, contar días, ordenar',
+    a: 'No hagas nada mas.',
+    minimo: 1,
+  },
+  {
+    nombre: 'el prompt vuelve a empezar por la prohibicion',
+    porque: 'Un prompt que arranca con "la regla mas importante: NO calcules NADA" produce un modelo que pide permiso en vez de entrenar. El trabajo va primero.',
+    archivo: 'server/coach.mjs',
+    de: 'export const SISTEMA = `Eres el coach de GymMate. Alonso entrena solo, y tú eres',
+    a: 'export const SISTEMA = `NO calcules NADA. Eres el coach de GymMate y no debes',
+    minimo: 1,
+  },
+  {
+    nombre: 'se le quita el mandato de opinar y proponer',
+    porque: 'Sin esto vuelve a ser un buscador de cifras que termina cada mensaje preguntando si quieres que sugiera algo.',
+    archivo: 'server/coach.mjs',
+    de: '- Forma una opinión y dila. Si te pregunta qué entrenar hoy, responde con un',
+    a: '- Responde lo que te pregunten y nada mas. Si te pregunta qué entrenar, di',
+    minimo: 1,
+  },
+  {
+    nombre: 'vuelve el tic de preguntar al final de cada mensaje',
+    porque: 'Cerrar siempre con "¿quieres que te sugiera un grupo?" es lo que lo hacia sentir un chatbot en vez de un coach.',
+    archivo: 'server/coach.mjs',
+    de: '- NO termines cada mensaje con una pregunta. Propón y calla. Pregunta solo',
+    a: '- Termina cada mensaje ofreciendo opciones. Pregunta siempre',
     minimo: 1,
   },
   {
@@ -214,7 +238,7 @@ for (const m of MUTANTES) {
 }
 
 // Que la lista no se vacie por el mismo camino que este script vino a cerrar.
-const MUTANTES_MINIMO = 18;
+const MUTANTES_MINIMO = 21;
 if (MUTANTES.length < MUTANTES_MINIMO) {
   fallos++;
   console.log(`\nFALLA solo hay ${MUTANTES.length} mutantes (minimo ${MUTANTES_MINIMO}).`);

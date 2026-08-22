@@ -69,8 +69,9 @@ servidor la quita de los dos lados. Nunca `*`: con el comodín, cualquier págin
 que visites podría pedirle tu historial a este servidor — y el servidor se
 niega a arrancar si lo pones, en vez de fingir que funciona.
 
-Opcionales: `COACH_MODELO` (por defecto `deepseek-v4-flash`) y `COACH_MAX_TOKENS`
-(por defecto 700). `PORT` la pone Railway; no la toques.
+Opcionales: `COACH_MODELO` (por defecto `deepseek-v4-flash`), `COACH_MAX_TOKENS`
+(por defecto 1400) y `COACH_PENSAR=1` para encender el modo razonador. `PORT` la
+pone Railway; no la toques.
 
 ### Qué modelo corre
 
@@ -78,10 +79,13 @@ Opcionales: `COACH_MODELO` (por defecto `deepseek-v4-flash`) y `COACH_MAX_TOKENS
 sale Flash. El servidor imprime cuál está usando en la primera línea de sus
 logs de arranque, así que no hay que adivinarlo.
 
-Flash cuesta la tercera parte que Pro y para este trabajo sobra: el coach
-explica números que ya vienen calculados, no los deduce. Por lo mismo el modo
-pensante va **apagado** — en DeepSeek viene encendido por defecto, y aquí
-pensar es pagar y esperar por nada.
+Flash cuesta la tercera parte que Pro y para este trabajo sobra: el coach lee
+una tabla ya calculada y opina sobre ella, no deduce cifras.
+
+El modo pensante va **apagado** por defecto — en DeepSeek viene encendido — pero
+eso es una hipótesis mía, no una medición. Si notas las respuestas superficiales,
+pon `COACH_PENSAR=1` en Railway y compara; si mejora, se queda. Y `COACH_MODELO=deepseek-v4-pro`
+es la otra palanca. Las dos son reversibles.
 
 | Modelo | Entrada (acierto de caché) | Entrada (fallo) | Salida |
 |---|---|---|---|

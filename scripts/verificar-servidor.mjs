@@ -362,12 +362,24 @@ const cab = (r, n) => r.headers.get(n);
     // La regla era tan ancha que el coach se negaba a decir "no has entrenado
     // este mes" con las fechas delante. Prudencia mal calibrada tambien es
     // una respuesta inutil.
-    chk('sistema · la regla acota, no paraliza: se puede leer un calendario',
-      /Lo que la regla NO prohíbe, y tienes que hacer:/.test(sistema) &&
-        /Leer y comparar FECHAS/.test(sistema) &&
-        /no has entrenado este mes/i.test(sistema));
-    chk('sistema · y sigue prohibiendo inventar una metrica de la app',
-      /NO calcules NADA/.test(sistema));
+    // El prompt empezaba por "la regla mas importante: NO calcules NADA" y era
+    // casi todo prohibiciones. El modelo pedia permiso en vez de entrenar.
+    chk('sistema · lo primero que lee es su trabajo, no una prohibicion',
+      /^Eres el coach de GymMate/.test(sistema) &&
+        !/NO calcules|prohibid/i.test(sistema.split('\n').slice(0, 4).join(' ')));
+    chk('sistema · le manda opinar, proponer y explicar',
+      /Forma una opinión y dila/.test(sistema) &&
+        /Ve un paso más allá/.test(sistema) &&
+        /Explica el porqué/.test(sistema));
+    chk('sistema · le quita el tic de preguntar al cierre',
+      /NO termines cada mensaje con una pregunta/.test(sistema) && /Propón y calla/.test(sistema));
+    chk('sistema · el limite va UNA vez y en la segunda mitad',
+      (sistema.match(/Un solo límite/g) ?? []).length === 1 &&
+        sistema.indexOf('Un solo límite') > sistema.length / 2);
+    chk('sistema · y sigue prohibiendo recalcular lo que la app enseña',
+      /las COPIAS de PANORAMA y RESUMEN/.test(sistema));
+    chk('sistema · con la frontera dicha en positivo',
+      /contar días/.test(sistema) && /es entrenar/.test(sistema));
   } finally {
     await s.cerrar();
     await new Promise((ok) => falso.close(ok));
@@ -431,7 +443,7 @@ const cab = (r, n) => r.headers.get(n);
 }
 
 console.log(`\n${ejecutados} chequeos de servidor ejecutados`);
-const CHEQUEOS_MINIMO = 50;
+const CHEQUEOS_MINIMO = 54;
 if (ejecutados < CHEQUEOS_MINIMO) {
   fallos++;
   console.log(

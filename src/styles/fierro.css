@@ -13,6 +13,82 @@
 /* --------------------------------------------------------------------------
    00 · Base
    -------------------------------------------------------------------------- */
+/* Reset propio.
+   Hasta la fase 9 esto lo daba el preflight de Tailwind. Al retirar Tailwind
+   volvieron los defaults del navegador y la puerta de fidelidad lo canto en el
+   acto con 19 fallos, todos del mismo par de causas: el margen de 8px del
+   `body` (cada pantalla 16px mas estrecha: 334 donde el mockup dice 350) y el
+   padding de 1px 6px de los `button` (cada stepper 12px mas ancho).
+   Es el reset MINIMO que hace falta: nada de normalizar lo que el mockup no
+   toca. */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+html {
+  -webkit-text-size-adjust: 100%;
+}
+body {
+  margin: 0;
+  min-height: 100vh;
+  /* `--page-bg`, no `--bg-app`: el fondo de PAGINA del README es #08090B y el
+     de las superficies Carbon es #0B0C0F. Poner el segundo aqui aplanaba la
+     jerarquia — y la puerta lo canto con rgb(11,12,15) donde esperaba
+     rgb(8,9,11). */
+  background: var(--page-bg);
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+}
+h1,
+h2,
+h3,
+h4,
+p,
+figure,
+blockquote,
+dl,
+dd {
+  margin: 0;
+}
+ul,
+ol {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+  margin: 0;
+}
+button {
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+img,
+svg,
+video,
+canvas {
+  display: block;
+  max-width: 100%;
+}
+a {
+  color: inherit;
+  text-decoration: none;
+}
+table {
+  border-collapse: collapse;
+}
+[hidden] {
+  display: none !important;
+}
+
 /* El mockup NO tiene reset de box-sizing: renderiza en content-box y declara
    `box-sizing:border-box` a mano donde lo necesita (celdas del heatmap, por
    ejemplo). El preflight de Tailwind impone border-box a todo, y eso hacia
@@ -1157,9 +1233,9 @@ body.f-sin-tabbar {
    Las pantallas ya rehechas quedan FUERA: traen su propio padding (20px en
    Carbon, 18px en Hueso) y sumarles el legacy dejaba las cards 40px mas
    estrechas de lo que manda el mockup. */
-.tab-content:not(#workoutTab):not(#historyTab):not(#prsTab):not(#chartsTab) {
-  padding: 1.5rem 1.25rem 1rem;
-}
+/* Ya no queda ninguna pantalla legacy: las siete `.tab-content` traen su
+   propio padding FIERRO. El selector con cuatro `:not()` que habia aqui era
+   el andamio mientras convivian los dos mundos. */
 
 /* El mockup declara solo space-between: sin gap y sin wrap. El gap que se
    habia anadido era justo lo que partia el pie en dos filas. [REF :59] */
@@ -5081,4 +5157,96 @@ body:has(#medidasTab:not(.hidden)) {
   font-size: var(--fs-13);
   border-radius: var(--r-10);
   padding: 10px 14px;
+}
+
+/* Hoja de eleccion del descanso: seis tiempos en rejilla de tres. */
+.f-descansos {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--gap-card);
+}
+.f-descanso-op {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 14px 8px;
+  background: var(--bg-app);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--r-12);
+  cursor: pointer;
+  font-family: inherit;
+}
+.f-descanso-op:hover {
+  border-color: var(--border-card-active);
+}
+.f-descanso-op__cifra {
+  font-family: var(--font-display);
+  font-stretch: var(--stretch-110);
+  font-weight: var(--w-800);
+  font-size: var(--fs-20);
+  line-height: var(--lh-1);
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+.f-descanso-op__label {
+  font-size: var(--fs-10_5);
+  color: var(--text-secondary);
+}
+
+/* --------------------------------------------------------------------------
+   21 · Lo poco que sobrevive de main.css
+        La hoja legacy se ha borrado con Tailwind. Estas tres reglas son las
+        unicas que seguian teniendo usuarios.
+   -------------------------------------------------------------------------- */
+
+/* Texto solo para lectores de pantalla. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Aviso de cambios sin guardar. */
+.unsaved-indicator {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 45;
+  background: var(--zona-ambar);
+  color: var(--on-fragua);
+  text-align: center;
+  padding: 8px;
+  font-family: var(--font-mono);
+  font-weight: var(--label-weight-strong);
+  font-size: var(--fs-10_5);
+  letter-spacing: var(--label-tracking);
+}
+.unsaved-indicator.saved {
+  background: var(--zona-verde);
+}
+.unsaved-indicator.hidden {
+  display: none;
+}
+
+/* La transicion de entrada de cada pestaña. */
+.tab-content {
+  animation: fierro-tab-in 0.2s ease-out;
+}
+@keyframes fierro-tab-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }

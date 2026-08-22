@@ -1,11 +1,9 @@
 import './styles/fonts.css';
 import { registrarNavegacionDePerfil } from '@/ui/perfil';
 import './styles/tokens.css';
-import './styles/main.css';
 // FIERRO va DESPUES del CSS legacy: durante la migracion tiene que ganar la
 // cascada sin subir especificidad con !important.
 import './styles/fierro.css';
-import { initializeIcons, refreshIcons } from '@/utils/icons';
 import {
   inicializarFeedback,
   mostrarToast,
@@ -13,7 +11,6 @@ import {
   confirmarAccion,
 } from '@/ui/feedback';
 import { initializeNavigation, showHome, switchTab, resumeDraft, dismissDraft, renderizarHome } from '@/ui/navigation';
-import { initializeModals } from '@/ui/modals';
 import {
   initCoachSession,
   updateCoachOnSessionLoad,
@@ -386,13 +383,11 @@ function init(): void {
   exponerGanchosDeVerificacion();
 
   // Inicializar iconos Lucide
-  initializeIcons();
 
   // Inicializar navegación
   initializeNavigation();
 
   // Inicializar modales
-  initializeModals();
 
   // Inicializar timer
   initializeTimerListeners();
@@ -417,7 +412,6 @@ function init(): void {
   initializeEventDelegation();
 
   // Refrescar iconos después de renderizar
-  setTimeout(refreshIcons, 100);
 }
 
 // Inicializar cuando el DOM esté listo

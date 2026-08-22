@@ -124,7 +124,7 @@ function render(): void {
       ? `<div class="f-coach__turno">
            <span class="f-coach__sello">COACH</span>
            <div class="f-coach__card">
-             <span class="f-coach__texto">${escapar(parcial)}<span class="f-coach__cursor" aria-hidden="true"></span></span>
+             <span class="f-coach__texto" id="coachParcial">${escapar(parcial)}<span class="f-coach__cursor" aria-hidden="true"></span></span>
            </div>
          </div>`
       : '',
@@ -231,7 +231,10 @@ async function preguntar(pregunta: string): Promise<void> {
 
     for await (const trozo of adaptador.responder(pregunta, turnos)) {
       parcial += trozo;
-      const nodo = contenedor().querySelector<HTMLElement>('.f-coach__texto:last-of-type');
+      // Por ID, no por `:last-of-type`: ese pseudo-selector mira el TIPO de
+      // elemento (span), no la clase, asi que cogia el primer turno del hilo y
+      // el streaming reescribia una respuesta anterior en vez de la nueva.
+      const nodo = document.getElementById('coachParcial');
       if (nodo) {
         nodo.textContent = parcial;
         nodo.insertAdjacentHTML('beforeend', '<span class="f-coach__cursor" aria-hidden="true"></span>');

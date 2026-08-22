@@ -322,7 +322,9 @@ const borradorDePrueba = {
           'la hoja de cambiar rutina es DESTRUCTIVA (rojo), no primaria',
           (await pagina.locator('.f-sheet .f-btn--destructivo').count()) === 1
         );
-        await pagina.locator('.f-sheet .f-btn--secundario').first().click();
+        // `:visible`: la hoja del descanso vive montada en index.html y
+        // oculta, asi que un selector de documento entero la cogia a ella.
+        await pagina.locator('.f-sheet:visible .f-btn--secundario').first().click();
         await pagina.waitForTimeout(500);
         const enWorkout = await pagina.evaluate(
           () => !document.getElementById('workoutTab')?.classList.contains('hidden')
@@ -1023,25 +1025,29 @@ const borradorDePrueba = {
       };
     });
 
+  // P-02: la hoja de medicion. El modal legacy con sus ids sueltos
+  // (`#measureWeight`) se retiro en el paso 9; los campos son `[data-medida]`.
   await pagina.locator('[data-nav="profile"]').click();
-  await pagina.waitForTimeout(250);
-  await pagina.evaluate(() => window.openMeasurementsModal?.());
   await pagina.waitForTimeout(300);
-  const hayCampo = await pagina.locator('#measureWeight').count();
+  await pagina.locator('[data-perfil="medir"]').first().click();
+  await pagina.waitForTimeout(400);
+  const campoPeso = pagina.locator('[data-medida="weight"]');
+  const hayCampo = await campoPeso.count();
   if (!hayCampo) {
-    chk('el modal de medidas expone su campo de peso', false, 'no se encontro #measureWeight');
+    chk('P-02 · la hoja de medicion expone su campo de peso', false, 'no se encontro [data-medida=weight]');
   } else {
-    await pagina.focus('#measureWeight');
-    await pagina.waitForTimeout(200);
+    chk('P-02 · la hoja de medicion expone su campo de peso', true);
+    await campoPeso.focus();
+    await pagina.waitForTimeout(250);
     const conFoco = await estado();
     chk('con el teclado abierto la barra se oculta y suelta su reserva',
       conFoco.display === 'none' && conFoco.reserva === '0px',
       `display ${conFoco.display} | reserva ${conFoco.reserva}`);
 
-    await pagina.locator('#measureWeight').press('Enter');
-    await pagina.waitForTimeout(400);
+    await pagina.keyboard.press('Escape');
+    await pagina.waitForTimeout(450);
     const tras = await estado();
-    chk('tras cerrar el modal con Enter la barra VUELVE',
+    chk('tras cerrar la hoja la barra VUELVE',
       tras.display !== 'none' && tras.alto > 40,
       `display ${tras.display} | alto ${tras.alto}px | reserva ${tras.reserva}`);
   }

@@ -43,21 +43,65 @@ let restTimeRemaining = 0;
 let isPaused = false;
 
 // ==========================================
-// ABRIR MODAL DE TIMER
+// HOJA DE ELECCION DEL DESCANSO
 // ==========================================
 
+/** Los seis tiempos, con el nombre que el usuario les da. */
+const TIEMPOS: Array<{ segundos: number; cifra: string; nombre: string; etiqueta: string }> = [
+  { segundos: 30, cifra: '30s', nombre: 'Rápido', etiqueta: '30 segundos' },
+  { segundos: 60, cifra: '1:00', nombre: 'Normal', etiqueta: '1 minuto' },
+  { segundos: 90, cifra: '1:30', nombre: 'Largo', etiqueta: '1 minuto y 30 segundos' },
+  { segundos: 120, cifra: '2:00', nombre: 'Pesado', etiqueta: '2 minutos' },
+  { segundos: 180, cifra: '3:00', nombre: 'Fuerza', etiqueta: '3 minutos' },
+  { segundos: 300, cifra: '5:00', nombre: 'Máximo', etiqueta: '5 minutos' },
+];
+
+/**
+ * Se monta al abrirla y se desmonta al cerrarla, como el resto de los bottom
+ * sheets. Tenerla montada y oculta en `index.html` hacia que cualquier
+ * `querySelector('.f-sheet')` de documento entero la encontrara a ella: varios
+ * chequeos dejaron de poder fallar por eso, y uno se colgo intentando pulsar
+ * un boton invisible.
+ */
 export function openRestTimerModal(): void {
-  const modal = document.getElementById('restTimerModal');
-  if (modal) {
-    modal.classList.add('active');
-  }
+  closeRestTimerModal();
+  const velo = document.createElement('div');
+  velo.id = 'restTimerModal';
+  velo.className = 'f-scrim f-root';
+  velo.setAttribute('role', 'dialog');
+  velo.setAttribute('aria-modal', 'true');
+  velo.setAttribute('aria-label', 'Tiempo de descanso');
+  velo.innerHTML = `
+    <div class="f-sheet">
+      <div class="f-sheet__handle" aria-hidden="true"></div>
+      <span class="f-sheet__titulo">Tiempo de descanso</span>
+      <div class="f-descansos" role="group" aria-label="Opciones de tiempo de descanso">
+        ${TIEMPOS.map(
+          (t) => `
+          <button data-seconds="${t.segundos}" type="button" class="rest-time-btn f-descanso-op"
+            aria-label="Iniciar descanso de ${t.etiqueta}">
+            <span class="f-descanso-op__cifra">${t.cifra}</span>
+            <span class="f-descanso-op__label">${t.nombre}</span>
+          </button>`
+        ).join('')}
+      </div>
+      <button type="button" id="closeRestModal" class="f-btn f-btn--secundario f-btn--hoja">Cerrar</button>
+    </div>
+  `;
+  velo.addEventListener('click', (e) => {
+    const objetivo = e.target as HTMLElement;
+    if (objetivo === velo || objetivo.closest('#closeRestModal')) {
+      closeRestTimerModal();
+      return;
+    }
+    const boton = objetivo.closest<HTMLElement>('.rest-time-btn');
+    if (boton) initializeTimer(Number(boton.dataset.seconds) || 60);
+  });
+  document.body.appendChild(velo);
 }
 
 export function closeRestTimerModal(): void {
-  const modal = document.getElementById('restTimerModal');
-  if (modal) {
-    modal.classList.remove('active');
-  }
+  document.getElementById('restTimerModal')?.remove();
 }
 
 // ==========================================
@@ -227,17 +271,8 @@ function showNotification(message: string): void {
 // ==========================================
 
 export function initializeTimerListeners(): void {
-  // Botón de cerrar modal
-  const closeRestModal = document.getElementById('closeRestModal');
-  closeRestModal?.addEventListener('click', closeRestTimerModal);
-
-  // Botones de tiempo
-  document.querySelectorAll('.rest-time-btn').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const seconds = parseInt((btn as HTMLElement).dataset.seconds || '60');
-      initializeTimer(seconds);
-    });
-  });
+  // La hoja se monta al abrirse y trae su propia delegacion: enganchar aqui
+  // sus botones era enganchar nodos que ya no existen al arrancar.
 
   // Botón de pausar
   const pauseBtn = document.getElementById('pauseTimer');
@@ -247,13 +282,7 @@ export function initializeTimerListeners(): void {
   const stopBtn = document.getElementById('stopTimer');
   stopBtn?.addEventListener('click', stopTimer);
 
-  // Cerrar modal al hacer clic fuera
-  const modal = document.getElementById('restTimerModal');
-  modal?.addEventListener('click', (e) => {
-    if (e.target === modal) {
-      closeRestTimerModal();
-    }
-  });
+
 
   // Pedir permiso de notificaciones
   if ('Notification' in window && Notification.permission === 'default') {

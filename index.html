@@ -210,46 +210,10 @@
        MODALS
        ========================================== -->
 
-  <!-- Rest Timer Modal -->
-  <div id="restTimerModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="restTimerModalTitle" aria-hidden="true">
-    <div class="modal-content p-4">
-      <div class="flex items-center justify-between mb-4">
-        <h2 id="restTimerModalTitle" class="font-bold text-text-primary flex items-center gap-2">
-          <i data-lucide="timer" class="w-5 h-5 text-accent" aria-hidden="true"></i>
-          Tiempo de Descanso
-        </h2>
-        <button id="closeRestModal" class="p-2 text-text-muted hover:text-text-primary focus:outline-none focus:ring-2 focus:ring-accent rounded-lg" aria-label="Cerrar modal de temporizador">
-          <i data-lucide="x" class="w-5 h-5" aria-hidden="true"></i>
-        </button>
-      </div>
-      <div class="grid grid-cols-3 gap-3" role="group" aria-label="Opciones de tiempo de descanso">
-        <button data-seconds="30" class="rest-time-btn py-4 bg-dark-bg border border-dark-border rounded-xl text-center active:scale-95 transition-transform focus:outline-none focus:ring-2 focus:ring-accent" aria-label="Iniciar descanso de 30 segundos">
-          <p class="text-xl font-bold text-accent">30s</p>
-          <p class="text-xs text-text-muted">Rápido</p>
-        </button>
-        <button data-seconds="60" class="rest-time-btn py-4 bg-dark-bg border border-dark-border rounded-xl text-center active:scale-95 transition-transform focus:outline-none focus:ring-2 focus:ring-accent" aria-label="Iniciar descanso de 1 minuto">
-          <p class="text-xl font-bold text-accent">1:00</p>
-          <p class="text-xs text-text-muted">Normal</p>
-        </button>
-        <button data-seconds="90" class="rest-time-btn py-4 bg-dark-bg border border-dark-border rounded-xl text-center active:scale-95 transition-transform focus:outline-none focus:ring-2 focus:ring-accent" aria-label="Iniciar descanso de 1 minuto y 30 segundos">
-          <p class="text-xl font-bold text-accent">1:30</p>
-          <p class="text-xs text-text-muted">Largo</p>
-        </button>
-        <button data-seconds="120" class="rest-time-btn py-4 bg-dark-bg border border-dark-border rounded-xl text-center active:scale-95 transition-transform focus:outline-none focus:ring-2 focus:ring-accent" aria-label="Iniciar descanso de 2 minutos">
-          <p class="text-xl font-bold text-accent">2:00</p>
-          <p class="text-xs text-text-muted">Pesado</p>
-        </button>
-        <button data-seconds="180" class="rest-time-btn py-4 bg-dark-bg border border-dark-border rounded-xl text-center active:scale-95 transition-transform focus:outline-none focus:ring-2 focus:ring-accent" aria-label="Iniciar descanso de 3 minutos">
-          <p class="text-xl font-bold text-accent">3:00</p>
-          <p class="text-xs text-text-muted">Fuerza</p>
-        </button>
-        <button data-seconds="300" class="rest-time-btn py-4 bg-dark-bg border border-dark-border rounded-xl text-center active:scale-95 transition-transform focus:outline-none focus:ring-2 focus:ring-accent" aria-label="Iniciar descanso de 5 minutos">
-          <p class="text-xl font-bold text-accent">5:00</p>
-          <p class="text-xs text-text-muted">Máximo</p>
-        </button>
-      </div>
-    </div>
-  </div>
+  <!-- La hoja de descanso NO vive aqui. Se monta al abrirla, como el resto de
+       los bottom sheets: una hoja permanentemente montada y oculta hace que
+       cualquier `querySelector('.f-sheet')` de documento entero la encuentre a
+       ella, y varios chequeos dejaron de poder fallar por eso. -->
 
   <!-- Workout Builder Modal -->
   <!-- B-01 · el builder de rutinas lo pinta src/ui/builder.ts sobre un

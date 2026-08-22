@@ -8,7 +8,6 @@ import { abrirDetalle } from '@/ui/hueso';
 import { initializeCharts } from '@/features/charts';
 import { initializeCalculators } from '@/features/calculators';
 import { loadProfile, loadMedidas } from '@/features/profile';
-import { refreshIcons } from '@/utils/icons';
 
 // ==========================================
 // NAVEGACIÓN ENTRE TABS
@@ -47,7 +46,6 @@ export function switchTab(tabName: TabName): void {
   loadTabData(tabName);
 
   // Refrescar iconos
-  refreshIcons();
 }
 
 /**
@@ -184,7 +182,6 @@ export async function showHome(): Promise<void> {
   renderizarHome();
 
   // Refrescar iconos
-  refreshIcons();
 }
 
 function hideCardioViews(): void {

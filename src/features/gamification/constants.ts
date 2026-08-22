@@ -219,13 +219,17 @@ export const LEVEL_TITLE_CONFIG: Array<{
   maxLevel: number;
   color: string;
 }> = [
-  { name: 'Principiante', minLevel: 1, maxLevel: 16, color: '#6B7280' },
-  { name: 'Novato', minLevel: 17, maxLevel: 33, color: '#22C55E' },
-  { name: 'Intermedio', minLevel: 34, maxLevel: 50, color: '#3B82F6' },
-  { name: 'Avanzado', minLevel: 51, maxLevel: 66, color: '#8B5CF6' },
-  { name: 'Elite', minLevel: 67, maxLevel: 83, color: '#F59E0B' },
-  { name: 'Legendario', minLevel: 84, maxLevel: 99, color: '#EF4444' },
-  { name: 'Simetrico', minLevel: 100, maxLevel: 100, color: '#3B82F6' },
+  // El handoff NO define un color por titulo de nivel: GM-01 pinta "Novato V ·
+  // 599 / 1,480 XP" entero en texto secundario. Los siete colores que habia
+  // aqui eran del tema anterior y no los leia ninguna pantalla. Se conserva el
+  // campo porque la firma es publica, apuntando al token que de verdad se usa.
+  { name: 'Principiante', minLevel: 1, maxLevel: 16, color: 'var(--text-secondary)' },
+  { name: 'Novato', minLevel: 17, maxLevel: 33, color: 'var(--text-secondary)' },
+  { name: 'Intermedio', minLevel: 34, maxLevel: 50, color: 'var(--text-secondary)' },
+  { name: 'Avanzado', minLevel: 51, maxLevel: 66, color: 'var(--text-secondary)' },
+  { name: 'Elite', minLevel: 67, maxLevel: 83, color: 'var(--text-secondary)' },
+  { name: 'Legendario', minLevel: 84, maxLevel: 99, color: 'var(--text-secondary)' },
+  { name: 'Simetrico', minLevel: 100, maxLevel: 100, color: 'var(--rango-simetrico)' },
 ];
 
 /**
@@ -240,16 +244,25 @@ export const ROMAN_NUMERALS = ['I', 'II', 'III', 'IV', 'V'] as const;
 /**
  * Colores para cada rango de fuerza
  */
+/**
+ * Cada rango con su TOKEN, no con un hex.
+ *
+ * Los nueve hexes viven en `tokens.css` y salen del README; los que habia aqui
+ * eran los del tema anterior (Platino en rojo, Simetrico en azul) y ademas
+ * traian un `glow` que el handoff prohibe expresamente ("sin glow, sin
+ * gradientes"). El `glow` se conserva en el tipo, vacio, porque la firma es
+ * publica; ninguna pantalla lo pinta.
+ */
 export const RANK_COLORS: Record<StrengthRank, RankColorInfo> = {
-  Hierro: { fill: '#6B7280', glow: 'none' },
-  Bronce: { fill: '#92400E', glow: 'rgba(146,64,14,0.3)' },
-  Plata: { fill: '#9CA3AF', glow: 'rgba(156,163,175,0.4)' },
-  Oro: { fill: '#F59E0B', glow: 'rgba(245,158,11,0.5)' },
-  Platino: { fill: '#EF4444', glow: 'rgba(239,68,68,0.5)' },
-  Esmeralda: { fill: '#10B981', glow: 'rgba(16,185,129,0.5)' },
-  Diamante: { fill: '#8B5CF6', glow: 'rgba(139,92,246,0.6)' },
-  Campeon: { fill: '#F97316', glow: 'rgba(249,115,22,0.6)' },
-  Simetrico: { fill: '#3B82F6', glow: 'rgba(59,130,246,0.7)' },
+  Hierro: { fill: 'var(--rango-hierro)', glow: 'none' },
+  Bronce: { fill: 'var(--rango-bronce)', glow: 'none' },
+  Plata: { fill: 'var(--rango-plata)', glow: 'none' },
+  Oro: { fill: 'var(--rango-oro)', glow: 'none' },
+  Platino: { fill: 'var(--rango-platino)', glow: 'none' },
+  Esmeralda: { fill: 'var(--rango-esmeralda)', glow: 'none' },
+  Diamante: { fill: 'var(--rango-diamante)', glow: 'none' },
+  Campeon: { fill: 'var(--rango-campeon)', glow: 'none' },
+  Simetrico: { fill: 'var(--rango-simetrico)', glow: 'none' },
 };
 
 /**

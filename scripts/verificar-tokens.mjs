@@ -276,6 +276,23 @@ for (const f of fuentesCSS) {
   }
 }
 
+// G3b · cero hex en TypeScript. El color solo sale de tokens.css: un hex en un
+// .ts se salta la puerta de tokens, la de fidelidad y el ojo. Los comentarios
+// SI pueden citarlos (documentar que token es cual es util).
+for (const f of fuentesTS) {
+  const texto = readFileSync(f, 'utf8');
+  const sinComent = texto
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/^\s*\/\/.*$/gm, '')
+    .replace(/\/\/.*$/gm, '');
+  const hexes = [...sinComent.matchAll(/['"\`]#[0-9a-fA-F]{3,8}\b/g)].map((m) => m[0].slice(1));
+  if (hexes.length) {
+    fallos.push(
+      `${relative(RAIZ, f)}: ${hexes.length} hex en codigo TS (${[...new Set(hexes)].slice(0, 4).join(', ')}) — usa var(--token)`
+    );
+  }
+}
+
 // G4 · integridad de var() en TODAS las hojas, no solo en tokens.css. Un
 // `var(--r-inexistente)` compilaba y se veia mal en silencio.
 //

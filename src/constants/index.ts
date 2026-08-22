@@ -18,23 +18,9 @@ export const STORAGE_KEYS = {
   GAMIFICATION: 'gymmate_gamification',
 } as const;
 
-// Colores del tema - Negro puro para OLED
-export const THEME_COLORS = {
-  bg: '#000000',
-  surface: '#1e293b',
-  accent: '#3b82f6',
-  text: {
-    primary: '#f1f5f9',
-    secondary: '#94a3b8',
-    muted: '#64748b',
-  },
-  status: {
-    success: '#22c55e',
-    warning: '#f59e0b',
-    error: '#ef4444',
-    info: '#06b6d4',
-  },
-} as const;
+// Los colores del tema los define src/styles/tokens.css, que es la unica
+// fuente de color de la app. `THEME_COLORS` vivia aqui con la paleta anterior
+// (azul #3b82f6 de acento) y no lo leia nadie.
 
 // Grupos musculares disponibles
 export const ALL_MUSCLES = [

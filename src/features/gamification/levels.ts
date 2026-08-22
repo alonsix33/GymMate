@@ -118,7 +118,7 @@ export function getLevelTitle(level: number): LevelTitleInfo {
       base: 'Principiante',
       numeral: 'I',
       full: 'Principiante I',
-      color: '#6B7280',
+      color: 'var(--text-secondary)',
     };
   }
 

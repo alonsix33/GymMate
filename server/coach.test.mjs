@@ -257,8 +257,10 @@ describe('SISTEMA — la regla cardinal del handoff', () => {
   });
 
   it('distingue las dos cifras de 1RM y prohibe promediarlas', () => {
-    expect(SISTEMA).toMatch(/DOS cifras de 1RM/);
-    expect(SISTEMA).toMatch(/[Nn]unca las promedies/);
+    expect(SISTEMA).toMatch(/Las dos cifras de 1RM:/);
+    expect(SISTEMA).toMatch(/NO son intercambiables/);
+    // El texto va envuelto: la expresion tiene que admitir el salto de linea.
+    expect(SISTEMA).toMatch(/[Nn]unca las\s+promedies/);
   });
 
   it('manda decir que no hay dato en vez de rellenar', () => {

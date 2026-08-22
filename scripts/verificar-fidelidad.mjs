@@ -21,8 +21,12 @@
  * Lo que esta puerta NO comprueba, y hay que saberlo:
  *   - el TEXTO que lee el usuario (eso vive en verificar-comportamiento.mjs,
  *     que extrae los literales del `<script data-dc-script>` del mockup),
- *   - las pantallas que no renderiza (ver la tabla de cobertura del README de
- *     la fase),
+ *   - las pantallas que no renderiza. Cual es cual NO se declara aqui de
+ *     palabra: la puerta lleva la cuenta sola y la imprime al final
+ *     ("cobertura de mockups"), nombrando las que no toco. El docstring
+ *     remitia a "la tabla de cobertura del README de la fase", que no existe
+ *     en ningun sitio del repo: una remision a un documento inexistente,
+ *     justo donde el archivo declara su punto ciego.
  *   - los hex crudos y las var() rotas (eso es verificar-tokens.mjs).
  *
  * Como funciona:
@@ -57,8 +61,20 @@ const chk = (nombre, ok, detalle = '') => {
 // --------------------------------------------------------------------------
 const mockup = await leer(MOCKUP, 'utf-8');
 
+/** Las pantallas que el mockup declara, y las que esta corrida llega a medir.
+ *  La diferencia se imprime al final: una puerta que no sabe lo que NO mira es
+ *  la que apaga la sospecha. */
+const PANTALLAS_DEL_MOCKUP = [...new Set([...mockup.matchAll(/data-screen-label="([^"]+)"/g)].map((m) => m[1]))];
+/** Pantallas cuyos estilos se comparan contra el `style=` del mockup. */
+const pantallasMedidas = new Set();
+/** Pantallas que solo se miden EN LA APP (que no desborden, que el bloque
+ *  exista). Es una comprobacion mas debil y se cuenta aparte: mezclarlas seria
+ *  inflar la cobertura. */
+const pantallasSoloApp = new Set();
+
 /** Devuelve el trozo de HTML de una pantalla, por su data-screen-label. */
 function bloquePantalla(label) {
+  pantallasMedidas.add(label);
   const marca = `data-screen-label="${label}"`;
   const i = mockup.indexOf(marca);
   if (i === -1) throw new Error(`El mockup no tiene la pantalla "${label}"`);
@@ -284,11 +300,20 @@ async function compararCaja(nombre, fragmento, htmlApp, selector, opciones = {})
   // border-color pretendia cazar, lo caza mejor la regla estatica G3 de
   // verificar-tokens.mjs. Y el padding horizontal de un boton a ancho completo
   // no se ve, asi que se comparan arriba y abajo, que si.
+  // Saltarse una propiedad que el mockup no declara es correcto: no todo
+  // elemento lleva padding. Saltarse LAS TRES no lo es — significa que esta
+  // comparacion no comparo ni un estilo y se conto como verde igual.
+  let comparadas = 0;
   for (const prop of ['border-radius', 'padding-top', 'padding-bottom']) {
     const esp = esperada.estilos?.[prop];
     if (esp === undefined) continue;
+    comparadas++;
     const got = obtenida?.estilos?.[prop];
     chk(`${nombre} · ${prop}`, norm(esp) === norm(got ?? ''), `mockup ${norm(esp)} | app ${got}`);
+  }
+  if (comparadas === 0) {
+    chk(`${nombre} · el mockup declara algun estilo que comparar`, false,
+      'ni radio ni padding: esta caja no comprueba ningun estilo');
   }
 }
 
@@ -452,7 +477,15 @@ if (iTab >= 0) {
         'margin-top': 'margin-top',
       }
     );
+  } else {
+    // Sin este `else`, un fragmento que no se localiza apagaba el bloque
+    // entero en silencio: la cuenta de OK bajaba y nada se ponia rojo.
+    chk('declFab · se localiza en el mockup', false, 'el fragmento no aparece en el mockup');
   }
+} else {
+  // Sin este `else`, un fragmento que no se localiza apagaba el bloque
+  // entero en silencio: la cuenta de OK bajaba y nada se ponia rojo.
+  chk('iTab · se localiza en el mockup', false, 'el fragmento no aparece en el mockup');
 }
 
 // --------------------------------------------------------------------------
@@ -574,6 +607,10 @@ if (declRacha) {
     ]),
     { background: 'background-color', color: 'color', 'border-radius': 'border-radius', padding: 'padding' }
   );
+} else {
+  // Sin este `else`, un fragmento que no se localiza apagaba el bloque
+  // entero en silencio: la cuenta de OK bajaba y nada se ponia rojo.
+  chk('declRacha · se localiza en el mockup', false, 'el fragmento no aparece en el mockup');
 }
 
 // La celda del heatmap: 2.5px y box-sizing border-box, declarados a mano en
@@ -749,6 +786,10 @@ await compararCaja(
         padding: 'padding', 'font-size': 'font-size', 'font-weight': 'font-weight',
       }
     );
+  } else {
+    // Sin este `else`, un fragmento que no se localiza apagaba el bloque
+    // entero en silencio: la cuenta de OK bajaba y nada se ponia rojo.
+    chk('declCrono · se localiza en el mockup', false, 'el fragmento no aparece en el mockup');
   }
 }
 
@@ -777,6 +818,10 @@ await compararCaja(
         padding: 'padding', 'letter-spacing': 'letter-spacing',
       }
     );
+  } else {
+    // Sin este `else`, un fragmento que no se localiza apagaba el bloque
+    // entero en silencio: la cuenta de OK bajaba y nada se ponia rojo.
+    chk('declBadge · se localiza en el mockup', false, 'el fragmento no aparece en el mockup');
   }
 }
 
@@ -1455,6 +1500,7 @@ console.log('\n--- Fases 7-9 en su pagina real ---');
   /** Ninguna pantalla puede sacar scroll horizontal, ni en el documento ni
    *  dentro de una superposicion con overflow propio. */
   const medirPantalla = async (nombre, selector) => {
+    pantallasSoloApp.add(nombre);
     const m = await paginaF.evaluate((sel) => {
       const raiz = sel ? document.querySelector(sel) : document.documentElement;
       if (!raiz) return null;
@@ -1596,5 +1642,34 @@ console.log('\n--- Fases 7-9 en su pagina real ---');
 
 await navegador.close();
 servidor.close();
+
+// La cobertura, dicha como es. El codigo de pantalla ("CA-01") es el prefijo
+// del label del mockup ("CA-01 Calculadoras").
+const codigo = (label) => label.split(' ')[0];
+const codigosMockup = PANTALLAS_DEL_MOCKUP.map(codigo);
+const comparadas = new Set([...pantallasMedidas].map(codigo));
+const soloApp = new Set([...pantallasSoloApp].map(codigo));
+const sinNada = codigosMockup.filter((c) => !comparadas.has(c) && !soloApp.has(c));
+console.log(
+  `\ncobertura de mockups     : ${comparadas.size} de ${codigosMockup.length} comparadas contra el style= del mockup`
+);
+console.log(
+  `                           +${[...soloApp].filter((c) => !comparadas.has(c)).length} medidas solo en la app (que no desborden)`
+);
+if (sinNada.length) {
+  console.log(`sin tocar por esta puerta: ${sinNada.join(' · ')}`);
+  console.log('                           (sus textos y comportamiento van en verificar-comportamiento.mjs)');
+}
+// Trinquete: si la extraccion del mockup se rompe, la cuenta se desploma y la
+// puerta seguiria diciendo OK sobre casi nada. El numero es el de HOY: si
+// sube, hay que subirlo aqui; si baja, la puerta se pone roja.
+const COMPARADAS_MINIMO = 13;
+if (comparadas.size < COMPARADAS_MINIMO) {
+  fallos++;
+  console.log(
+    `\nFALLA solo se compararon ${comparadas.size} pantallas contra el mockup (minimo ${COMPARADAS_MINIMO}): ` +
+      'la extraccion se rompio o alguien retiro un bloque'
+  );
+}
 console.log(fallos ? `\n${fallos} FALLO(S) DE FIDELIDAD` : '\nOK: la app coincide con el mockup en todo lo comprobado');
 process.exit(fallos ? 1 : 0);

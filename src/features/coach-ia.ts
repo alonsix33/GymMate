@@ -20,6 +20,7 @@
 import { getHistory, getPRs } from '@/utils/storage';
 import { pesoActual, picoDe, sesionesSinSubir, posicionEnZonas, zonaDe } from '@/utils/zonas';
 import { estimateOneRM } from '@/features/gamification';
+import { unaRepMaxPromedio } from '@/utils/calculations';
 import type { HistorySession } from '@/types';
 
 export interface DatoDeEjercicio {
@@ -131,7 +132,9 @@ export function datosDelEjercicio(nombre: string, historial: HistorySession[] = 
   const ratio = actual / pico;
   return {
     ejercicio: nombre,
-    unaRepMax: Math.round(estimateOneRM(actual, reps)),
+    // El PROMEDIO de las tres formulas, igual que PR-01 y CA-01. Con Epley a
+    // secas, el mismo ejercicio salia 168 kg aqui y 165 alli.
+    unaRepMax: Math.round(unaRepMaxPromedio(actual, reps) ?? estimateOneRM(actual, reps)),
     pico,
     actual,
     posicion: posicionEnZonas(ratio),

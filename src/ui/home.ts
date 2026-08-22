@@ -1,3 +1,4 @@
+import { SIN_FECHA } from '@/utils/fecha';
 /**
  * FIERRO · H-01 — Inicio.
  *
@@ -21,7 +22,7 @@ import {
 } from '@/features/gamification';
 import { renderMapaFierro, colorDeRango } from '@/ui/gamification/muscle-map';
 import { construirHeatmap, type CeldaHeatmap, type Heatmap } from '@/utils/heatmap';
-import { cifra } from '@/utils/formato';
+import { cifra, escapar } from '@/utils/formato';
 import type { GamificationMuscleGroup } from '@/types/gamification';
 
 const DIA_MS = 24 * 60 * 60 * 1000;
@@ -30,11 +31,6 @@ const DIA_MS = 24 * 60 * 60 * 1000;
 // Utilidades de texto
 // --------------------------------------------------------------------------
 
-function escapar(texto: string): string {
-  const d = document.createElement('div');
-  d.textContent = texto;
-  return d.innerHTML;
-}
 
 /** "MIÉ 13 AGO" — como el mockup: abreviado y en mayusculas. */
 function fechaTitular(hoy: Date): string {
@@ -54,6 +50,8 @@ function saludo(hoy: Date): string {
 /** "hace 3 días" / "hoy" / "ayer". */
 function haceCuanto(fechaISO: string, hoy: Date): string {
   const dias = Math.floor((hoy.getTime() - new Date(`${fechaISO.slice(0, 10)}T00:00:00`).getTime()) / DIA_MS);
+  // Una fecha ilegible daba "hace NaN días" en la tarjeta de la ultima sesion.
+  if (!Number.isFinite(dias)) return SIN_FECHA;
   if (dias <= 0) return 'hoy';
   if (dias === 1) return 'ayer';
   return `hace ${dias} días`;
@@ -433,9 +431,12 @@ export function renderHome(contenedor: HTMLElement, hoy: Date = new Date()): voi
   const racha = getStreakInfo();
 
   const ultimaSesion = historial.find((s) => s.type !== 'cardio');
-  const diasDesdeUltima = ultimaSesion
+  const diasCrudos = ultimaSesion
     ? Math.floor((hoy.getTime() - new Date(`${ultimaSesion.date.slice(0, 10)}T00:00:00`).getTime()) / DIA_MS)
     : 999;
+  // Una fecha ilegible daba NaN, y NaN en una comparacion es siempre false:
+  // la app se comportaba como si la ultima sesion fuera de hoy.
+  const diasDesdeUltima = Number.isFinite(diasCrudos) ? diasCrudos : 999;
 
   // El banner de borrador ya dice que hay una sesion sin terminar, y esta
   // justo debajo. Si ademas el coach lo repite, se pierde el unico hueco de

@@ -191,15 +191,15 @@ describe('calculateCalories', () => {
 
 describe('getWeekNumber', () => {
   it('should return week 1 for January 1st', () => {
-    const date = new Date('2024-01-01');
+    const date = new Date(2024, 0, 1);
     const result = getWeekNumber(date);
     expect(result).toBeGreaterThanOrEqual(1);
     expect(result).toBeLessThanOrEqual(53);
   });
 
   it('should return higher week number for later dates', () => {
-    const jan = new Date('2024-01-15');
-    const june = new Date('2024-06-15');
+    const jan = new Date(2024, 0, 15);
+    const june = new Date(2024, 5, 15);
 
     const weekJan = getWeekNumber(jan);
     const weekJune = getWeekNumber(june);

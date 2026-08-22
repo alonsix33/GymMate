@@ -76,8 +76,15 @@ describe('escalar', () => {
     // factor 0.8 el punto fijo es 10s), o sea codigo muerto que ademas hacia
     // inmortal a su propio mutante. El limite real es `acotarFactor`.
     expect(escalar([5, 10], 0.1)).toEqual([0, 0]);
-    expect(acotarFactor(0.1)).toBe(FACTOR_MIN);
-    expect(acotarFactor(99)).toBe(FACTOR_MAX);
+    // Contra el VALOR, no contra la constante: `toBe(FACTOR_MIN)` comparaba la
+    // funcion consigo misma y seguia en verde con cualquier tope.
+    expect(acotarFactor(0.1)).toBe(0.4);
+    expect(acotarFactor(99)).toBe(2);
+    expect(FACTOR_MIN).toBe(0.4);
+    expect(FACTOR_MAX).toBe(2);
+    // Y el tope acota de verdad: dentro del rango no toca nada.
+    expect(acotarFactor(1.25)).toBe(1.25);
+    expect(acotarFactor(0.4)).toBe(0.4);
   });
 
   it('escalar ↓ y luego ↑ devuelve la piramide original', () => {

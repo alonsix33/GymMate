@@ -15,12 +15,8 @@ import { trainingGroups } from '@/data/training-groups';
 import { mostrarToast } from '@/ui/feedback';
 import type { CustomWorkout } from '@/utils/storage';
 import type { MuscleGroup } from '@/types';
+import { escapar, taparNavegacion } from '@/utils/formato';
 
-function escapar(texto: string): string {
-  const d = document.createElement('div');
-  d.textContent = texto;
-  return d.innerHTML;
-}
 
 interface Elegido {
   nombre: string;
@@ -194,12 +190,14 @@ export function abrirBuilder(): void {
   formularioAbierto = false;
   const el = contenedor();
   el.classList.remove('hidden');
+  taparNavegacion(true);
   render();
   el.scrollTop = 0;
 }
 
 export function cerrarBuilder(): void {
   document.getElementById(ID)?.classList.add('hidden');
+  taparNavegacion(false);
 }
 
 function esMancuernaDe(nombre: string): boolean {

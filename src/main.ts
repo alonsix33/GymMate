@@ -17,9 +17,9 @@ import {
   updateCoachOnExerciseUpdate,
   updateCoachOnExerciseComplete,
 } from '@/features/coach';
+import { usarAdaptador, adaptadorActual } from '@/features/coach-ia';
 import { mostrarGuiaEjercicio } from '@/ui/session-screens';
 import { initializeTimerListeners, openRestTimerModal } from '@/features/timer';
-import { initializeProfile } from '@/features/profile';
 import { loadHistory, loadPRs, exportToExcel, deleteHistoryItem, triggerCSVImport } from '@/features/history';
 import {
   loadTrainingGroup,
@@ -355,6 +355,12 @@ function exponerGanchosDeVerificacion(): void {
     updateCoachOnSessionLoad,
     updateCoachOnExerciseUpdate,
     updateCoachOnExerciseComplete,
+    // El adaptador local nunca falla ni tarda, asi que CO-02 (PENSANDO →
+    // streaming) y CO-03 (sin conexion) no se podian alcanzar desde fuera:
+    // eran dos pantallas del handoff sin una sola comprobacion. Esto deja
+    // instalar uno lento o uno que revienta. No lo llama nadie mas.
+    usarAdaptador,
+    adaptadorActual,
   };
   w.__guiaDePrueba = { mostrarGuiaEjercicio };
 }
@@ -391,9 +397,6 @@ function init(): void {
 
   // Inicializar timer
   initializeTimerListeners();
-
-  // Inicializar perfil
-  initializeProfile();
 
   // Inicializar gamificacion (migrando datos existentes si es necesario)
   initGamification();

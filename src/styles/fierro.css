@@ -4318,7 +4318,7 @@ body:has(#medidasTab:not(.hidden)) {
   overflow-y: auto;
   background: var(--bg-app);
   color: var(--text-primary);
-  padding: 24px var(--pad-screen-l) calc(28px + var(--h-nav-inferior));
+  padding: 24px var(--pad-screen-l) 28px;
   display: flex;
   flex-direction: column;
   gap: 18px;
@@ -5134,6 +5134,14 @@ body:has(#medidasTab:not(.hidden)) {
   background: var(--bg-elevated);
   color: var(--text-disabled);
   cursor: default;
+}
+/* CO-02 · mientras el coach escribe, el enviar se convierte en DETENER:
+   transparente, texto y borde rojos. [REF Pantallas:CO-02] */
+.f-coach__enviar--detener {
+  background: transparent;
+  color: var(--zona-roja);
+  border: 1px solid var(--zona-roja-border);
+  font-size: var(--fs-15);
 }
 
 /* La card del coach en la home es ahora un boton: abre CO-01. */

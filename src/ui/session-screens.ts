@@ -14,15 +14,10 @@ import { getHistory, getPR } from '@/utils/storage';
 import { getExerciseInfo } from '@/data/exercises';
 import { getMuscleRank, RANK_DISPLAY_NAMES } from '@/features/gamification';
 import { colorDeRango } from '@/ui/gamification/muscle-map';
-import { cifra } from '@/utils/formato';
+import { cifra, escapar } from '@/utils/formato';
 import { ultimaVezDe, reloj, partirNombreDeGrupo } from '@/ui/workout-view';
 import type { SessionXPSummary, GamificationMuscleGroup } from '@/types/gamification';
 
-function escapar(texto: string): string {
-  const d = document.createElement('div');
-  d.textContent = texto;
-  return d.innerHTML;
-}
 
 /** Una sola hoja viva a la vez, igual que en feedback.ts. */
 let hojaViva: HTMLElement | null = null;

@@ -1,3 +1,4 @@
+import { SIN_FECHA, fechaLegible } from '@/utils/fecha';
 /**
  * FIERRO · Calculadoras, Perfil y Medidas — CA-01, CA-02, P-01, P-02, P-03.
  *
@@ -13,7 +14,7 @@
 import { getBodyMeasurements, getHistory, getProfile, saveProfile } from '@/utils/storage';
 import type { BodyMeasurement, ProfileData } from '@/types';
 import { calculate1RM, calculateCalories, calculateProgressive } from '@/utils/calculations';
-import { cifra } from '@/utils/formato';
+import { cifra, escapar } from '@/utils/formato';
 import { abrirHoja } from '@/ui/session-screens';
 import { mostrarToast } from '@/ui/feedback';
 import {
@@ -34,11 +35,6 @@ import {
   zonaDeGrasa,
 } from '@/utils/perfil-calc';
 
-function escapar(texto: string): string {
-  const d = document.createElement('div');
-  d.textContent = texto;
-  return d.innerHTML;
-}
 
 /** Un solo listener por contenedor, que sobrevive a los repintados. */
 function enganchar(el: HTMLElement, manejador: (accion: HTMLElement) => void): void {
@@ -404,7 +400,10 @@ function tarjetaDeMedidas(): string {
     `;
   }
 
-  const fecha = new Date(ultima.date).toLocaleDateString('es-ES', { day: 'numeric', month: 'short' });
+  const fechaUltima = fechaLegible(ultima.date);
+  const fecha = fechaUltima
+    ? fechaUltima.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })
+    : SIN_FECHA;
   const resumen: Array<[string, number | undefined]> = [
     ['PESO', ultima.weight],
     ['PECHO', ultima.chest],
@@ -825,12 +824,12 @@ export function renderHistorialDeMedidas(contenedor: HTMLElement): void {
               return `
               <div class="f-registro__fila">
                 <span class="f-registro__fecha">${escapar(
-                  new Date(m.date).toLocaleDateString('es-ES', { day: 'numeric', month: 'short' }).replace('.', '')
+                  fechaLegible(m.date)?.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' }).replace('.', '') ?? SIN_FECHA
                 )}</span>
                 <span class="f-registro__detalle">${escapar(detalle)}</span>
                 <button type="button" class="f-registro__borrar" data-perfil="borrar-medida"
                   data-fecha="${escapar(m.date)}" aria-label="Eliminar la medición del ${escapar(
-                    new Date(m.date).toLocaleDateString('es-ES', { day: 'numeric', month: 'long' })
+                    fechaLegible(m.date)?.toLocaleDateString('es-ES', { day: 'numeric', month: 'long' }) ?? SIN_FECHA
                   )}">✕</button>
               </div>`;
             })
@@ -1001,10 +1000,9 @@ function alTocarPerfil(el: HTMLElement, contenedor: HTMLElement): void {
       void import('@/ui/feedback').then(async ({ confirmarDestructivo }) => {
         const bajas = await confirmarDestructivo({
           titulo: '¿Eliminar esta medición?',
-          cuerpo: `La medición del ${new Date(fecha).toLocaleDateString('es-ES', {
-            day: 'numeric',
-            month: 'long',
-          })} sale del historial y deja de contar para la tendencia.`,
+          cuerpo: `La medición del ${
+            fechaLegible(fecha)?.toLocaleDateString('es-ES', { day: 'numeric', month: 'long' }) ?? SIN_FECHA
+          } sale del historial y deja de contar para la tendencia.`,
           cancelar: 'Conservar',
           confirmar: 'Eliminar',
         });

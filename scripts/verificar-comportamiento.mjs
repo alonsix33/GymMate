@@ -94,7 +94,7 @@ const MOCKUP = await readFile(
   join(RAIZ, 'redesign', 'design_handoff_fierro', 'Pantallas Fierro.dc.html'),
   'utf8'
 );
-function datosDelMockup(nombre) {
+function datosDelMockup(nombre, ayudas = {}) {
   const i = MOCKUP.indexOf(`const ${nombre} = [`);
   if (i === -1) throw new Error(`El mockup no declara ${nombre}: la puerta no puede comparar contra nada`);
   const desde = MOCKUP.indexOf('[', i);
@@ -103,13 +103,23 @@ function datosDelMockup(nombre) {
     if (MOCKUP[k] === '[') nivel++;
     else if (MOCKUP[k] === ']' && --nivel === 0) {
       // eslint-disable-next-line no-new-func
-      return Function(`"use strict";return (${MOCKUP.slice(desde, k + 1)})`)();
+      const nombres = Object.keys(ayudas);
+      return Function(
+        ...nombres,
+        `"use strict";return (${MOCKUP.slice(desde, k + 1)})`
+      )(...nombres.map((n) => ayudas[n]));
     }
   }
   throw new Error(`No se pudo cerrar el literal ${nombre} del mockup`);
 }
 
 const CARDIO_MODES_MOCKUP = datosDelMockup('cardioModes');
+// `rangoLadder` se escribe con el helper `rl(...)` del mockup, asi que hay que
+// darselo al evaluador o el literal no se puede leer.
+const LADDER_MOCKUP = datosDelMockup('rangoLadder', {
+  rl: (n, r, c, sub, tuyo, aqui) => ({ n, r, c, sub, tuyo, aqui }),
+});
+const ESPECIALES_MOCKUP = datosDelMockup('especiales');
 const MODOS_ESPERADOS_TAGS = CARDIO_MODES_MOCKUP.map((m) => m.tag).join(',');
 const servidor = createServer(async (q, r) => {
   const ruta = decodeURIComponent((q.url ?? '/').split('?')[0]);
@@ -134,9 +144,15 @@ const URL_APP = `http://127.0.0.1:${servidor.address().port}/`;
 // 420s. Subio de 180 al añadir los casos de cardio de punta a punta: una
 // sesion de 70 segundos reales no se puede acelerar sin dejar de comprobar lo
 // unico que importaba de ella —que el motor tarda lo que el pie anuncia—, y el
-// recorrido de los seis modos son otros ~20s. El tope sigue siendo un tope: si
-// se dispara, es que algo se colgo.
-const PRESUPUESTO_MS = 420000;
+// recorrido de los seis modos son otros ~20s.
+//
+// Medido en esta maquina sin carga: ~240s con los casos del coach, o sea el
+// 57% del tope. Un runner mas lento, o compartir CPU con otra corrida, lo
+// acercaria — y entonces el rojo no diria nada del codigo. Por eso: el tope
+// se puede subir con GYMMATE_PRESUPUESTO_MS, y al terminar se imprime lo que
+// costo de verdad, para que el margen sea un dato y no una suposicion.
+const PRESUPUESTO_MS = Number(process.env.GYMMATE_PRESUPUESTO_MS) || 600000;
+const ARRANQUE = Date.now();
 
 // Una excepcion a mitad de la suite abortaba el proceso y dejaba SIN CORRER
 // todos los casos siguientes, con un stack por toda señal. Eso es la trampa de
@@ -149,15 +165,22 @@ process.on('uncaughtException', (e) => {
 });
 const abortar = setTimeout(() => {
   console.error(`\nLa puerta excedio ${PRESUPUESTO_MS / 1000}s y se aborta.`);
+  console.error('Si la maquina es lenta y no hay nada colgado, sube GYMMATE_PRESUPUESTO_MS.');
   process.exit(1);
 }, PRESUPUESTO_MS);
 abortar.unref?.();
 
+// La app se usa en Lima (UTC-5). El navegador de la sonda hereda TZ del
+// proceso, pero eso es implicito y se pierde si alguien corre el script a
+// mano: `timezoneId` lo deja escrito. La racha, el heatmap y "hace N dias"
+// solo se rompen en una zona con desfase negativo, asi que una sonda en UTC
+// es una sonda que no puede ver la mitad de los defectos de fecha.
+const ZONA = { timezoneId: 'America/Lima', locale: 'es-PE' };
 const navegador = await chromium.launch({ executablePath: CHROME });
 
 /** Pagina limpia, opcionalmente con localStorage sembrado. */
 async function abrir(semilla = {}) {
-  const ctx = await navegador.newContext({ viewport: { width: 390, height: 844 } });
+  const ctx = await navegador.newContext({ viewport: { width: 390, height: 844 }, ...ZONA });
   const pagina = await ctx.newPage();
   await pagina.addInitScript((datos) => {
     for (const [k, v] of Object.entries(datos)) localStorage.setItem(k, JSON.stringify(v));
@@ -538,16 +561,27 @@ const borradorDePrueba = {
     const acciones = [...document.querySelectorAll('#fierroHome [data-accion]')].map(
       (el) => el.dataset.accion
     );
+    // Las que salen por un global de `window`.
     const destinos = {
       progreso: 'showGamificationModal',
       cardio: 'showCardioSelector',
       importar: 'importFromCSV',
     };
+    // Las que `alTocarHome` resuelve dentro del propio modulo. `coach` se
+    // conduce entero en el caso 43; `continuar`/`descartar` en el del borrador.
+    const internas = ['coach', 'continuar', 'descartar'];
+    // El filtro estaba AL REVES: `filter(a => a in destinos)` tiraba en
+    // silencio las acciones que el mapa no conocia, o sea justo las que
+    // podrian estar rotas — la mitad de la home, incluida la entrada al Coach
+    // IA de la fase 8. Ahora una accion que nadie reclama FALLA.
+    const desconocidas = acciones.filter((a) => !(a in destinos) && !internas.includes(a));
     const rotas = acciones
       .filter((a) => a in destinos)
       .filter((a) => typeof window[destinos[a]] !== 'function');
-    return { acciones, rotas };
+    return { acciones, rotas, desconocidas };
   });
+  chk('H-01 · ninguna accion de la home queda fuera de este chequeo',
+    r.desconocidas.length === 0, r.desconocidas.join(', ') || '(ninguna)');
   chk('H-01 expone acciones', r.acciones.length > 0, r.acciones.join(', '));
   for (const esperada of ['progreso', 'cardio']) {
     chk(`H-01 con datos ofrece la accion "${esperada}"`, r.acciones.includes(esperada), r.acciones.join(', '));
@@ -598,7 +632,7 @@ const borradorDePrueba = {
 // 8. El toast se queda dentro del marco de la app en pantalla ancha
 // --------------------------------------------------------------------------
 {
-  const ctx = await navegador.newContext({ viewport: { width: 900, height: 844 } });
+  const ctx = await navegador.newContext({ viewport: { width: 900, height: 844 }, ...ZONA });
   const pagina = await ctx.newPage();
   await pagina.goto(URL_APP, { waitUntil: 'networkidle', timeout: 60000 });
   await pagina.waitForTimeout(700);
@@ -618,11 +652,24 @@ const borradorDePrueba = {
 //    Calculadoras, Graficos y Records se quedaron sin ningun camino.
 // --------------------------------------------------------------------------
 {
-  const { ctx, pagina } = await abrir({ gymmate_history: historialDePrueba() });
+  // Con una medicion registrada: sin ella P-01 pinta su estado vacio, que por
+  // diseño solo ofrece "Registrar medición" — el historial de medidas no
+  // existe todavia y no tiene camino porque no tiene contenido.
+  const { ctx, pagina } = await abrir({
+    gymmate_history: historialDePrueba(),
+    gymmate_body_measurements: [{ date: '2026-08-10T12:00:00.000Z', weight: 75, chest: 98, waist: 82 }],
+  });
+  // El titulo afirmaba una propiedad universal sobre un enumerado de tres. La
+  // lista es ahora TODA la superficie a la que se llega tocando: si mañana
+  // aparece una pantalla nueva, este caso no la ve — pero al menos ya no
+  // miente sobre las que hay.
   for (const [destino, camino] of [
     ['prs', ['[data-nav="profile"]', '[data-perfil="records"]']],
     ['charts', ['[data-nav="profile"]', '[data-perfil="graficos"]']],
     ['calculators', ['[data-nav="profile"]', '[data-perfil="calculadoras"]']],
+    ['medidas', ['[data-nav="profile"]', '[data-perfil="ver-medidas"]']],
+    ['profile', ['[data-nav="profile"]']],
+    ['history', ['[data-nav="history"]']],
   ]) {
     let visible = false;
     let detalle = '';
@@ -638,6 +685,24 @@ const borradorDePrueba = {
     chk(`se puede llegar a #${destino}Tab tocando`, visible, detalle || camino.join(' → '));
     await pagina.locator('[data-nav="home"]').first().click().catch(() => {});
     await pagina.waitForTimeout(200);
+  }
+
+  // Y VOLVER a la home tiene que enseñar la home. `switchTab('home')` —que el
+  // tipo `TabName` permite y `window.switchTab` expone— ocultaba la home y
+  // buscaba un `#homeTab` inexistente: pantalla en blanco con la tab bar
+  // marcando INICIO.
+  for (const via of ['tab bar', 'switchTab']) {
+    await pagina.evaluate(() => window.switchTab('history'));
+    await pagina.waitForTimeout(400);
+    if (via === 'tab bar') await pagina.locator('[data-nav="home"]').first().click();
+    else await pagina.evaluate(() => window.switchTab('home'));
+    await pagina.waitForTimeout(600);
+    const v = await pagina.evaluate(() => {
+      const b = document.querySelector('.f-home__rutina') || document.querySelector('#fierroHome button');
+      const r = b?.getBoundingClientRect();
+      return { home: !document.getElementById('homeView')?.classList.contains('hidden'), alto: r ? r.height : 0 };
+    });
+    chk(`volver a la home por ${via} la deja visible`, v.home && v.alto > 0, JSON.stringify(v));
   }
   await ctx.close();
 }
@@ -953,8 +1018,32 @@ const borradorDePrueba = {
   // caso lo invocaba a mano; eso comprobaba el guardado pero no la pantalla.
   await pagina.evaluate(() => window.openWorkoutBuilder?.());
   await pagina.waitForTimeout(400);
-  await pagina.fill('#builderNombre', 'Rutina de prueba');
+
+  // Los textos literales del mockup. Sin esto se podian cambiar todos con las
+  // cuatro puertas en verde.
+  const literalesB = await pagina.evaluate(() => ({
+    titulo: document.querySelector('.f-builder__titulo')?.textContent?.trim() ?? '',
+    marcador: document.getElementById('builderNombre')?.getAttribute('placeholder') ?? '',
+  }));
+  chk('B-01 · el titulo es el del mockup', literalesB.titulo === 'NUEVA RUTINA', literalesB.titulo);
+  chk('B-01 · el marcador del nombre es el del mockup',
+    literalesB.marcador === 'Elige ejercicios y te propongo un nombre', literalesB.marcador);
+
+  // El nombre SUGERIDO sale de los grupos elegidos. El caso rellenaba el campo
+  // antes de elegir nada, asi que `nombreSugerido` podia devolver '' siempre y
+  // sobrevivir: la sugerencia es la unica razon de ser del campo vacio.
   await pagina.locator('[data-builder="alternar"]').first().click();
+  await pagina.waitForTimeout(200);
+  const grupoDelPrimero = await pagina.evaluate(
+    () => document.querySelector('[data-builder="alternar"]')?.dataset.grupo ?? ''
+  );
+  const propuesto = await pagina.evaluate(
+    () => document.getElementById('builderNombre')?.getAttribute('placeholder') ?? ''
+  );
+  chk('B-01 · con un ejercicio elegido, el marcador propone SU grupo',
+    grupoDelPrimero.length > 0 && propuesto === grupoDelPrimero, `${propuesto} | grupo ${grupoDelPrimero}`);
+
+  await pagina.fill('#builderNombre', 'Rutina de prueba');
   await pagina.waitForTimeout(200);
   const sugerido = await pagina.evaluate(() => ({
     boton: document.querySelector('[data-builder="guardar"]')?.textContent?.trim() ?? '',
@@ -1881,8 +1970,33 @@ const borradorDePrueba = {
 {
   const { ctx, pagina } = await abrir({
     gymmate_history: historialDePrueba([1, 4]),
+    // P-01 dice que el CSV "es la copia con la que se recupera todo": esta
+    // semilla lleva UNA de cada cosa que la app guarda, para que la ida y
+    // vuelta pueda desmentirlo.
     gymmate_profile: { name: 'Alonso', weight: 75, height: 176 },
-    gymmate_body_measurements: [{ date: '2026-08-10', weight: 75, chest: 98, waist: 82 }],
+    gymmate_body_measurements: [{ date: '2026-08-10T12:00:00.000Z', weight: 75, chest: 98, waist: 82 }],
+    // Un PR de un ejercicio que NO esta en el historial: se perdia entero.
+    gymmate_prs: {
+      'Press Banca': { peso: 60, sets: 3, reps: 8, volumen: 1440, date: '2026-06-12T12:00:00.000Z' },
+    },
+    gymmate_custom_workouts: [
+      {
+        id: 'propia_1',
+        nombre: 'Mi rutina',
+        isCustom: true,
+        createdAt: '2026-07-01T12:00:00.000Z',
+        ejercicios: [{ nombre: 'Sentadilla', esMancuerna: false, grupoMuscular: 'Piernas' }],
+        opcionales: [{ nombre: 'Zancadas', esMancuerna: true, grupoMuscular: 'Glúteos' }],
+      },
+    ],
+  });
+  // Un ejercicio registrado y NO completado (volumen 0): el exportador lo
+  // tiraba, y con el se iba su grupo del reparto por musculo.
+  await pagina.evaluate(() => {
+    const h = JSON.parse(localStorage.getItem('gymmate_history'));
+    h[0].ejercicios.push({ nombre: 'Peso Muerto', esMancuerna: false, grupoMuscular: 'Espalda',
+      sets: 3, reps: 0, peso: 0, volumen: 0, completado: false });
+    localStorage.setItem('gymmate_history', JSON.stringify(h));
   });
 
   // 1) Exportar y quedarse con el contenido.
@@ -1901,6 +2015,10 @@ const borradorDePrueba = {
   chk('el CSV se genera', csv.length > 0, `${csv.length} bytes`);
   chk('el CSV incluye el PERFIL', /=== PERFIL ===/.test(csv), csv.slice(0, 40));
   chk('el CSV incluye las MEDIDAS', /=== MEDIDAS CORPORALES ===/.test(csv), '');
+  chk('el CSV incluye los RÉCORDS', /=== RÉCORDS ===/.test(csv), '');
+  chk('el CSV incluye las RUTINAS PROPIAS', /=== RUTINAS PROPIAS ===/.test(csv), '');
+  chk('el CSV no tira los ejercicios sin completar', /Peso Muerto/.test(csv),
+    'un set registrado y no completado desaparecia del backup');
 
   // 2) Importarlo de vuelta en una app vacia: tiene que entrar.
   await ctx.close();
@@ -1916,10 +2034,70 @@ const borradorDePrueba = {
     const r = await segunda.pagina.evaluate(() => ({
       n: JSON.parse(localStorage.getItem('gymmate_history') || '[]').length,
       toast: document.querySelector('.f-toast__titulo')?.textContent ?? '',
+      detalle: document.querySelector('.f-toast__detalle')?.textContent ?? '',
+      prs: JSON.parse(localStorage.getItem('gymmate_prs') || '{}'),
+      rutinas: JSON.parse(localStorage.getItem('gymmate_custom_workouts') || '[]'),
+      medidas: JSON.parse(localStorage.getItem('gymmate_body_measurements') || '[]'),
+      gam: JSON.parse(localStorage.getItem('gymmate_gamification') || '{}'),
+      grupos: (JSON.parse(localStorage.getItem('gymmate_history') || '[]')[0] || {}).volumenPorGrupo ?? {},
+      ejercicios: ((JSON.parse(localStorage.getItem('gymmate_history') || '[]')[0] || {}).ejercicios ?? []).map((e) => e.nombre),
     }));
     chk('el CSV que exporta la app se puede volver a importar', r.n === 2, `${r.n} sesiones · ${r.toast}`);
+
+    // "Se recupera TODO", una promesa a la vez.
+    chk('restaurar recupera el PR de un ejercicio que no esta en el historial',
+      r.prs['press banca']?.peso === 60 || r.prs['Press Banca']?.peso === 60,
+      JSON.stringify(Object.keys(r.prs)));
+    chk('y conserva la fecha del PR, no la de la sesion que lo produjo',
+      String(r.prs['press banca']?.date ?? r.prs['Press Banca']?.date ?? '').startsWith('2026-06-12'),
+      String(r.prs['press banca']?.date ?? r.prs['Press Banca']?.date ?? '(sin fecha)'));
+    chk('restaurar recupera las rutinas propias del builder',
+      r.rutinas.length === 1 && r.rutinas[0].nombre === 'Mi rutina',
+      JSON.stringify(r.rutinas.map((x) => x.nombre)));
+    chk('y con sus ejercicios y sus opcionales',
+      r.rutinas[0]?.ejercicios?.length === 1 && r.rutinas[0]?.opcionales?.length === 1,
+      JSON.stringify({ e: r.rutinas[0]?.ejercicios?.length, o: r.rutinas[0]?.opcionales?.length }));
+    chk('restaurar recupera las medidas', r.medidas.length === 1, `${r.medidas.length} mediciones`);
+    // `saveHistory` canonicaliza el nombre ("Peso Muerto" -> "Peso Muerto
+    // Convencional"), asi que se comprueba que el ejercicio SIGUE AHI, no su
+    // literal: son dos sesiones y la primera tenia dos ejercicios.
+    chk('restaurar conserva el ejercicio registrado y no completado',
+      r.ejercicios.length === 2 && r.ejercicios.some((n) => /Peso Muerto/.test(n)),
+      r.ejercicios.join(', '));
+    chk('y con el, su grupo en el reparto por musculo',
+      Object.keys(r.grupos).length >= 2, JSON.stringify(r.grupos));
+
+    // La gamificacion se recalcula: restaurar dejaba NIVEL 1 · 0 XP con el
+    // heatmap lleno, y `recalculateXP` no colgaba de ningun boton.
+    chk('restaurar NO deja la gamificacion en cero',
+      (r.gam?.playerStats?.totalXP ?? 0) > 0,
+      `totalXP ${r.gam?.playerStats?.totalXP ?? 'sin estado'}`);
+
+    // El toast cuenta lo que ENTRO, no lo que parseo.
+    chk('el toast no anuncia cardio que no entro', !/de cardio/.test(r.detalle), r.detalle);
   }
   await segunda.ctx.close();
+
+  // Importar el MISMO backup encima no debe anunciar nada recuperado.
+  // La accion de importar de la home solo existe en el estado vacio (O-01);
+  // con historial vive en la cabecera de HISTORIAL.
+  const tercera = await abrir({ gymmate_history: historialDePrueba([1, 4]) });
+  await tercera.pagina.evaluate(() => window.switchTab('history'));
+  await tercera.pagina.waitForTimeout(600);
+  const dlg3 = tercera.pagina.waitForEvent('filechooser', { timeout: 5000 }).catch(() => null);
+  await tercera.pagina.locator('[data-hueso="importar"]').first().click();
+  const ch3 = await dlg3;
+  if (ch3) {
+    await ch3.setFiles({ name: 'backup.csv', mimeType: 'text/csv', buffer: Buffer.from(csv, 'utf-8') });
+    await tercera.pagina.waitForTimeout(1200);
+    const t = await tercera.pagina.evaluate(() => ({
+      titulo: document.querySelector('.f-toast__titulo')?.textContent ?? '',
+      detalle: document.querySelector('.f-toast__detalle')?.textContent ?? '',
+    }));
+    chk('reimportar el mismo backup dice 0 sesiones', /: 0 sesiones/.test(t.titulo), t.titulo);
+    chk('y no se apunta un cardio que no entro', !/de cardio/.test(t.detalle), t.detalle);
+  }
+  await tercera.ctx.close();
 }
 
 // --------------------------------------------------------------------------
@@ -2168,7 +2346,12 @@ const borradorDePrueba = {
   const ca03 = await pagina.evaluate(() => document.getElementById('calculatorsTab')?.innerText ?? '');
   chk('CA-01 · el progresivo dibuja sus tres opciones',
     /Conservador[\s\S]*Moderado[\s\S]*Agresivo/.test(ca03), ca03.replace(/\n/g, ' | ').slice(0, 200));
-  chk('y no escribe un decimal de mas', !/\b\d+\.0\b/.test(ca03.split('PRÓXIMO')[1] ?? ''),
+  // Primero el rotulo: sin esto, `split('PRÓXIMO')[1]` era `undefined` en
+  // cuanto alguien renombrara el bloque, la regex no matcheaba nada y la
+  // guarda se apagaba sola en verde.
+  chk('CA-01 · el progresivo rotula PRÓXIMO PESO, como el mockup', ca03.includes('PRÓXIMO PESO'),
+    ca03.replace(/\n/g, ' | ').slice(0, 120));
+  chk('y no escribe un decimal de mas', ca03.includes('PRÓXIMO') && !/\b\d+\.0\b/.test(ca03.split('PRÓXIMO')[1] ?? ''),
     (ca03.split('PRÓXIMO')[1] ?? '').replace(/\n/g, ' | ').slice(0, 120));
 
   // --- P-03 ---
@@ -2242,8 +2425,470 @@ const borradorDePrueba = {
 }
 
 // --------------------------------------------------------------------------
+// 43b. GM-01/GM-02/GM-03 · los textos literales del handoff. Los tres tenian
+//      cero aserciones: se podian reescribir enteros con las cuatro puertas en
+//      verde.
+// --------------------------------------------------------------------------
+{
+  const { ctx, pagina } = await abrir({
+    gymmate_history: historialDePrueba(),
+    gymmate_prs: {
+      'Prensa de Piernas': { peso: 120, sets: 4, reps: 12, volumen: 5760, date: new Date().toISOString() },
+    },
+    gymmate_profile: { name: 'A', birthdate: '1998-03-10', gender: 'male', weight: 80, height: 176, activity: 1.55 },
+  });
+  await pagina.locator('[data-nav="progress"]').click();
+  await pagina.waitForTimeout(600);
+
+  const gm01 = await pagina.evaluate(() => ({
+    abierto: !document.getElementById('fierroProgreso')?.classList.contains('hidden'),
+    titulo: document.querySelector('#fierroProgreso .f-prog__titulo')?.textContent?.trim() ?? '',
+    logros: document.querySelector('[data-prog="logros"]')?.textContent?.replace(/\s+/g, ' ').trim() ?? '',
+    navInerte: document.querySelector('nav.f-tabbar')?.hasAttribute('inert') ?? false,
+  }));
+  chk('GM-01 · la pestaña PROGRESO abre la superposicion', gm01.abierto === true);
+  chk('GM-01 · el titulo es PROGRESO', gm01.titulo === 'PROGRESO', gm01.titulo);
+  chk('GM-01 · la fila de logros cuenta X DE 25, no una cadena fija',
+    /^LOGROS · \d+ DE 25 ›$/.test(gm01.logros), gm01.logros);
+  chk('GM-01 · la tab bar tapada queda inerte', gm01.navInerte === true);
+
+  // GM-02
+  await pagina.locator('[data-prog="rango"]').first().click();
+  await pagina.waitForTimeout(400);
+  const gm02 = await pagina.evaluate(() => ({
+    titulo: document.querySelector('#fierroProgreso .f-prog__titulo')?.textContent?.trim() ?? '',
+    sub: document.querySelector('#fierroProgreso .f-prog__sub')?.textContent?.trim() ?? '',
+    especiales: [...document.querySelectorAll('#fierroProgreso .f-prog__label')]
+      .map((e) => e.textContent.trim()).find((t) => t.startsWith('RANGOS ESPECIALES')) ?? '',
+    escalones: [...document.querySelectorAll('.f-escalon__nombre')].map((e) => e.textContent.trim()),
+    subs: [...document.querySelectorAll('.f-escalon__sub')].map((e) => e.textContent.trim()),
+    franjas: [...document.querySelectorAll('.f-escalon__franja')].map((e) => e.textContent.trim()),
+  }));
+  chk('GM-02 · el titulo es RANGOS', gm02.titulo === 'RANGOS', gm02.titulo);
+  chk('GM-02 · el subtitulo es el literal del mockup',
+    gm02.sub === '1RM estimado ÷ peso corporal · ajustado por ejercicio', gm02.sub);
+  chk('GM-02 · el bloque de especiales lleva su literal',
+    gm02.especiales === 'RANGOS ESPECIALES · NO SE COMPRAN CON FUERZA', gm02.especiales);
+  // Los nombres, el orden, las franjas y los subniveles se rederivan del
+  // literal `rangoLadder` del mockup: tecleados a mano aqui, este chequeo
+  // solo diria que la app coincide con lo que yo recordaba.
+  chk('GM-02 · la escalera es la del mockup, en su orden',
+    gm02.escalones.join(',') === LADDER_MOCKUP.map((r) => r.n).join(','),
+    `${gm02.escalones.join(',')} vs ${LADDER_MOCKUP.map((r) => r.n).join(',')}`);
+  chk('GM-02 · cada escalon lleva el subnivel que el mockup le pone',
+    gm02.subs.join(',') === LADDER_MOCKUP.map((r) => r.sub).join(','),
+    `${gm02.subs.join(',')} vs ${LADDER_MOCKUP.map((r) => r.sub).join(',')}`);
+  chk('GM-02 · y las franjas de ratio tambien',
+    gm02.franjas.join(',') === LADDER_MOCKUP.map((r) => r.r).join(','),
+    `${gm02.franjas.join(',')} vs ${LADDER_MOCKUP.map((r) => r.r).join(',')}`);
+  const especialesEnPantalla = await pagina.evaluate(() =>
+    [...document.querySelectorAll('.f-especial__nombre')].map((e) => e.textContent.trim())
+  );
+  chk('GM-02 · los dos rangos especiales son los del mockup',
+    especialesEnPantalla.join(',') === ESPECIALES_MOCKUP.map((e) => e.n).join(','),
+    `${especialesEnPantalla.join(',')} vs ${ESPECIALES_MOCKUP.map((e) => e.n).join(',')}`);
+
+  // GM-03
+  await pagina.locator('[data-prog="volver"]').click();
+  await pagina.waitForTimeout(300);
+  await pagina.locator('[data-prog="logros"]').click();
+  await pagina.waitForTimeout(400);
+  const gm03 = await pagina.evaluate(() => ({
+    titulo: document.querySelector('#fierroProgreso .f-prog__titulo')?.textContent?.trim() ?? '',
+    sub: document.querySelector('#fierroProgreso .f-prog__sub')?.textContent?.replace(/\s+/g, ' ').trim() ?? '',
+    pct: document.querySelector('.f-prog__pct')?.textContent?.trim() ?? '',
+    filtros: [...document.querySelectorAll('[data-prog="filtro"]')].map((e) => e.textContent.trim()),
+    bloques: [...document.querySelectorAll('#fierroProgreso .f-prog__label')].map((e) => e.textContent.trim()),
+  }));
+  chk('GM-03 · el titulo es LOGROS', gm03.titulo === 'LOGROS', gm03.titulo);
+  chk('GM-03 · el subtitulo cuenta sobre 25 y declara el XP de logros',
+    /^\d+ de 25 · [\d,]+ XP ganados por logros$/.test(gm03.sub), gm03.sub);
+  chk('GM-03 · los cuatro filtros son los del mockup',
+    gm03.filtros.join(',') === 'TODOS,SESIONES,VOLUMEN,RACHAS', gm03.filtros.join(','));
+  chk('GM-03 · los tres bloques llevan su literal',
+    gm03.bloques.includes('EN PROGRESO — LO PRÓXIMO A CAER') &&
+      gm03.bloques.includes('CONSEGUIDOS') &&
+      gm03.bloques.includes('BLOQUEADOS — CÓMO SE ABREN, SIEMPRE VISIBLE'),
+    gm03.bloques.join(' | '));
+  // El porcentaje es el de la cuenta, no un numero suelto.
+  const [hechos, total] = gm03.sub.match(/^(\d+) de (\d+)/).slice(1).map(Number);
+  chk('GM-03 · el porcentaje se rederiva de la cuenta',
+    gm03.pct === `${Math.round((hechos / total) * 100)}%`, `${gm03.pct} con ${hechos}/${total}`);
+  await ctx.close();
+}
+
+// --------------------------------------------------------------------------
+// 43. CO-01 · el coach se abre de verdad y dice lo que el mockup dice.
+//     Tres pantallas del handoff (CO-01/02/03) no tenian NI UNA comprobacion:
+//     un mutante que hiciera `throw` en `abrirCoach` pasaba las cuatro
+//     puertas en verde.
+// --------------------------------------------------------------------------
+{
+  const { ctx, pagina } = await abrir({
+    gymmate_history: historialDePrueba(),
+    gymmate_prs: {
+      'Prensa de Piernas': { peso: 120, sets: 4, reps: 12, volumen: 5760, date: new Date().toISOString() },
+    },
+  });
+  const tarjeta = pagina.locator('.f-home__coach');
+  chk('H-01 · la tarjeta del coach esta en la home', (await tarjeta.count()) === 1);
+  await tarjeta.first().click();
+  await pagina.waitForTimeout(500);
+
+  const visible = await pagina.locator('#fierroCoach:not(.hidden)').count();
+  chk('CO-01 · pulsar la tarjeta abre el coach', visible === 1);
+
+  const cabecera = (await pagina.locator('#fierroCoach .f-coach__titulo').innerText().catch(() => '')).trim();
+  chk('CO-01 · la cabecera dice COACH, como el mockup', cabecera === 'COACH', cabecera);
+
+  const volver = (await pagina.locator('#fierroCoach [data-coach="cerrar"]').innerText().catch(() => '')).trim();
+  chk('CO-01 · el volver es la flecha del mockup', volver === '←', volver);
+
+  const marcador = await pagina.getAttribute('#coachEntrada', 'placeholder');
+  chk('CO-01 · el compositor lleva el texto literal del mockup',
+    marcador === 'Pregúntale a tus datos…', String(marcador));
+
+  const enviar = (await pagina.locator('#fierroCoach [data-coach="enviar"]').innerText().catch(() => '')).trim();
+  chk('CO-01 · el enviar es la flecha del mockup', enviar === '↑', enviar);
+
+  // El primer turno viene del banner de la home, no de una cadena inventada.
+  const mensajeBanner = (await tarjeta.first().getAttribute('data-mensaje')) ?? '';
+  const primerTurno = (await pagina.locator('#fierroCoach .f-coach__texto').first().innerText().catch(() => '')).trim();
+  chk('CO-01 · el primer turno ES el mensaje de la home, no otro texto',
+    mensajeBanner.length > 0 && primerTurno === mensajeBanner, `${primerTurno} | ${mensajeBanner}`);
+
+  const sello = (await pagina.locator('#fierroCoach .f-coach__sello').first().innerText().catch(() => '')).trim();
+  chk('CO-01 · el sello del turno es "COACH · HOY HH:MM"',
+    /^COACH · HOY \d{2}:\d{2}$/.test(sello), sello);
+
+  // La tab bar queda tapada por la superposicion: el mockup no la dibuja.
+  const navInerte = await pagina.evaluate(() => document.querySelector('nav.f-tabbar')?.hasAttribute('inert'));
+  chk('CO-01 · la tab bar queda inerte mientras el coach esta abierto', navInerte === true);
+
+  // La conversacion se persiste, que es lo que hace que reabrir no la pierda.
+  const guardada = await pagina.evaluate(() => JSON.parse(localStorage.getItem('gymmate_coach_conversacion') || '[]').length);
+  chk('CO-01 · la conversacion queda guardada', guardada >= 1, String(guardada));
+
+  await pagina.locator('#fierroCoach [data-coach="cerrar"]').click();
+  await pagina.waitForTimeout(300);
+  const trasCerrar = await pagina.evaluate(() => document.querySelector('nav.f-tabbar')?.hasAttribute('inert'));
+  chk('CO-01 · al cerrar, la tab bar vuelve', trasCerrar === false);
+  await ctx.close();
+}
+
+// --------------------------------------------------------------------------
+// 44. CO-01 · la aritmetica del componente de datos sale del historial, NO del
+//     modelo. Regla del handoff: "la aritmetica nunca la genera el modelo".
+// --------------------------------------------------------------------------
+{
+  const { ctx, pagina } = await abrir({
+    gymmate_history: historialDePrueba(),
+    gymmate_prs: {
+      'Prensa de Piernas': { peso: 120, sets: 4, reps: 12, volumen: 5760, date: new Date().toISOString() },
+    },
+  });
+  await pagina.locator('.f-home__coach').first().click();
+  await pagina.waitForTimeout(400);
+  await pagina.fill('#coachEntrada', '¿Cómo voy en prensa de piernas?');
+  await pagina.locator('#fierroCoach [data-coach="enviar"]').click();
+  await pagina.waitForTimeout(1200);
+
+  const etiqueta = (await pagina.locator('.f-coach__dato-label').last().innerText().catch(() => '')).trim();
+  chk('CO-01 · el componente de datos rotula el ejercicio y 1RM EST.',
+    etiqueta === 'PRENSA DE PIERNAS · 1RM EST.', etiqueta);
+
+  const cifraCoach = (await pagina.locator('.f-coach__dato-cifra').last().innerText().catch(() => '')).trim();
+  // 1RM promedio de las tres formulas para 120 kg x 12, rederivado a mano.
+  const epley = 120 * (1 + 12 / 30);
+  const brzycki = 120 * (36 / (37 - 12));
+  const lombardi = 120 * Math.pow(12, 0.1);
+  const promedio = (epley + brzycki + lombardi) / 3;
+  chk('CO-01 · la cifra es el 1RM rederivado a mano, no un numero del modelo',
+    cifraCoach.startsWith(String(Math.round(promedio))), `${cifraCoach} vs ${promedio.toFixed(1)}`);
+  // Y es LA MISMA cifra que enseña PR-01 bajo el mismo rotulo: el coach usaba
+  // Epley a secas y ponia 168 donde PR-01 pone 165.
+  await pagina.locator('#fierroCoach [data-coach="cerrar"]').click();
+  await pagina.waitForTimeout(300);
+  await pagina.evaluate(() => window.switchTab('prs'));
+  await pagina.waitForTimeout(600);
+  const enRecords = (await pagina.locator('#fierroRecords').innerText().catch(() => '')).replace(/\s+/g, ' ');
+  chk('CO-01 · el 1RM del coach coincide con el de PR-01',
+    enRecords.includes(cifraCoach.split(' ')[0]), `coach ${cifraCoach} | PR-01 ${enRecords.slice(0, 160)}`);
+
+  const pie = (await pagina.locator('.f-coach__dato-pie').last().innerText().catch(() => '')).replace(/\s+/g, ' ').trim();
+  chk('CO-01 · el pie declara el pico real del historial (120 kg)',
+    pie.includes('PICO 120 KG'), pie);
+
+  // La voz del handoff: el peso objetivo, nunca la diferencia.
+  const respuesta = (await pagina.locator('#fierroCoach .f-coach__texto').last().innerText().catch(() => '')).trim();
+  chk('CO-01 · la respuesta dice el peso objetivo, no "te faltan X kg"',
+    /Levanta 122\.5 kg/.test(respuesta) && !/faltan/i.test(respuesta), respuesta);
+  await ctx.close();
+}
+
+// --------------------------------------------------------------------------
+// 45. CO-02 · PENSANDO → streaming → DETENER. El adaptador local responde al
+//     instante, asi que el estado intermedio nunca se veia.
+// --------------------------------------------------------------------------
+{
+  const { ctx, pagina } = await abrir({ gymmate_history: historialDePrueba() });
+  await pagina.locator('.f-home__coach').first().click();
+  await pagina.waitForTimeout(400);
+  // Adaptador lento: 700 ms hasta el primer token, luego una palabra cada 250.
+  await pagina.evaluate(() => {
+    const espera = (ms) => new Promise((r) => setTimeout(r, ms));
+    window.__coachDePrueba.usarAdaptador({
+      enLinea: true,
+      datosPara: () => null,
+      async *responder() {
+        await espera(700);
+        for (const t of ['Agosto ', 'va ', 'mejor ', 'que ', 'julio.']) {
+          yield t;
+          await espera(250);
+        }
+      },
+    });
+  });
+  await pagina.fill('#coachEntrada', '¿Cómo voy este mes?');
+  await pagina.locator('#fierroCoach [data-coach="enviar"]').click();
+  await pagina.waitForTimeout(250);
+
+  const pensando = (await pagina.locator('.f-coach__sello--pensando').innerText().catch(() => '')).trim();
+  chk('CO-02 · antes del primer token el sello dice PENSANDO', pensando === 'PENSANDO', pensando);
+
+  const marcadorEsperando = await pagina.getAttribute('#coachEntrada', 'placeholder');
+  chk('CO-02 · el compositor dice "Esperando respuesta…"',
+    marcadorEsperando === 'Esperando respuesta…', String(marcadorEsperando));
+
+  const detener = (await pagina.locator('#fierroCoach [data-coach="detener"]').innerText().catch(() => '')).trim();
+  chk('CO-02 · el enviar se convierte en el DETENER del mockup (■)', detener === '■', detener);
+  const rojo = await pagina.evaluate(() => {
+    const b = document.querySelector('.f-coach__enviar--detener');
+    return b ? getComputedStyle(b).color : '';
+  });
+  chk('CO-02 · el detener va en rojo destructivo', rojo === 'rgb(229, 72, 77)', rojo);
+
+  // Ya en streaming: el texto crece por trozos.
+  await pagina.waitForTimeout(900);
+  const parcial1 = (await pagina.locator('#coachParcial').innerText().catch(() => '')).trim();
+  await pagina.waitForTimeout(600);
+  const parcial2 = (await pagina.locator('#coachParcial').innerText().catch(() => '')).trim();
+  chk('CO-02 · la respuesta llega en streaming, no de golpe',
+    parcial1.length > 0 && parcial2.length > parcial1.length, `${parcial1} -> ${parcial2}`);
+
+  // Dos preguntas seguidas: el segundo turno NO puede reescribir el primero.
+  // El streaming usaba `.f-coach__texto:last-of-type`, que mira el TIPO de
+  // elemento (span) y no la clase, asi que la segunda respuesta se pintaba
+  // encima de la primera. El comentario del codigo era la unica defensa.
+  await pagina.locator('#fierroCoach [data-coach="detener"]').click();
+  await pagina.waitForTimeout(300);
+  await pagina.evaluate(() => {
+    window.__coachDePrueba.usarAdaptador({
+      enLinea: true,
+      datosPara: () => null,
+      async *responder(pregunta) { yield pregunta.includes('uno') ? 'PRIMERA.' : 'SEGUNDA.'; },
+    });
+  });
+  await pagina.fill('#coachEntrada', 'pregunta uno');
+  await pagina.locator('#fierroCoach [data-coach="enviar"]').click();
+  await pagina.waitForTimeout(700);
+  await pagina.fill('#coachEntrada', 'pregunta dos');
+  await pagina.locator('#fierroCoach [data-coach="enviar"]').click();
+  await pagina.waitForTimeout(900);
+  const textos = await pagina.evaluate(() =>
+    [...document.querySelectorAll('#fierroCoach .f-coach__card .f-coach__texto')].map((e) => e.textContent.trim())
+  );
+  chk('CO-02 · la segunda respuesta no reescribe la primera',
+    textos.includes('PRIMERA.') && textos.includes('SEGUNDA.'), textos.join(' | '));
+
+  // Y detener devuelve el compositor conservando lo escrito.
+  await pagina.evaluate(() => {
+    const espera = (ms) => new Promise((r) => setTimeout(r, ms));
+    window.__coachDePrueba.usarAdaptador({
+      enLinea: true,
+      datosPara: () => null,
+      async *responder() {
+        for (const t of ['Agosto ', 'va ', 'mejor ', 'que ', 'julio.']) { yield t; await espera(300); }
+      },
+    });
+  });
+  await pagina.fill('#coachEntrada', 'otra mas');
+  await pagina.locator('#fierroCoach [data-coach="enviar"]').click();
+  await pagina.waitForTimeout(500);
+  await pagina.locator('#fierroCoach [data-coach="detener"]').click();
+  await pagina.waitForTimeout(400);
+  const vuelveElEnviar = (await pagina.locator('#fierroCoach [data-coach="enviar"]').innerText().catch(() => '')).trim();
+  chk('CO-02 · detener devuelve el compositor', vuelveElEnviar === '↑', vuelveElEnviar);
+  const conservado = (await pagina.locator('#fierroCoach .f-coach__texto').last().innerText().catch(() => '')).trim();
+  chk('CO-02 · lo que ya habia escrito no se tira', conservado.startsWith('Agosto'), conservado);
+  await ctx.close();
+}
+
+// --------------------------------------------------------------------------
+// 46. CO-03 · sin conexion. El texto es literal del mockup, la pregunta queda
+//     en cola, y el resto de la app no se entera.
+// --------------------------------------------------------------------------
+{
+  const { ctx, pagina } = await abrir({ gymmate_history: historialDePrueba() });
+  await pagina.locator('.f-home__coach').first().click();
+  await pagina.waitForTimeout(400);
+  await pagina.evaluate(() => {
+    window.__coachDePrueba.usarAdaptador({
+      enLinea: true,
+      datosPara: () => null,
+      // eslint-disable-next-line require-yield
+      async *responder() {
+        throw new Error('sin red');
+      },
+    });
+  });
+  await pagina.fill('#coachEntrada', '¿Qué rutina toca hoy?');
+  await pagina.locator('#fierroCoach [data-coach="enviar"]').click();
+  await pagina.waitForTimeout(700);
+
+  const etiquetaError = (await pagina.locator('.f-coach__error-label').innerText().catch(() => '')).trim();
+  chk('CO-03 · el error se rotula SIN CONEXIÓN', etiquetaError === 'SIN CONEXIÓN', etiquetaError);
+
+  const textoError = (await pagina.locator('.f-coach__error .f-coach__texto').innerText().catch(() => '')).trim();
+  chk('CO-03 · el texto del error es el literal del mockup',
+    textoError === 'No se pudo conectar con el coach. Tu pregunta quedó guardada — reintenta cuando vuelva la señal.',
+    textoError);
+
+  const reintentar = (await pagina.locator('[data-coach="reintentar"]').first().innerText().catch(() => '')).trim();
+  chk('CO-03 · ofrece Reintentar', reintentar.includes('Reintentar') || reintentar.includes('reintentar'), reintentar);
+
+  const cola = await pagina.evaluate(() => JSON.parse(localStorage.getItem('gymmate_coach_cola') || '[]'));
+  chk('CO-03 · la pregunta queda guardada de verdad, no solo en el texto',
+    Array.isArray(cola) && cola.includes('¿Qué rutina toca hoy?'), JSON.stringify(cola));
+
+  // "El resto de la app no se entera: todo lo demas es local."
+  await pagina.locator('#fierroCoach [data-coach="cerrar"]').click();
+  await pagina.waitForTimeout(300);
+  await pagina.evaluate(() => window.switchTab('history'));
+  await pagina.waitForTimeout(600);
+  const hayHistorial = await pagina.locator('#fierroHistorial [data-hueso="detalle"]').count();
+  chk('CO-03 · con el coach caido, el historial sigue funcionando', hayHistorial > 0, String(hayHistorial));
+
+  // Y al volver la señal, la cola se drena.
+  await pagina.evaluate(() => {
+    window.__coachDePrueba.usarAdaptador({
+      enLinea: true,
+      datosPara: () => null,
+      async *responder() { yield 'Toca piernas.'; },
+    });
+  });
+  await pagina.evaluate(() => window.switchTab('home'));
+  await pagina.waitForTimeout(400);
+  await pagina.locator('.f-home__coach').first().click();
+  await pagina.waitForTimeout(400);
+  await pagina.locator('[data-coach="reintentar"]').first().click();
+  await pagina.waitForTimeout(900);
+  const colaFinal = await pagina.evaluate(() => JSON.parse(localStorage.getItem('gymmate_coach_cola') || '[]'));
+  chk('CO-03 · al volver la señal la cola se vacia', colaFinal.length === 0, JSON.stringify(colaFinal));
+  const respondio = (await pagina.locator('#fierroCoach .f-coach__texto').last().innerText().catch(() => '')).trim();
+  chk('CO-03 · y la pregunta guardada obtiene su respuesta', respondio === 'Toca piernas.', respondio);
+  await ctx.close();
+}
+
+// --------------------------------------------------------------------------
+// 47. Una fecha ilegible en localStorage no puede pintar "Invalid Date" ni
+//     "hace NaN días". Entraban por un CSV editado a mano; el importador ya
+//     las filtra, pero un historial viejo puede traerlas y el rotulo miente.
+// --------------------------------------------------------------------------
+{
+  const { ctx, pagina } = await abrir({
+    gymmate_history: [
+      {
+        sessionId: 'roto', date: 'no-es-fecha', savedAt: 'no-es-fecha',
+        grupo: 'GRUPO 4 - Espalda + Bíceps', type: 'weights',
+        volumenTotal: 1000, volumenPorGrupo: { Espalda: 1000 },
+        ejercicios: [{ nombre: 'Remo', sets: 3, reps: 10, peso: 40, volumen: 1200,
+          completado: true, esMancuerna: false, grupoMuscular: 'Espalda' }],
+      },
+      ...historialDePrueba([2, 5]),
+    ],
+    gymmate_body_measurements: [{ date: 'tampoco', weight: 75, chest: 98, waist: 82 }],
+  });
+  const miente = (t) => /Invalid Date|NaN/.test(t);
+
+  const home = await pagina.locator('#fierroHome').innerText();
+  chk('H-01 · una fecha ilegible no se pinta como Invalid Date ni NaN', !miente(home),
+    (home.match(/.{0,40}(Invalid Date|NaN).{0,20}/) ?? ['(limpio)'])[0]);
+
+  await pagina.evaluate(() => window.switchTab('history'));
+  await pagina.waitForTimeout(600);
+  const hist = await pagina.locator('#fierroHistorial').innerText();
+  chk('HI-01 · tampoco en el historial', !miente(hist),
+    (hist.match(/.{0,40}(Invalid Date|NaN).{0,20}/) ?? ['(limpio)'])[0]);
+
+  await pagina.locator('#fierroHistorial [data-hueso="detalle"]').first().click();
+  await pagina.waitForTimeout(500);
+  const det = await pagina.locator('#fierroHistorial').innerText();
+  chk('HI-02 · tampoco en el detalle de sesion', !miente(det),
+    (det.match(/.{0,40}(Invalid Date|NaN).{0,20}/) ?? ['(limpio)'])[0]);
+
+  await pagina.evaluate(() => window.switchTab('profile'));
+  await pagina.waitForTimeout(600);
+  const perf = await pagina.locator('#profileTab').innerText();
+  chk('P-01 · tampoco en el perfil', !miente(perf),
+    (perf.match(/.{0,40}(Invalid Date|NaN).{0,20}/) ?? ['(limpio)'])[0]);
+  await ctx.close();
+}
+
+// --------------------------------------------------------------------------
+// 48. Un nombre con comilla doble no puede inyectar atributos ni truncarse.
+//     `escapar()` no escapaba `"`, y media app interpola en atributos: un CSV
+//     de backup ajeno bastaba para ejecutar JS en el origen de la app.
+// --------------------------------------------------------------------------
+{
+  const NOMBRE = 'x" onfocus="window.__INYECTADO=1" z="';
+  const EJERCICIO = 'Press "Militar"';
+  const { ctx, pagina } = await abrir({
+    gymmate_profile: { name: NOMBRE, birthdate: '1998-03-10', gender: 'male', weight: 75, height: 176, activity: 1.55 },
+    gymmate_history: [
+      {
+        sessionId: 'a', date: new Date(Date.now() - 86400000).toISOString(),
+        savedAt: new Date(Date.now() - 86400000).toISOString(),
+        grupo: 'Pecho', type: 'weights', volumenTotal: 1200, volumenPorGrupo: { Pecho: 1200 },
+        ejercicios: [{ nombre: EJERCICIO, sets: 3, reps: 10, peso: 40, volumen: 1200,
+          completado: true, esMancuerna: false, grupoMuscular: 'Pecho' }],
+      },
+    ],
+  });
+  await pagina.evaluate(() => window.switchTab('profile'));
+  await pagina.waitForTimeout(700);
+  const inyec = await pagina.evaluate((n) => {
+    const campo = document.querySelector('[data-perfil-dato="name"]');
+    if (campo) campo.dispatchEvent(new FocusEvent('focus'));
+    return {
+      atributos: campo ? [...campo.attributes].map((a) => a.name) : [],
+      valor: campo ? campo.value : null,
+      ejecutado: window.__INYECTADO === 1,
+      esperado: n,
+    };
+  }, NOMBRE);
+  chk('P-01 · una comilla en el nombre no ejecuta nada', inyec.ejecutado === false);
+  chk('P-01 · y no crea atributos nuevos en el input',
+    !inyec.atributos.includes('onfocus') && !inyec.atributos.includes('z'), inyec.atributos.join(','));
+  chk('P-01 · el nombre vuelve ENTERO, sin truncar en la comilla',
+    inyec.valor === inyec.esperado, `${inyec.valor}`);
+
+  // Y el nombre del ejercicio en el <select> de G-01, que se cortaba en la comilla.
+  await pagina.evaluate(() => window.switchTab('charts'));
+  await pagina.waitForTimeout(700);
+  const opciones = await pagina.evaluate(() =>
+    [...document.querySelectorAll('.f-graf__selector option')].map((o) => o.value)
+  );
+  chk('G-01 · un ejercicio con comillas no se trunca en el selector',
+    opciones.includes('Press "Militar"'), JSON.stringify(opciones));
+  await ctx.close();
+}
+
+// --------------------------------------------------------------------------
 clearTimeout(abortar);
 await navegador.close();
 servidor.close();
+const costo = Math.round((Date.now() - ARRANQUE) / 1000);
+console.log(`\ncosto ${costo}s de un tope de ${PRESUPUESTO_MS / 1000}s (${Math.round((costo * 100000) / PRESUPUESTO_MS)}% del presupuesto)`);
 console.log(fallos ? `\n${fallos} FALLO(S) DE COMPORTAMIENTO` : '\nOK: sin fallos de comportamiento');
 process.exit(fallos ? 1 : 0);

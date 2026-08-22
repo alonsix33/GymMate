@@ -90,9 +90,7 @@ export function calculate1RM(exerciseName: string): OneRMResult | null {
   }
 
   // Tres fórmulas de 1RM
-  const epley = peso * (1 + reps / 30);
-  const brzycki = peso * (36 / (37 - reps));
-  const lombardi = peso * Math.pow(reps, 0.1);
+  const { epley, brzycki, lombardi } = formulasDe1RM(peso, reps);
 
   return {
     bestPerformance: performance,
@@ -101,6 +99,39 @@ export function calculate1RM(exerciseName: string): OneRMResult | null {
     lombardi: lombardi.toFixed(1),
     average: ((epley + brzycki + lombardi) / 3).toFixed(1),
   };
+}
+
+/**
+ * Las tres formulas, en un solo sitio.
+ *
+ * PR-01 y CA-01 enseñan el PROMEDIO de las tres bajo el rotulo "1RM
+ * estimado"; el coach (CO-01) usaba `estimateOneRM`, que es Epley a secas, y
+ * pintaba 168 kg donde las otras dos pantallas ponen 165 para el mismo
+ * ejercicio y la misma serie. Dos cifras distintas con el mismo rotulo en la
+ * misma app destruyen la confianza en las dos.
+ */
+export function formulasDe1RM(peso: number, reps: number): {
+  epley: number;
+  brzycki: number;
+  lombardi: number;
+} {
+  return {
+    epley: peso * (1 + reps / 30),
+    brzycki: peso * (36 / (37 - reps)),
+    lombardi: peso * Math.pow(reps, 0.1),
+  };
+}
+
+/**
+ * El promedio de las tres, que es LA cifra que la app llama "1RM estimado".
+ * Devuelve null fuera del dominio de las formulas, igual que `calculate1RM`.
+ */
+export function unaRepMaxPromedio(peso: number, reps: number): number | null {
+  if (!Number.isFinite(peso) || peso <= 0 || !Number.isFinite(reps) || reps < 1 || reps > REPS_MAX_1RM) {
+    return null;
+  }
+  const { epley, brzycki, lombardi } = formulasDe1RM(peso, reps);
+  return (epley + brzycki + lombardi) / 3;
 }
 
 // ==========================================

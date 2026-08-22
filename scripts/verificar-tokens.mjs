@@ -26,7 +26,7 @@
  *
  * Sale 1 ante cualquier discrepancia.  Uso: node scripts/verificar-tokens.mjs
  */
-import { readFileSync, readdirSync, statSync } from 'fs';
+import { readFileSync, readdirSync, statSync, existsSync } from 'fs';
 import { resolve, dirname, join, relative, basename } from 'path';
 import { fileURLToPath } from 'url';
 
@@ -228,7 +228,10 @@ for (const f of fuentesTS) {
   const texto = readFileSync(f, 'utf8');
   const sinComent = texto.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
   for (const fn of ['alert', 'confirm', 'prompt']) {
-    const re = new RegExp(`(?<![\\w.$])${fn}\\s*\\(`, 'g');
+    // El lookbehind excluia el punto para no pillar `foo.confirm(...)`, y con
+    // el se colaba `window.alert('hola')` — la forma mas natural de escribirlo.
+    // Ahora se permite el punto SOLO cuando lo precede `window`.
+    const re = new RegExp(`(?<![\\w.$])(?:window\\s*\\.\\s*)?${fn}\\s*\\(`, 'g');
     if (re.test(sinComent)) {
       fallos.push(`${relative(RAIZ, f)}: usa ${fn}() — el contrato lo prohibe, va por src/ui/feedback.ts`);
     }
@@ -241,9 +244,40 @@ for (const f of fuentesTS) {
 for (const f of fuentesTS) {
   if (relative(RAIZ, f) === join('src', 'utils', 'fecha.ts')) continue;
   const texto = readFileSync(f, 'utf8');
-  if (/toISOString\(\)\s*\.\s*(split\(['"]T['"]\)\s*\[0\]|slice\(\s*0\s*,\s*10\s*\)|substring\(\s*0\s*,\s*10\s*\))/.test(texto)) {
+  // Dos formas: la cadena contigua, y la partida en dos lineas por una
+  // variable intermedia (`const s = d.toISOString(); s.split('T')[0]`), que
+  // evadia la regla contigua sin ninguna mala fe.
+  //
+  // Lo que NO es un defecto, y por eso se descuenta: recortar la fecha para
+  // volver a pegarle una hora local — `new Date(`${iso.slice(0,10)}T00:00:00`)`
+  // es justamente la forma correcta de parsear un dia en local.
+  const recorte = /(split\(['"]T['"]\)\s*\[0\]|slice\(\s*0\s*,\s*10\s*\)|substring\(\s*0\s*,\s*10\s*\))/;
+  const conHoraLocal = /(split\(['"]T['"]\)\s*\[0\]|slice\(\s*0\s*,\s*10\s*\)|substring\(\s*0\s*,\s*10\s*\))\s*\}?\s*(T\d{2}:\d{2}|\+\s*['"`]T)/g;
+  const sinLosBuenos = texto.replace(conHoraLocal, '');
+  const contigua = new RegExp(`toISOString\\(\\)\\s*\\.\\s*${recorte.source}`);
+  const partida = /toISOString\(\)/.test(sinLosBuenos) && recorte.test(sinLosBuenos);
+  if (contigua.test(sinLosBuenos) || partida) {
     fallos.push(
       `${relative(RAIZ, f)}: deriva el dia con toISOString() — eso es UTC. Usa claveDiaLocal() de @/utils/fecha`
+    );
+  }
+  // La otra mitad de la familia, y la que quedo viva medio dia despues de
+  // "arreglar" la primera: LEER una clave de dia con `new Date(clave)`. La
+  // norma manda parsear 'YYYY-MM-DD' como UTC, asi que en Lima devuelve el dia
+  // ANTERIOR a las 19:00. `calculateCurrentStreak` hacia exactamente eso y la
+  // racha de cuatro dias seguidos salia 1, con la puerta en verde.
+  //
+  // Alcance real de esta regla, para que no mienta sobre lo que cubre: pilla
+  // el literal de 10 caracteres y la llamada directa sobre los tres helpers de
+  // fecha.ts. NO pilla `new Date(unaVariable)` cuando la variable trae la clave
+  // de mas lejos — eso lo cubren los tests de racha en src/tests/xp.test.ts.
+  const claveCruda =
+    /new Date\(\s*(['"`]\d{4}-\d{2}-\d{2}['"`]|claveDiaLocal\(|hoyLocal\(|claveDiaDe\()/;
+  const sinComentarios = texto.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  if (claveCruda.test(sinComentarios)) {
+    fallos.push(
+      `${relative(RAIZ, f)}: \`new Date('YYYY-MM-DD')\` parsea en UTC y en Lima devuelve el dia ` +
+        'anterior. Usa fechaDeClaveLocal() de @/utils/fecha'
     );
   }
 }
@@ -251,15 +285,27 @@ for (const f of fuentesTS) {
 // G3 · cero hex fuera de tokens.css. El contrato: "cualquier hex suelto fuera
 // de tokens.css es un defecto".
 //
-// Queda UNA excepcion declarada, con su cuenta clavada: `main.css` es la hoja
-// legacy que la fase 9 elimina entera. Clavar el numero convierte la excepcion
-// en un trinquete: si aparece un hex nuevo, la puerta se pone roja igual. Una
-// excepcion sin numero seria una puerta que miente sobre su alcance.
-const HEX_LEGACY_PERMITIDOS = { 'src/styles/main.css': 14 };
-for (const f of fuentesCSS) {
+// Cero excepciones: la fase 9 borro `src/styles/main.css`, que era la unica.
+// Se deja el mecanismo (con su cuenta clavada, que lo hace un trinquete y no
+// un permiso abierto) pero VACIO, y una guarda que falla si alguna clave
+// apunta a un archivo que ya no existe: una excepcion para un archivo borrado
+// es letra muerta que describe un alcance falso, y ahi seguia — permiso
+// latente para 14 hex el dia que alguien recreara ese nombre.
+const HEX_LEGACY_PERMITIDOS = {};
+for (const rel of Object.keys(HEX_LEGACY_PERMITIDOS)) {
+  if (!existsSync(join(RAIZ, rel))) {
+    fallos.push(`HEX_LEGACY_PERMITIDOS declara '${rel}', que no existe: excepcion muerta`);
+  }
+}
+// `index.html` lleva CSS critico en linea y G3 solo recorria `src/`: un
+// `<style>.x{color:#ff6317}</style>` ahi pasaba las cuatro puertas. Los
+// placeholders `%PAGE_BG%` que vite sustituye desde tokens.css no son hex.
+for (const f of [...fuentesCSS, join(RAIZ, 'index.html')]) {
   if (basename(f) === 'tokens.css') continue;
   const rel = relative(RAIZ, f).split('\\').join('/');
-  const texto = readFileSync(f, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+  const texto = readFileSync(f, 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/<!--[\s\S]*?-->/g, '');
   const hexes = [...texto.matchAll(/#[0-9a-fA-F]{3,8}\b/g)].map((m) => m[0]);
   const permitidos = HEX_LEGACY_PERMITIDOS[rel];
   if (permitidos === undefined) {
@@ -285,7 +331,18 @@ for (const f of fuentesTS) {
     .replace(/\/\*[\s\S]*?\*\//g, '')
     .replace(/^\s*\/\/.*$/gm, '')
     .replace(/\/\/.*$/gm, '');
-  const hexes = [...sinComent.matchAll(/['"\`]#[0-9a-fA-F]{3,8}\b/g)].map((m) => m[0].slice(1));
+  // El hex se buscaba PEGADO a la comilla, asi que `'linear-gradient(#ff6317,
+  // #0b0c0f)'` pasaba entero. Ahora se busca en cualquier posicion, y tambien
+  // el `rgb()` con tres numeros, que es la otra forma de escribir un color a
+  // mano. Los `#` de una ruta o de un ancla no matchean: exigen 3-8 digitos
+  // hexadecimales y final de palabra.
+  const hexes = [...sinComent.matchAll(/#[0-9a-fA-F]{3,8}\b/g)].map((m) => m[0]);
+  const rgbs = [...sinComent.matchAll(/\brgba?\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}/g)].map((m) => m[0]);
+  if (rgbs.length) {
+    fallos.push(
+      `${relative(RAIZ, f)}: ${rgbs.length} color rgb() en codigo TS (${[...new Set(rgbs)].slice(0, 3).join(', ')}) — usa var(--token)`
+    );
+  }
   if (hexes.length) {
     fallos.push(
       `${relative(RAIZ, f)}: ${hexes.length} hex en codigo TS (${[...new Set(hexes)].slice(0, 4).join(', ')}) — usa var(--token)`
@@ -314,6 +371,34 @@ for (const f of fuentesCSS) {
     .sort();
   if (huerfanos.length) {
     fallos.push(`${relative(RAIZ, f)}: var() sin token: ${huerfanos.join(', ')}`);
+  }
+}
+
+// G4b · las mismas var() cuando las escribe el TypeScript. G4 solo recorria
+// `.css`, asi que un `var(--token-inexistente)` dentro de un template literal
+// pasaba en verde y se veia mal en silencio — que es justo el defecto que G4
+// dice cubrir. Los `.dc.html` del handoff no cuentan: no son produccion.
+for (const f of fuentesTS) {
+  const texto = readFileSync(f, 'utf8');
+  const declaradosAqui = new Set([...texto.matchAll(/(--[a-z0-9_-]+)\s*:/g)].map((m) => m[1]));
+  const usados = new Set();
+  // Los nombres que el TS ARMA con una interpolacion (`var(--heat-${q})`) no
+  // se pueden resolver aqui, pero su PREFIJO si: se exige que exista al menos
+  // un token que empiece asi, que es lo que pilla `var(--hetmap-${q})`.
+  const prefijos = new Set();
+  for (const m of texto.matchAll(/var\((--[a-z0-9_-]+)(\$\{|\s*,)?/g)) {
+    if (m[2] === '${') prefijos.add(m[1]);
+    else if (m[2] === undefined) usados.add(m[1]);
+  }
+  const huerfanos = [...usados]
+    .filter((v) => !tok.has(v) && !declaradosAqui.has(v) && !propsEnLinea.has(v))
+    .sort();
+  const sinFamilia = [...prefijos].filter((p) => ![...tok.keys()].some((t) => t.startsWith(p))).sort();
+  if (huerfanos.length) {
+    fallos.push(`${relative(RAIZ, f)}: var() sin token: ${huerfanos.join(', ')}`);
+  }
+  if (sinFamilia.length) {
+    fallos.push(`${relative(RAIZ, f)}: var() armada sin familia de tokens: ${sinFamilia.join('*, ')}*`);
   }
 }
 

@@ -12,7 +12,11 @@ import {
   saveProfile,
   getBodyMeasurements,
   saveBodyMeasurements,
+  getCustomWorkouts,
+  saveCustomWorkouts,
+  savePRs,
 } from '@/utils/storage';
+import type { CustomWorkout } from '@/utils/storage';
 import { renderHistorial, renderRecords, abrirDetalle, animarZonas } from '@/ui/hueso';
 import { normalizeExerciseName } from '@/utils/exercise-normalizer';
 
@@ -187,22 +191,25 @@ export function exportToCSV(): void {
         const grupo = session.grupo;
         const volumenTotalSesion = session.volumenTotal;
 
+        // Todos los ejercicios, tambien los de volumen 0. El filtro
+        // `if (ej.volumen > 0)` tiraba los sets registrados y no completados:
+        // 80 ejercicios salian 40, y el `volumenPorGrupo` que el importador
+        // rehace desde estas filas perdia grupos enteros —el mapa muscular y
+        // el heatmap cambiaban al restaurar—.
         session.ejercicios.forEach((ej) => {
-          if (ej.volumen > 0) {
-            rows.push([
-              fecha,
-              grupo,
-              ej.nombre,
-              String(ej.sets),
-              String(ej.reps),
-              String(ej.peso),
-              ej.esMancuerna ? 'Sí' : 'No',
-              ej.grupoMuscular,
-              String(ej.volumen),
-              ej.completado ? 'Sí' : 'No',
-              String(volumenTotalSesion),
-            ]);
-          }
+          rows.push([
+            fecha,
+            grupo,
+            ej.nombre,
+            String(ej.sets),
+            String(ej.reps),
+            String(ej.peso),
+            ej.esMancuerna ? 'Sí' : 'No',
+            ej.grupoMuscular,
+            String(ej.volumen),
+            ej.completado ? 'Sí' : 'No',
+            String(volumenTotalSesion),
+          ]);
         });
       }
     });
@@ -284,6 +291,61 @@ export function exportToCSV(): void {
         String(registro.date ?? ''),
         ...campos.map((c) => (registro[c] === undefined ? '' : String(registro[c]))),
       ]);
+    }
+  }
+
+  // ==========================================
+  // SECCIÓN 5: RÉCORDS
+  // Se reconstruian desde las filas de pesas, asi que un PR mas viejo que la
+  // ventana de historial (MAX_HISTORY_ITEMS) se perdia al restaurar, y al que
+  // sobrevivia se le reescribia la fecha con la de la sesion que lo produjo.
+  // ==========================================
+  const records = getPRs();
+  const nombresPR = Object.keys(records);
+  if (nombresPR.length > 0) {
+    rows.push([]);
+    rows.push(['=== RÉCORDS ===']);
+    rows.push(['Ejercicio', 'Peso (kg)', 'Sets', 'Reps', 'Volumen', 'Fecha']);
+    for (const nombre of nombresPR) {
+      const pr = records[nombre];
+      rows.push([
+        nombre,
+        String(pr.peso ?? 0),
+        String(pr.sets ?? 0),
+        String(pr.reps ?? 0),
+        String(pr.volumen ?? 0),
+        String(pr.date ?? ''),
+      ]);
+    }
+  }
+
+  // ==========================================
+  // SECCIÓN 6: RUTINAS PROPIAS
+  // El builder (B-01) las guarda en `gymmate_custom_workouts` y el CSV no las
+  // llevaba: restaurar borraba las rutinas construidas a mano mientras P-01
+  // promete que "es la copia con la que se recupera todo".
+  // ==========================================
+  const rutinas = getCustomWorkouts();
+  if (rutinas.length > 0) {
+    rows.push([]);
+    rows.push(['=== RUTINAS PROPIAS ===']);
+    rows.push(['Id', 'Rutina', 'Creada', 'Ejercicio', 'Es Mancuerna', 'Grupo Muscular', 'Opcional']);
+    for (const rutina of rutinas) {
+      const filas: Array<[import('@/types').Exercise, boolean]> = [
+        ...(rutina.ejercicios ?? []).map((e) => [e, false] as [import('@/types').Exercise, boolean]),
+        ...(rutina.opcionales ?? []).map((e) => [e, true] as [import('@/types').Exercise, boolean]),
+      ];
+      for (const [ej, opcional] of filas) {
+        rows.push([
+          rutina.id,
+          rutina.nombre,
+          rutina.createdAt ?? '',
+          ej.nombre,
+          ej.esMancuerna ? 'Sí' : 'No',
+          ej.grupoMuscular,
+          opcional ? 'Sí' : 'No',
+        ]);
+      }
     }
   }
 
@@ -401,12 +463,20 @@ function claveDeSesion(iso: string, grupo: string): string {
  * correcto de GymMate", culpando al archivo que la propia app genero.
  */
 export interface ResultadoImport {
+  /** Sesiones de pesas ANADIDAS (no parseadas). */
   imported: number;
   duplicates: number;
   descartadas: number;
+  /** Sesiones de cardio ANADIDAS. El toast reportaba las parseadas y decia
+   *  "2 de cardio" cuando habia entrado cero. */
   cardio: number;
+  /** Campos de perfil que CAMBIARON. Antes se anunciaba "perfil" aunque el
+   *  archivo trajera exactamente lo que ya habia. */
   perfil: number;
   medidas: number;
+  medidasIlegibles: number;
+  records: number;
+  rutinas: number;
 }
 
 function partirEnSecciones(lines: string[]): Map<string, string[]> {
@@ -485,25 +555,50 @@ function importarPerfil(filas: string[]): number {
     if (!campo || campo.toLowerCase() === 'campo') continue;
     const bruto = v[1].trim();
     if (!bruto) continue;
-    perfil[campo] = CAMPOS_NUMERICOS_PERFIL.has(campo) ? Number.parseFloat(bruto) || 0 : bruto;
+    const valor = CAMPOS_NUMERICOS_PERFIL.has(campo) ? Number.parseFloat(bruto) || 0 : bruto;
+    // Solo cuenta si CAMBIA algo: el toast anunciaba "perfil" tambien cuando el
+    // archivo traia exactamente lo que ya estaba guardado.
+    if (perfil[campo] === valor) continue;
+    perfil[campo] = valor;
     campos++;
   }
   if (campos > 0) saveProfile(perfil as unknown as import('@/types').ProfileData);
   return campos;
 }
 
-function importarMedidas(filas: string[]): number {
-  if (filas.length < 2) return 0;
+/**
+ * La fecha de una medida se guarda en ISO, pero el CSV puede traerla en
+ * formato espanol si alguien lo edito en Excel. Devuelve null si no hay forma
+ * de leerla: la fila se descarta y se cuenta, en vez de entrar y pintarse
+ * como "Invalid Date".
+ */
+function fechaDeMedida(bruto: string): string | null {
+  const t = bruto.trim();
+  if (!t) return null;
+  const directa = new Date(t);
+  if (!Number.isNaN(directa.getTime())) return directa.toISOString();
+  return parseSpanishDate(t);
+}
+
+function importarMedidas(filas: string[]): { nuevas: number; ilegibles: number } {
+  const nada = { nuevas: 0, ilegibles: 0 };
+  if (filas.length < 2) return nada;
   const cabecera = parseCSVLine(filas[0]).map((c) => c.trim());
-  if (cabecera[0]?.toLowerCase() !== 'fecha') return 0;
+  if (cabecera[0]?.toLowerCase() !== 'fecha') return nada;
   const existentes = getBodyMeasurements();
   const dias = new Set(existentes.map((m) => claveDiaDe(m.date)));
   let nuevas = 0;
+  let ilegibles = 0;
   for (const linea of filas.slice(1)) {
     const v = parseCSVLine(linea);
     if (v.length < 2 || !v[0].trim()) continue;
-    if (dias.has(claveDiaDe(v[0]))) continue;
-    const medida: Record<string, unknown> = { date: v[0].trim() };
+    // Las pesas ya filtraban la fecha ilegible; las medidas no, y una fila con
+    // basura en la primera columna se pintaba como "Invalid Date" en P-03 y en
+    // el aria-label del boton de borrar.
+    const cuando = fechaDeMedida(v[0]);
+    if (!cuando) { ilegibles++; continue; }
+    if (dias.has(claveDiaDe(cuando))) continue;
+    const medida: Record<string, unknown> = { date: cuando };
     cabecera.slice(1).forEach((campo, i) => {
       const bruto = (v[i + 1] ?? '').trim();
       if (bruto === '') return;
@@ -511,14 +606,83 @@ function importarMedidas(filas: string[]): number {
       medida[campo] = Number.isNaN(n) ? bruto : n;
     });
     existentes.push(medida as unknown as import('@/types').BodyMeasurement);
-    dias.add(claveDiaDe(v[0]));
+    dias.add(claveDiaDe(cuando));
     nuevas++;
   }
   if (nuevas > 0) {
     existentes.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
     saveBodyMeasurements(existentes);
   }
-  return nuevas;
+  return { nuevas, ilegibles };
+}
+
+/**
+ * Los records que el CSV trae explicitos MANDAN sobre los que se reconstruyen
+ * desde las filas de pesas: conservan su fecha real y sobreviven aunque la
+ * sesion que los produjo ya se haya salido de la ventana de historial.
+ */
+function importarRecords(filas: string[]): number {
+  if (filas.length < 2) return 0;
+  const cabecera = parseCSVLine(filas[0]).map((c) => c.trim().toLowerCase());
+  if (!cabecera[0]?.startsWith('ejercicio')) return 0;
+  const actuales = getPRs();
+  let entraron = 0;
+  for (const linea of filas.slice(1)) {
+    const v = parseCSVLine(linea);
+    if (v.length < 6 || !v[0].trim()) continue;
+    const peso = Number.parseFloat(v[1]) || 0;
+    if (peso <= 0) continue;
+    const clave = normalizeExerciseName(v[0].trim());
+    const previo = actuales[clave];
+    if (previo && previo.peso >= peso) continue;
+    actuales[clave] = {
+      peso,
+      sets: Number.parseInt(v[2], 10) || 0,
+      reps: Number.parseInt(v[3], 10) || 0,
+      volumen: Number.parseFloat(v[4]) || 0,
+      date: fechaDeMedida(v[5]) ?? new Date().toISOString(),
+    };
+    entraron++;
+  }
+  if (entraron > 0) savePRs(actuales);
+  return entraron;
+}
+
+/** Rutinas del builder (B-01). Se dedupican por id. */
+function importarRutinas(filas: string[]): number {
+  if (filas.length < 2) return 0;
+  const cabecera = parseCSVLine(filas[0]).map((c) => c.trim().toLowerCase());
+  if (cabecera[0] !== 'id' || cabecera[1] !== 'rutina') return 0;
+  const existentes = getCustomWorkouts();
+  const ids = new Set(existentes.map((r) => r.id));
+  const enConstruccion = new Map<string, CustomWorkout>();
+  for (const linea of filas.slice(1)) {
+    const v = parseCSVLine(linea);
+    if (v.length < 7 || !v[0].trim() || !v[3].trim()) continue;
+    const id = v[0].trim();
+    if (ids.has(id)) continue;
+    if (!enConstruccion.has(id)) {
+      enConstruccion.set(id, {
+        id,
+        nombre: v[1].trim() || 'Rutina',
+        createdAt: fechaDeMedida(v[2]) ?? new Date().toISOString(),
+        isCustom: true,
+        ejercicios: [],
+        opcionales: [],
+      });
+    }
+    const rutina = enConstruccion.get(id)!;
+    const ejercicio = {
+      nombre: v[3].trim(),
+      esMancuerna: v[4]?.toLowerCase() === 'sí' || v[4]?.toLowerCase() === 'si',
+      grupoMuscular: (v[5]?.trim() || 'Core') as import('@/types').MuscleGroup,
+    };
+    const esOpcional = v[6]?.toLowerCase() === 'sí' || v[6]?.toLowerCase() === 'si';
+    (esOpcional ? rutina.opcionales : rutina.ejercicios).push(ejercicio);
+  }
+  if (enConstruccion.size === 0) return 0;
+  saveCustomWorkouts([...existentes, ...enConstruccion.values()]);
+  return enConstruccion.size;
 }
 
 export function importFromCSV(
@@ -527,7 +691,7 @@ export function importFromCSV(
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
 
-    reader.onload = (e) => {
+    reader.onload = async (e) => {
       try {
         const content = e.target?.result as string;
         // Remover BOM si existe
@@ -558,12 +722,20 @@ export function importFromCSV(
         // en silencio: el backup era de ida y vuelta solo para las pesas.
         const sesionesCardio = importarCardio(secciones.get('SESIONES DE CARDIO') ?? []);
         const camposPerfil = importarPerfil(secciones.get('PERFIL') ?? []);
-        const medidasNuevas = importarMedidas(secciones.get('MEDIDAS CORPORALES') ?? []);
+        const medidas = importarMedidas(secciones.get('MEDIDAS CORPORALES') ?? []);
+        const medidasNuevas = medidas.nuevas;
+        const recordsNuevos = importarRecords(secciones.get('RÉCORDS') ?? secciones.get('RECORDS') ?? []);
+        const rutinasNuevas = importarRutinas(secciones.get('RUTINAS PROPIAS') ?? []);
 
         // Un CSV de quien solo hace cardio no tiene seccion de pesas, y se
         // rechazaba culpando al archivo que la propia app habia generado.
         const hayAlgo =
-          filasDePesas.length > 0 || sesionesCardio.length > 0 || camposPerfil > 0 || medidasNuevas > 0;
+          filasDePesas.length > 0 ||
+          sesionesCardio.length > 0 ||
+          camposPerfil > 0 ||
+          medidasNuevas > 0 ||
+          recordsNuevos > 0 ||
+          rutinasNuevas > 0;
         if (!hayAlgo) {
           reject(new Error('El archivo CSV no tiene el formato correcto de GymMate'));
           return;
@@ -621,6 +793,7 @@ export function importFromCSV(
         let duplicates = 0;
 
         // El cardio pasa por la MISMA deduplicacion que las pesas.
+        let cardioAnadido = 0;
         for (const sesion of sesionesCardio) {
           const clave = claveDeSesion(sesion.savedAt || sesion.date, sesion.grupo);
           if (existingKeys.has(clave)) {
@@ -629,6 +802,7 @@ export function importFromCSV(
           }
           existingKeys.add(clave);
           newSessions.push(sesion);
+          cardioAnadido++;
         }
 
         sessionMap.forEach((sessionRows, key) => {
@@ -712,13 +886,30 @@ export function importFromCSV(
           });
         }
 
+        // Restaurar un backup en un navegador limpio dejaba la gamificacion en
+        // cero: `initGamification()` ya habia corrido y creado el estado vacio,
+        // asi que la migracion desde historial no se volvia a disparar y la
+        // home decia "NIVEL 1 · 0 XP" con 38 entrenos en el heatmap. La via de
+        // recuperacion oficial borraba meses de progresion.
+        if (newSessions.length > 0) {
+          try {
+            const { reinitGamification } = await import('@/features/gamification');
+            reinitGamification();
+          } catch (e) {
+            console.warn('No se pudo recalcular la gamificacion tras importar', e);
+          }
+        }
+
         resolve({
-          imported: newSessions.length,
+          imported: newSessions.length - cardioAnadido,
           duplicates,
           descartadas,
-          cardio: sesionesCardio.length,
+          cardio: cardioAnadido,
           perfil: camposPerfil,
           medidas: medidasNuevas,
+          medidasIlegibles: medidas.ilegibles,
+          records: recordsNuevos,
+          rutinas: rutinasNuevas,
         });
       } catch (error) {
         reject(new Error('Error al procesar el archivo CSV: ' + (error as Error).message));
@@ -752,11 +943,10 @@ export function triggerCSVImport(): void {
           `${result.duplicates} ${result.duplicates === 1 ? 'duplicada omitida' : 'duplicadas omitidas'}`
         );
       }
-      if (result.descartadas > 0) {
+      if (result.descartadas + result.medidasIlegibles > 0) {
+        const ilegibles = result.descartadas + result.medidasIlegibles;
         avisos.push(
-          `${result.descartadas} ${
-            result.descartadas === 1 ? 'fila con fecha ilegible' : 'filas con fecha ilegible'
-          }`
+          `${ilegibles} ${ilegibles === 1 ? 'fila con fecha ilegible' : 'filas con fecha ilegible'}`
         );
       }
       // Lo recuperado se dice entero: el toast hablaba solo de las filas de
@@ -772,6 +962,12 @@ export function triggerCSVImport(): void {
         recuperado.push(
           `${result.medidas} ${result.medidas === 1 ? 'medición' : 'mediciones'}`
         );
+      }
+      if (result.records > 0) {
+        recuperado.push(`${result.records} ${result.records === 1 ? 'récord' : 'récords'}`);
+      }
+      if (result.rutinas > 0) {
+        recuperado.push(`${result.rutinas} ${result.rutinas === 1 ? 'rutina' : 'rutinas'}`);
       }
 
       mostrarToast({

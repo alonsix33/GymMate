@@ -1,6 +1,4 @@
-import { claveDiaLocal, hoyLocal } from '@/utils/fecha';
-import { getProfile, saveProfile as saveProfileData } from '@/utils/storage';
-import type { ProfileData } from '@/types';
+import { getProfile } from '@/utils/storage';
 import { renderPerfil, renderHistorialDeMedidas } from '@/ui/perfil';
 
 // ==========================================
@@ -23,113 +21,18 @@ export function loadMedidas(): void {
 }
 
 // ==========================================
-// GUARDAR PERFIL
+// GUARDAR PERFIL / EDAD / INICIALIZACION
 // ==========================================
-
-export function saveProfile(e: Event): boolean {
-  e.preventDefault();
-
-  const profile: ProfileData = {
-    name:
-      (document.getElementById('profileName') as HTMLInputElement)?.value || '',
-    birthdate:
-      (document.getElementById('profileBirthdate') as HTMLInputElement)?.value ||
-      '',
-    gender:
-      ((document.getElementById('profileGender') as HTMLSelectElement)
-        ?.value as 'male' | 'female') || 'male',
-    weight:
-      parseFloat(
-        (document.getElementById('profileWeight') as HTMLInputElement)?.value ||
-          '0'
-      ) || 0,
-    height:
-      parseFloat(
-        (document.getElementById('profileHeight') as HTMLInputElement)?.value ||
-          '0'
-      ) || 0,
-    activity:
-      parseFloat(
-        (document.getElementById('profileActivity') as HTMLSelectElement)
-          ?.value || '1.2'
-      ) || 1.2,
-  };
-
-  saveProfileData(profile);
-
-  // Mostrar mensaje de éxito
-  const message = document.getElementById('profileSaveMessage');
-  if (message) {
-    message.classList.remove('hidden');
-    setTimeout(() => {
-      message.classList.add('hidden');
-    }, 3000);
-  }
-
-  return false;
-}
-
-// ==========================================
-// CALCULAR EDAD
-// ==========================================
-
-export function calculateAge(): void {
-  const birthdateInput = document.getElementById(
-    'profileBirthdate'
-  ) as HTMLInputElement;
-  const ageDisplay = document.getElementById('calculatedAge');
-
-  if (!birthdateInput || !ageDisplay) return;
-
-  const birthdate = birthdateInput.value;
-  if (!birthdate) {
-    ageDisplay.textContent = '-';
-    return;
-  }
-
-  const birth = new Date(birthdate);
-  const today = new Date();
-  let age = today.getFullYear() - birth.getFullYear();
-  const monthDiff = today.getMonth() - birth.getMonth();
-
-  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) {
-    age--;
-  }
-
-  ageDisplay.textContent = String(age);
-}
-
-// ==========================================
-// INICIALIZAR PERFIL
-// ==========================================
-
-export function initializeProfile(): void {
-  // Establecer max date para birthdate input (hoy)
-  const today = hoyLocal();
-  const birthdateInput = document.getElementById(
-    'profileBirthdate'
-  ) as HTMLInputElement;
-
-  if (birthdateInput) {
-    birthdateInput.setAttribute('max', today);
-
-    // Min = 100 años atrás
-    const minDate = new Date();
-    minDate.setFullYear(minDate.getFullYear() - 100);
-    birthdateInput.setAttribute('min', claveDiaLocal(minDate));
-
-    birthdateInput.addEventListener('change', calculateAge);
-  }
-
-  // Form submit
-  const profileForm = document.getElementById('profileForm');
-  if (profileForm) {
-    profileForm.addEventListener('submit', saveProfile);
-  }
-
-  // Cargar datos existentes
-  loadProfile();
-}
+//
+// Se han borrado `saveProfile`, `calculateAge` e `initializeProfile`. Buscaban
+// nueve ids que la fase 7 retiro de `index.html` al reemplazar el formulario
+// legacy por P-01 (`profileForm`, `profileName`, `profileBirthdate`,
+// `profileGender`, `profileWeight`, `profileHeight`, `profileActivity`,
+// `profileSaveMessage`, `calculatedAge`). No las llamaba nadie, pero
+// `saveProfile` estaba EXPORTADA y cada `getElementById` devolvia null: al
+// volver a engancharla habria escrito {name:'', weight:0, height:0} encima del
+// perfil real. El guardado vive en `src/ui/perfil.ts`, contra los campos que
+// esa pantalla pinta de verdad.
 
 // ==========================================
 // OBTENER DATOS DEL PERFIL PARA CALCULADORAS

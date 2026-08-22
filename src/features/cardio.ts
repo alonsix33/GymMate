@@ -21,7 +21,7 @@ import { cardioState, resetCardioState } from '@/state/session';
 import { getCardioExerciseNames } from '@/data/cardio-exercises';
 import { addToHistory, getHistory } from '@/utils/storage';
 import { processCompletedCardioSession } from '@/features/gamification';
-import { cifra } from '@/utils/formato';
+import { cifra, escapar } from '@/utils/formato';
 import {
   PRESETS_PIRAMIDE,
   PIRAMIDE_MEDIA,
@@ -142,11 +142,6 @@ function subDeModo(mode: CardioMode, config: CardioConfig): string {
   }
 }
 
-function escapar(texto: string): string {
-  const d = document.createElement('div');
-  d.textContent = texto;
-  return d.innerHTML;
-}
 
 function vista(id: string): HTMLElement | null {
   return document.getElementById(id);

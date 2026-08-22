@@ -1,3 +1,4 @@
+import { SIN_FECHA } from '@/utils/fecha';
 /**
  * FIERRO · secciones Hueso — lo que YA PASÓ.
  *
@@ -9,9 +10,9 @@
  * Los graficos son SVG a mano, como en los mockups: nada de chart.js.
  */
 import { getHistory, getPRs } from '@/utils/storage';
-import { cifra, cifraDecimal } from '@/utils/formato';
+import { cifra, cifraDecimal, escapar } from '@/utils/formato';
 import { formatearTiempo } from '@/utils/cardio-calc';
-import { calculate1RM } from '@/utils/calculations';
+import { calculate1RM, unaRepMaxPromedio } from '@/utils/calculations';
 import { getSessionXP, estimateOneRM } from '@/features/gamification';
 import {
   distribucionMuscular,
@@ -63,14 +64,10 @@ function picoReal(nombre: string, historial: HistorySession[]): number {
   return Math.max(picoDe(nombre, historial) ?? 0, getPRs()[nombre]?.peso ?? 0);
 }
 
-function escapar(texto: string): string {
-  const d = document.createElement('div');
-  d.textContent = texto;
-  return d.innerHTML;
-}
 
-/** "vie, 17 abr" — como el mockup. */
+/** "vie, 17 abr" — como el mockup; la raya cuando la fecha no se puede leer. */
 function fechaCorta(fecha: Date): string {
+  if (Number.isNaN(fecha.getTime())) return SIN_FECHA;
   const dia = fecha.toLocaleDateString('es-ES', { weekday: 'short' }).replace('.', '');
   const mes = fecha.toLocaleDateString('es-ES', { month: 'short' }).replace('.', '');
   return `${dia}, ${fecha.getDate()} ${mes}`;
@@ -504,7 +501,17 @@ export function renderRecords(contenedor: HTMLElement): void {
       // Si el historial no tiene el ejercicio, calculate1RM no puede estimar
       // nada: se estima con el propio record en vez de enseñar el peso crudo
       // bajo el rotulo "1RM estimado".
-      const estimado = rm ? Number(rm.average) : estimateOneRM(pr.peso, pr.reps) || pr.peso;
+      // El fallback tambien va por el promedio: con `estimateOneRM` (Epley a
+      // secas) la misma tarjeta cambiaba de cifra segun el ejercicio estuviera
+      // o no en el historial, bajo el mismo rotulo.
+      // El mockup escribe esta cifra SIN decimales ("180 kg", "60 kg"), igual
+      // que el bloque de datos del coach. Con `164.9` aqui y `165` alli, la
+      // misma estimacion salia distinta en dos pantallas.
+      const estimado = Math.round(
+        rm
+          ? Number(rm.average)
+          : unaRepMaxPromedio(pr.peso, pr.reps) ?? estimateOneRM(pr.peso, pr.reps) ?? pr.peso
+      );
       const detalle = `${pr.sets}×${pr.reps} · ${cifraDecimal(pr.peso)} kg`;
       if (actual === null) {
         return `

@@ -2,7 +2,7 @@
 // XP CALCULATION SYSTEM
 // ==========================================
 
-import { claveDiaLocal } from '@/utils/fecha';
+import { claveDiaLocal, fechaDeClaveLocal } from '@/utils/fecha';
 import type {
   XPSource,
   XPTransaction,
@@ -204,7 +204,11 @@ export function calculateCurrentStreak(
 
   // Contar dias consecutivos hacia atras
   let streak = 1;
-  let currentDate = new Date(lastSessionDate);
+  // `new Date('2026-08-22')` es medianoche UTC, o sea el 21 en Lima: el resto
+  // del bucle comparaba contra el dia anterior y devolvia racha 1 con cuatro
+  // dias seguidos. La clave ya viene en dia LOCAL, asi que se reconstruye en
+  // local, no se reparsea.
+  let currentDate = fechaDeClaveLocal(lastSessionDate);
 
   for (let i = 1; i < sortedDates.length; i++) {
     const prevDate = new Date(currentDate);

@@ -14,6 +14,14 @@ import { loadProfile, loadMedidas } from '@/features/profile';
 // ==========================================
 
 export function switchTab(tabName: TabName): void {
+  // 'home' es un TabName valido pero NO tiene `#homeTab`: por este camino la
+  // home se ocultaba, no se mostraba nada y la pantalla quedaba en blanco con
+  // la tab bar marcando INICIO. Nadie lo llamaba asi dentro de src/, pero el
+  // tipo lo permite y `window.switchTab` esta expuesto.
+  if (tabName === 'home') {
+    void showHome();
+    return;
+  }
   // Ocultar home view
   const homeView = document.getElementById('homeView');
   if (homeView) {

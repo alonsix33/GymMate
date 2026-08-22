@@ -38,3 +38,33 @@ export function claveDiaDe(valor: string | undefined | null): string | null {
   const d = new Date(bruto);
   return Number.isNaN(d.getTime()) ? null : claveDiaLocal(d);
 }
+
+/**
+ * El camino de vuelta de `claveDiaLocal`: 'YYYY-MM-DD' -> mediodia LOCAL de
+ * ese dia.
+ *
+ * `new Date('2026-08-22')` NO es equivalente: la norma manda parsear la forma
+ * corta como UTC, asi que en Lima (UTC-5) devuelve el 21 a las 19:00. Ese era
+ * el bug que quedaba vivo en `calculateCurrentStreak` despues de centralizar
+ * el resto: la racha de cuatro dias seguidos salia 1. Se usa mediodia y no
+ * medianoche para que sumar o restar dias no cruce un cambio de horario.
+ */
+export function fechaDeClaveLocal(clave: string): Date {
+  const [a, m, d] = clave.split('-').map(Number);
+  return new Date(a, (m || 1) - 1, d || 1, 12, 0, 0, 0);
+}
+
+/**
+ * La raya del handoff para "no hay dato". Una fecha ilegible en el historial
+ * —una que entro por un CSV editado a mano, o una version anterior de la
+ * app— se pintaba como "Invalid Date" y "hace NaN días" en HOME, HISTORIAL y
+ * el detalle de sesion. Un rotulo que miente es peor que no tener rotulo.
+ */
+export const SIN_FECHA = '—';
+
+/** La fecha si es legible; null si no. Nunca un `Date` invalido. */
+export function fechaLegible(valor: string | number | Date | undefined | null): Date | null {
+  if (valor === undefined || valor === null || valor === '') return null;
+  const d = valor instanceof Date ? valor : new Date(valor);
+  return Number.isNaN(d.getTime()) ? null : d;
+}

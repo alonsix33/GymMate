@@ -20,13 +20,8 @@ import {
   type DatoDeEjercicio,
   type TurnoCoach,
 } from '@/features/coach-ia';
-import { cifra } from '@/utils/formato';
+import { cifra, escapar, taparNavegacion } from '@/utils/formato';
 
-function escapar(texto: string): string {
-  const d = document.createElement('div');
-  d.textContent = texto;
-  return d.innerHTML;
-}
 
 const ID = 'fierroCoach';
 let turnos: TurnoCoach[] = [];
@@ -186,8 +181,16 @@ function render(): void {
         value="${escapar(borrador)}"
         placeholder="${estado === 'listo' ? 'Pregúntale a tus datos…' : 'Esperando respuesta…'}"
         aria-label="Escribe tu pregunta" ${estado === 'listo' ? '' : 'disabled'} />
-      <button type="button" class="f-coach__enviar" data-coach="enviar"
-        ${estado === 'listo' ? '' : 'disabled'} aria-label="Enviar">↑</button>
+      ${
+        estado === 'listo'
+          ? `<button type="button" class="f-coach__enviar" data-coach="enviar" aria-label="Enviar">↑</button>`
+          : // CO-02 dibuja aqui un DETENER destructivo (■), no un enviar
+            // apagado: el mockup le pone `cursor:pointer` y borde rojo. Sin
+            // el, un modelo lento dejaba el compositor muerto 30 s y la unica
+            // salida era cerrar el coach.
+            `<button type="button" class="f-coach__enviar f-coach__enviar--detener"
+              data-coach="detener" aria-label="Detener la respuesta">■</button>`
+      }
     </div>
   `;
 
@@ -233,6 +236,7 @@ export function abrirCoach(mensajeInicial?: string): void {
   }
 
   contenedor().classList.remove('hidden');
+  taparNavegacion(true);
   render();
   document.getElementById('coachEntrada')?.focus();
 }
@@ -245,6 +249,7 @@ export function cerrarCoach(): void {
   estado = 'listo';
   parcial = '';
   document.getElementById(ID)?.classList.add('hidden');
+  taparNavegacion(false);
 }
 
 async function enviar(): Promise<void> {
@@ -275,8 +280,11 @@ async function preguntar(pregunta: string): Promise<void> {
 
     let texto = '';
     parcial = '';
-    estado = 'escribiendo';
-    render();
+    // OJO: se sigue en 'pensando'. CO-02 dice que el sello "se sostiene hasta
+    // el PRIMER TOKEN — sin spinner, sin tres puntos; aguanta los segundos
+    // extra de una pregunta larga sin verse roto". Pasar a 'escribiendo' aqui
+    // pintaba una card vacia con el cursor parpadeando desde el milisegundo
+    // cero, y PENSANDO no llegaba a verse nunca.
 
     // Un modelo que no responde nunca no puede dejar el compositor muerto.
     const limite = new Promise<never>((_, rechazar) =>
@@ -290,6 +298,11 @@ async function preguntar(pregunta: string): Promise<void> {
       if (paso.done) break;
       texto += paso.value;
       parcial = texto;
+      if (estado !== 'escribiendo') {
+        // Primer token: aqui, y solo aqui, PENSANDO da paso al streaming.
+        estado = 'escribiendo';
+        render();
+      }
       // Por ID, no por `:last-of-type`: ese pseudo-selector mira el TIPO de
       // elemento (span), no la clase, y cogia el primer turno del hilo.
       const nodo = document.getElementById('coachParcial');
@@ -332,6 +345,18 @@ async function alTocar(el: HTMLElement): Promise<void> {
       break;
     case 'enviar':
       await enviar();
+      break;
+    case 'detener':
+      // Mismo gesto que cerrar: invalida el turno en vuelo sin tirar lo ya
+      // escrito, y devuelve el compositor.
+      turnoActivo++;
+      if (parcial.trim()) {
+        turnos.push({ id: `c_${Date.now()}`, autor: 'coach', texto: parcial, fecha: new Date().toISOString() });
+        guardarConversacion(turnos);
+      }
+      estado = 'listo';
+      parcial = '';
+      render();
       break;
     case 'reintentar': {
       // Se drena la cola ENTERA. Antes solo se reintentaba la ultima pregunta,

@@ -23,14 +23,9 @@ import { renderMapaFierro, colorDeRango } from '@/ui/gamification/muscle-map';
 import type { Achievement, GamificationMuscleGroup, MuscleRanks, StrengthRank } from '@/types/gamification';
 import { getProfile } from '@/utils/storage';
 import { getExerciseMultiplier } from '@/features/gamification';
-import { cifra } from '@/utils/formato';
+import { cifra, escapar, taparNavegacion } from '@/utils/formato';
 import { nombreDeRango, pesoParaElSiguiente, siguienteEscalon, franjaDe } from '@/utils/rangos';
 
-function escapar(texto: string): string {
-  const d = document.createElement('div');
-  d.textContent = texto;
-  return d.innerHTML;
-}
 
 type Vista = 'progreso' | 'rangos' | 'logros';
 let vistaActual: Vista = 'progreso';
@@ -82,7 +77,11 @@ function franjaTexto(rango: StrengthRank): string {
   const f = franjaDe(rango);
   if (!f) return '';
   if (!Number.isFinite(f.max)) return `${f.min.toFixed(1)}x+`;
-  return `${f.min}–${f.max}`;
+  // El mockup escribe el TOPE con un decimal siempre ("1.6–2.0", nunca
+  // "1.6–2") y el suelo con los digitos que tenga ("0–0.3", no "0.0–0.3").
+  // Sin el `toFixed(1)` del tope, Campeon salia "1.6–2". [REF Pantallas:
+  // rangoLadder]
+  return `${f.min}–${f.max.toFixed(1)}`;
 }
 
 /**
@@ -511,6 +510,7 @@ export function cerrarProgreso(): void {
  *  tab bar se pone y se quita a mano. */
 let pestanaPrevia: string | null = null;
 function marcarPestana(activa: boolean): void {
+  taparNavegacion(activa);
   const items = [...document.querySelectorAll<HTMLElement>('[data-nav]')];
   // El atributo del HTML es `progress`, no `progreso`: buscar el castellano
   // devolvia undefined y la barra se quedaba marcando la pestaña anterior.

@@ -17,18 +17,13 @@
  */
 import { sessionData } from '@/state/session';
 import { getHistory, getPR } from '@/utils/storage';
-import { cifra } from '@/utils/formato';
+import { cifra, escapar } from '@/utils/formato';
 import type { ExerciseData, HistorySession } from '@/types';
 
 // --------------------------------------------------------------------------
 // Utilidades
 // --------------------------------------------------------------------------
 
-function escapar(texto: string): string {
-  const d = document.createElement('div');
-  d.textContent = texto;
-  return d.innerHTML;
-}
 
 /** "42:10" · pasa a "1:02:40" cuando la sesion cruza la hora. */
 export function reloj(segundos: number): string {
@@ -155,10 +150,10 @@ export function segundosDeSesion(ahora: Date = new Date()): number {
 function bloqueCoach(historial: HistorySession[]): string {
   const anterior = ultimoVolumenDelGrupo(sessionData.grupo || '', historial);
   if (anterior === null) {
-    return `<div class="f-sesion__coach" id="fierroCoach" role="note" hidden></div>`;
+    return `<div class="f-sesion__coach" id="fierroCoachSesion" role="note" hidden></div>`;
   }
   return `
-    <div class="f-sesion__coach" id="fierroCoach" role="note">
+    <div class="f-sesion__coach" id="fierroCoachSesion" role="note">
       Última sesión de este grupo: <span class="f-sesion__dato">${cifra(anterior)} kg</span>. ¿Lo superamos hoy?
     </div>
   `;

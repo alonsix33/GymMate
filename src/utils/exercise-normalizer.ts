@@ -458,10 +458,14 @@ const EXERCISE_ALIASES: Record<string, string> = {
  * Convierte un nombre a Title Case (primera letra de cada palabra en mayúscula)
  */
 function toTitleCase(str: string): string {
+  // La primera LETRA de cada palabra, no el primer caracter: con
+  // `charAt(0).toUpperCase()` un nombre entrecomillado como `Press "Militar"`
+  // volvia como `Press "militar"` —la comilla no se puede poner en mayuscula—
+  // y el usuario veia su ejercicio renombrado en minuscula.
   return str
     .toLowerCase()
     .split(' ')
-    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .map((word) => word.replace(/\p{L}/u, (c) => c.toUpperCase()))
     .join(' ');
 }
 

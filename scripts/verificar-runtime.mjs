@@ -73,8 +73,14 @@ const chk = (nombre, ok, detalle = '') => {
   console.log(`${ok ? 'OK   ' : 'FALLA'} ${nombre}${detalle ? ' :: ' + detalle : ''}`);
 };
 
+// La app se usa en Lima (UTC-5). El navegador de la sonda hereda TZ del
+// proceso, pero eso es implicito y se pierde si alguien corre el script a
+// mano: `timezoneId` lo deja escrito. La racha, el heatmap y "hace N dias"
+// solo se rompen en una zona con desfase negativo, asi que una sonda en UTC
+// es una sonda que no puede ver la mitad de los defectos de fecha.
+const ZONA = { timezoneId: 'America/Lima', locale: 'es-PE' };
 const navegador = await chromium.launch({ executablePath: CHROME });
-const pagina = await navegador.newPage({ viewport: { width: 390, height: 844 } });
+const pagina = await navegador.newPage({ viewport: { width: 390, height: 844 }, ...ZONA });
 
 const pedidos = [];
 const fallidos = [];
@@ -105,7 +111,10 @@ const m = await pagina.evaluate(async () => {
   const cargada = (fam) => [...document.fonts].some((f) => f.family === fam && f.status === 'loaded');
 
   // Elemento que la APP marca como display, para comprobar el cableado real.
-  const display = document.querySelector('.font-display');
+  // El titulo de H-01. `.font-display` era una utilidad de Tailwind que la
+  // fase 9 retiro: no existe ningun nodo con esa clase, asi que el chequeo de
+  // Archivo llevaba en verde sin mirar nada.
+  const display = document.querySelector('.f-home__fecha');
   const raiz = getComputedStyle(document.documentElement);
 
   return {
@@ -166,7 +175,10 @@ chk('eje wght vivo (400 != 900)', m.archivoCargada && distintos(m.wght), m.wght.
 chk('tabular-nums en Instrument', m.tnumInstrument[0] === m.tnumInstrument[1], m.tnumInstrument.join(' / '));
 chk('tabular-nums en Archivo', m.tnumArchivo[0] === m.tnumArchivo[1], m.tnumArchivo.join(' / '));
 chk('la APP usa Instrument Sans en el body', /Instrument Sans/.test(m.bodyFF), m.bodyFF);
-chk('la APP usa Archivo en .font-display', m.displayFF === null || /Archivo/.test(m.displayFF), m.displayFF ?? '(sin .font-display en esta pantalla)');
+// `.font-display` era una clase de Tailwind que la fase 9 retiro: el chequeo
+// buscaba un nodo inexistente y el `=== null ||` convertia "no lo encontre" en
+// verde. Ahora se mide el titulo real de la pantalla, y no encontrarlo FALLA.
+chk('la APP usa Archivo en los titulos', m.displayFF !== null && /Archivo/.test(m.displayFF), m.displayFF ?? '(no se encontro ningun titulo)');
 chk('el fondo del body es el token --page-bg', m.bodyBg === hex2rgb(m.tokenPageBg), `${m.bodyBg} vs token ${m.tokenPageBg}`);
 
 const externos = pedidos.filter((u) => u.startsWith('http') && !u.startsWith(m.origen));

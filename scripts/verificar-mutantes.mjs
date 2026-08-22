@@ -146,6 +146,30 @@ const MUTANTES = [
     minimo: 1,
   },
   {
+    nombre: 'el contexto deja de decir que dia es hoy',
+    porque: 'El modelo tomo la ultima fecha del registro como "hoy" —dijo 2026-04-18 siendo 22 de agosto— y saco cuatro meses de conclusiones sobre esa base.',
+    archivo: 'server/coach.mjs',
+    de: "    `HOY ES ${r.hoy ?? '(sin fecha)'}. No la deduzcas de ninguna otra cosa.`,",
+    a: "    '',",
+    minimo: 1,
+  },
+  {
+    nombre: 'se quitan las cuentas de calendario del resumen',
+    porque: '"¿Cuanto llevo sin entrenar?" y "¿como va mi mes?" volverian a ser preguntas que el coach no sabe contestar teniendo el dato.',
+    archivo: 'server/coach.mjs',
+    de: '    `sesiones en lo que va de este mes: ${r.sesionesEsteMes ?? 0}`,',
+    a: "    '',",
+    minimo: 1,
+  },
+  {
+    nombre: 'la regla vuelve a prohibir leer un calendario',
+    porque: 'Con la regla ancha el coach se negaba a decir "no has entrenado este mes" con las fechas delante. Prudencia mal calibrada tambien es una respuesta inutil.',
+    archivo: 'server/coach.mjs',
+    de: 'Lo que la regla NO prohíbe, y tienes que hacer:',
+    a: 'Nada mas:',
+    minimo: 1,
+  },
+  {
     nombre: 'el aviso de /api/salud vuelve a decir lo contrario',
     porque: 'Un rotulo que miente sobre el riesgo hace tomar la decision al reves.',
     archivo: 'server/index.mjs',
@@ -190,7 +214,7 @@ for (const m of MUTANTES) {
 }
 
 // Que la lista no se vacie por el mismo camino que este script vino a cerrar.
-const MUTANTES_MINIMO = 15;
+const MUTANTES_MINIMO = 18;
 if (MUTANTES.length < MUTANTES_MINIMO) {
   fallos++;
   console.log(`\nFALLA solo hay ${MUTANTES.length} mutantes (minimo ${MUTANTES_MINIMO}).`);

@@ -293,8 +293,11 @@ const cab = (r, n) => r.headers.get(n);
             sesionesEstancado: 3, sesiones: 41, ultimaVez: '2026-08-18',
           }],
           resumen: {
+            hoy: '2026-08-22',
             sesiones: 208, desde: '2025-08-22', hasta: '2026-08-20', racha: 5, mejorRacha: 21,
-            volumenPorGrupo: { Pecho: 90000 }, pesoCorporal: 78.4, grasaCorporal: 14.4,
+            diasDesdeUltima: 126, sesionesUltimos7: 0, sesionesUltimos30: 0, sesionesEsteMes: 0,
+            volumenPorGrupo: { Pecho: 90000 }, volumenUltimos30: 0,
+            pesoCorporal: 78.4, grasaCorporal: 14.4,
           },
           bitacora: '2026-08-18 Pecho · Press Banca 4x8@100',
         },
@@ -335,6 +338,36 @@ const cab = (r, n) => r.headers.get(n);
       (m) => typeof m.content === 'string' && m.content.includes('PANORAMA')
     );
     chk('modelo · el bloque de contexto llego al modelo', conPanorama);
+
+    // Lo que el modelo LEE de verdad, no solo que el bloque este. Estos tres
+    // salen de un fallo real: el coach dijo "Hoy es 2026-04-18" —la fecha de
+    // la ultima sesion— siendo 22 de agosto, y razono cuatro meses de
+    // conclusiones sobre esa base.
+    // SOLO el mensaje del contexto, no todos juntos: el prompt de sistema
+    // contiene el ejemplo "sesiones en lo que va de este mes: 0" dentro de su
+    // propia regla, asi que buscar en el conjunto daba positivo aunque el
+    // resumen viajara vacio. Un chequeo que acierta por el motivo equivocado.
+    const bloque = (vistoPorElModelo?.messages ?? [])
+      .map((m) => (typeof m.content === 'string' ? m.content : ''))
+      .find((c) => c.includes('PANORAMA —')) ?? '';
+    chk('contexto · le dice al modelo QUE DIA ES HOY',
+      /HOY ES 2026-08-22/.test(bloque), bloque.split('\n').find((l) => l.startsWith('HOY')) ?? '(no aparece)');
+    chk('contexto · y le prohibe deducir la fecha de otra cosa',
+      /No la deduzcas/i.test(bloque));
+    chk('contexto · lleva las cuentas de calendario ya hechas',
+      /en lo que va de este mes: 0/.test(bloque) && /hace 126 dias/.test(bloque),
+      bloque.split('\n').filter((l) => /mes:|hace \d+ dias/.test(l)).join(' | ') || '(no aparecen)');
+
+    const sistema = vistoPorElModelo?.messages?.[0]?.content ?? '';
+    // La regla era tan ancha que el coach se negaba a decir "no has entrenado
+    // este mes" con las fechas delante. Prudencia mal calibrada tambien es
+    // una respuesta inutil.
+    chk('sistema · la regla acota, no paraliza: se puede leer un calendario',
+      /Lo que la regla NO prohíbe, y tienes que hacer:/.test(sistema) &&
+        /Leer y comparar FECHAS/.test(sistema) &&
+        /no has entrenado este mes/i.test(sistema));
+    chk('sistema · y sigue prohibiendo inventar una metrica de la app',
+      /NO calcules NADA/.test(sistema));
   } finally {
     await s.cerrar();
     await new Promise((ok) => falso.close(ok));
@@ -398,7 +431,7 @@ const cab = (r, n) => r.headers.get(n);
 }
 
 console.log(`\n${ejecutados} chequeos de servidor ejecutados`);
-const CHEQUEOS_MINIMO = 45;
+const CHEQUEOS_MINIMO = 50;
 if (ejecutados < CHEQUEOS_MINIMO) {
   fallos++;
   console.log(

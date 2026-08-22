@@ -291,6 +291,73 @@ describe('contextoCompleto · el panorama no contradice a la pantalla', () => {
     expect(r?.grasaCorporal).toBe(14.4);
   });
 
+  it('el contexto dice QUE DIA ES HOY', () => {
+    // Faltaba, y el modelo lo dedujo de la ultima fecha del registro: dijo
+    // "Hoy es 2026-04-18" cuando era 22 de agosto, y saco cuatro meses de
+    // conclusiones sobre esa base. Un contexto sin fecha obliga a adivinarla.
+    const hoy = new Date();
+    const p = (n: number) => String(n).padStart(2, '0');
+    expect(contextoCompleto([sesion('Press Banca', 100, 8, 3)])?.resumen.hoy).toBe(
+      `${hoy.getFullYear()}-${p(hoy.getMonth() + 1)}-${p(hoy.getDate())}`
+    );
+  });
+
+  it('cuenta los dias desde la ultima sesion', () => {
+    expect(contextoCompleto([sesion('Press Banca', 100, 8, 5)])?.resumen.diasDesdeUltima).toBe(5);
+    expect(contextoCompleto([sesion('Press Banca', 100, 8, 0)])?.resumen.diasDesdeUltima).toBe(0);
+  });
+
+  it('los dias son de calendario, no instantes', () => {
+    // Con instantes, algo entrenado anoche a las 23:00 daba "0 dias" a las
+    // 08:00 de la mañana siguiente. La sesion es de AYER.
+    const hoy = new Date();
+    const anoche = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate() - 1, 23, 0);
+    expect(contextoCompleto([sesionEn(anoche)])?.resumen.diasDesdeUltima).toBe(1);
+  });
+
+  it('cuenta las sesiones de los ultimos 7 y 30 dias', () => {
+    const hist = [
+      sesion('Press Banca', 100, 8, 1),
+      sesion('Press Banca', 100, 8, 5),
+      sesion('Press Banca', 100, 8, 20),
+      sesion('Press Banca', 100, 8, 200),
+    ];
+    const r = contextoCompleto(hist)!.resumen;
+    expect(r.sesionesUltimos7).toBe(2);
+    expect(r.sesionesUltimos30).toBe(3);
+  });
+
+  it('y las de ESTE mes de calendario, que es lo que se pregunta', () => {
+    // La pregunta que el coach no sabia contestar: "¿como va mi mes?". La app
+    // lo sabe; solo habia que darselo.
+    const hoy = new Date();
+    const esteMes = new Date(hoy.getFullYear(), hoy.getMonth(), 1, 12, 0);
+    const mesPasado = new Date(hoy.getFullYear(), hoy.getMonth() - 1, 15, 12, 0);
+    const r = contextoCompleto([sesionEn(esteMes), sesionEn(mesPasado)])!.resumen;
+    expect(r.sesionesEsteMes).toBe(1);
+  });
+
+  it('sin entrenar este mes da 0, no null: "no has entrenado" es una respuesta', () => {
+    const hoy = new Date();
+    const haceMeses = new Date(hoy.getFullYear(), hoy.getMonth() - 4, 10, 12, 0);
+    const r = contextoCompleto([sesionEn(haceMeses)])!.resumen;
+    expect(r.sesionesEsteMes).toBe(0);
+    expect(r.diasDesdeUltima).toBeGreaterThan(90);
+  });
+
+  it('el volumen de 30 dias no cuenta el cardio', () => {
+    const hoy = new Date();
+    const d = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate() - 2, 8, 0);
+    const cardio = {
+      sessionId: 'c3', date: d.toISOString(), savedAt: d.toISOString(),
+      grupo: 'Cardio', type: 'cardio', mode: 'libre',
+      volumenTotal: 9999, volumenPorGrupo: {}, ejercicios: [],
+      stats: { totalTime: 600, workTime: 600, restTime: 0, roundsCompleted: 1, calories: 90 },
+    } as unknown as HistorySession;
+    const r = contextoCompleto([cardio, sesion('Press Banca', 100, 8, 3)])!.resumen;
+    expect(r.volumenUltimos30).toBe(100 * 8 * 3);
+  });
+
   it('el volumen por grupo suma el de todas las sesiones', () => {
     const c = contextoCompleto([
       sesion('Press Banca', 100, 8, 2),

@@ -212,12 +212,35 @@ export interface PanoramaEjercicio extends DatoDeEjercicio {
 export interface ContextoCoach {
   panorama: PanoramaEjercicio[];
   resumen: {
+    /**
+     * Que dia es HOY, en local.
+     *
+     * Faltaba, y el modelo lo dedujo de la ultima fecha del registro: dijo
+     * "Hoy es 2026-04-18" cuando era 22 de agosto, y razono cuatro meses de
+     * conclusiones sobre esa base. No es prudencia, es inventar. Un contexto
+     * sin fecha obliga a adivinarla.
+     */
+    hoy: string;
     sesiones: number;
     desde: string | null;
     hasta: string | null;
+    /**
+     * Las cuentas de calendario, hechas AQUI.
+     *
+     * "¿Cuanto llevo sin entrenar?" y "¿cuantas sesiones este mes?" son
+     * preguntas legitimas y la respuesta es determinista. El modelo tenia
+     * prohibido calcular y ninguna de las dos venia dada, asi que se negaba a
+     * responder algo que si sabe. La salida no es dejarle contar dias: es
+     * darle el numero, como con todo lo demas.
+     */
+    diasDesdeUltima: number | null;
+    sesionesUltimos7: number;
+    sesionesUltimos30: number;
+    sesionesEsteMes: number;
     racha: number;
     mejorRacha: number;
     volumenPorGrupo: Record<string, number>;
+    volumenUltimos30: number;
     pesoCorporal: number | null;
     grasaCorporal: number | null;
   };
@@ -295,15 +318,36 @@ export function contextoCompleto(
     volumenPorGrupo[limpio(musculo) || 'sin grupo'] = Math.round(volumen);
   }
 
+  // Las cuentas de calendario, en dias LOCALES completos: comparar instantes
+  // daria 0 dias para algo entrenado anoche a las 23:00.
+  const hoyMedianoche = new Date();
+  hoyMedianoche.setHours(0, 0, 0, 0);
+  const diasHasta = (s: HistorySession): number => {
+    const d = fechaDe(s);
+    d.setHours(0, 0, 0, 0);
+    return Math.round((hoyMedianoche.getTime() - d.getTime()) / 86400000);
+  };
+  const dentroDe = (n: number) => orden.filter((s) => diasHasta(s) < n).length;
+  const mesActual = `${hoyMedianoche.getFullYear()}-${String(hoyMedianoche.getMonth() + 1).padStart(2, '0')}`;
+
   return {
     panorama,
     resumen: {
+      hoy: diaLocalDe(hoyMedianoche),
       sesiones: orden.length,
       hasta: orden[0] ? diaDe(orden[0]) : null,
       desde: orden[orden.length - 1] ? diaDe(orden[orden.length - 1]) : null,
+      diasDesdeUltima: orden[0] ? diasHasta(orden[0]) : null,
+      sesionesUltimos7: dentroDe(7),
+      sesionesUltimos30: dentroDe(30),
+      sesionesEsteMes: orden.filter((s) => diaDe(s).startsWith(mesActual)).length,
       racha: racha.current,
       mejorRacha: racha.best,
       volumenPorGrupo,
+      volumenUltimos30: Math.round(
+        orden.filter((s) => diasHasta(s) < 30 && s.type !== 'cardio')
+          .reduce((t, s) => t + (s.volumenTotal ?? 0), 0)
+      ),
       pesoCorporal: typeof ultima?.weight === 'number' ? ultima.weight : null,
       grasaCorporal: typeof ultima?.bodyFat === 'number' ? Math.round(ultima.bodyFat * 10) / 10 : null,
     },
@@ -333,11 +377,16 @@ function unaRepMaxDeLaMejorSerie(nombre: string, historial: HistorySession[]): n
   return p === null ? null : Math.round(p);
 }
 
-/** El dia local de una sesion, en ISO corto. */
-function diaDe(sesion: HistorySession): string {
-  const f = fechaDe(sesion);
+/** Una fecha en ISO corto, con los componentes LOCALES. `toISOString()` daria
+ *  el dia anterior en Lima para cualquier hora antes de las 19:00. */
+function diaLocalDe(f: Date): string {
   const p = (n: number) => String(n).padStart(2, '0');
   return `${f.getFullYear()}-${p(f.getMonth() + 1)}-${p(f.getDate())}`;
+}
+
+/** El dia local de una sesion, en ISO corto. */
+function diaDe(sesion: HistorySession): string {
+  return diaLocalDe(fechaDe(sesion));
 }
 
 /**

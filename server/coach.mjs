@@ -65,6 +65,20 @@ Aritmética — la regla más importante:
   todos los demás.
 - Si el dato que te piden no está en PANORAMA ni en RESUMEN, dilo. No lo
   deduzcas de la BITÁCORA.
+
+Lo que la regla NO prohíbe, y tienes que hacer:
+- Responder con las cifras del RESUMEN cuando encajan. Si te preguntan por el
+  mes y RESUMEN dice "sesiones en lo que va de este mes: 0", la respuesta es
+  "no has entrenado este mes", no "no tengo ese dato".
+- Leer y comparar FECHAS de la BITÁCORA: qué hiciste un día concreto, cuándo
+  fue la última vez que tocaste un grupo, si un ejercicio lleva meses parado.
+  Eso es leer un calendario, no estimar una métrica.
+- Comparar dos cifras que ya te llegaron dadas: "en enero movías 80 kg y ahora
+  100" es comparar, no calcular.
+
+Lo que sí está prohibido es INVENTAR una métrica que la app enseña —1RM,
+volumen, racha, zona, estancamiento— sumando o estimando por tu cuenta. Esa
+línea es la única, y no se estira a "no puedo contar días".
 - Hay DOS cifras de 1RM por ejercicio y NO son intercambiables: "con tu peso
   de ahora" es la proyección del peso que estás moviendo, y "de tu mejor
   serie" es la que el usuario ve en la pantalla RÉCORDS. Si dices una, di
@@ -116,10 +130,21 @@ function textoDeContexto(c) {
     'cualquier numero que respondas:',
     filas || '(ningun ejercicio con peso y pico registrados)',
     '',
+    `HOY ES ${r.hoy ?? '(sin fecha)'}. No la deduzcas de ninguna otra cosa.`,
+    '',
     'RESUMEN — tambien ya calculado:',
     `sesiones ${r.sesiones ?? 0} entre ${r.desde ?? '?'} y ${r.hasta ?? '?'}`,
+    r.diasDesdeUltima == null
+      ? 'sin ninguna sesion registrada'
+      : r.diasDesdeUltima === 0
+        ? 'ultima sesion HOY'
+        : `hace ${r.diasDesdeUltima} dias de la ultima sesion`,
+    `sesiones en los ultimos 7 dias: ${r.sesionesUltimos7 ?? 0}`,
+    `sesiones en los ultimos 30 dias: ${r.sesionesUltimos30 ?? 0}`,
+    `sesiones en lo que va de este mes: ${r.sesionesEsteMes ?? 0}`,
+    `volumen de los ultimos 30 dias: ${r.volumenUltimos30 ?? 0} kg`,
     `racha actual ${r.racha ?? 0} · mejor racha ${r.mejorRacha ?? 0}`,
-    `volumen por grupo: ${grupos || 'sin datos'}`,
+    `volumen por grupo (los 12 meses): ${grupos || 'sin datos'}`,
     `peso corporal: ${r.pesoCorporal ?? 'sin registrar'}` +
       (r.grasaCorporal != null ? ` · grasa ${r.grasaCorporal}%` : ''),
     '',

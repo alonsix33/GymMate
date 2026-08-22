@@ -84,8 +84,9 @@ export function sesionesSinSubir(
 ): number {
   const pesos = sesionesCon(nombre, historial).map((r) => r.ejercicio.peso);
   if (pesos.length === 0) return 0;
+  // Sin guarda de pico 0: el propio bucle corta en la primera vuelta cuando
+  // el pico es 0 (peso corporal), asi que la guarda era una rama muerta.
   const pico = picoExterno ?? Math.max(...pesos);
-  if (pico <= 0) return 0;
   let cuenta = 0;
   for (const peso of pesos) {
     if (peso >= pico) break;
@@ -111,6 +112,26 @@ export function estadoDeZona(
   const estancado = sesionesSinSubir(nombre, historial, pico);
   if (estancado >= SESIONES_ESTANCADO) return `ESTANCADO ${estancado} SESIONES`;
   return zonaDe(actual / pico) === 'verde' ? 'CERCA DEL PICO' : 'POR DEBAJO DEL PICO';
+}
+
+/**
+ * Redondea una lista de porcentajes a enteros que suman EXACTAMENTE 100
+ * (reparto por resto mayor). Redondeando cada uno por su cuenta, tres grupos
+ * al 33.33% se enseñaban como "33% 33% 33%" = 99.
+ */
+export function repartirCien(porcentajes: number[]): number[] {
+  if (porcentajes.length === 0) return [];
+  const bajos = porcentajes.map((p) => Math.floor(p));
+  let resto = 100 - bajos.reduce((t, v) => t + v, 0);
+  const orden = porcentajes
+    .map((p, i) => ({ i, frac: p - Math.floor(p) }))
+    .sort((a, b) => b.frac - a.frac);
+  for (const { i } of orden) {
+    if (resto <= 0) break;
+    bajos[i]++;
+    resto--;
+  }
+  return bajos;
 }
 
 /** Volumen total por grupo muscular en todo el historial de pesas. */
@@ -191,9 +212,12 @@ export function serieDeVolumen(
   const pesas = historial.filter((s) => s.type !== 'cardio' && (s.volumenTotal || 0) > 0).slice().reverse();
   if (pesas.length === 0) return [];
 
-  if (rango === 'dia' || rango === 'todo') {
+  // 'todo' es un punto por SESION en todo el historial; 'dia' agrupa las
+  // sesiones del mismo dia. Antes los dos devolvian exactamente lo mismo, asi
+  // que el toggle tenia cuatro botones y tres comportamientos.
+  if (rango === 'todo') {
     return pesas.map((s) => ({
-      etiqueta: etiquetaDeFecha(s, rango),
+      etiqueta: etiquetaDeFecha(s),
       volumen: s.volumenTotal || 0,
     }));
   }
@@ -203,7 +227,12 @@ export function serieDeVolumen(
   const cubos = new Map<string, { etiqueta: string; volumen: number }>();
   for (const sesion of pesas) {
     const fecha = fechaDe(sesion);
-    const clave = rango === 'semana' ? claveSemana(fecha) : claveMes(fecha, conAnio);
+    const clave =
+      rango === 'dia'
+        ? etiquetaDeFecha(sesion)
+        : rango === 'semana'
+          ? claveSemana(fecha)
+          : claveMes(fecha, conAnio);
     const previo = cubos.get(clave);
     if (previo) previo.volumen += sesion.volumenTotal || 0;
     else cubos.set(clave, { etiqueta: clave, volumen: sesion.volumenTotal || 0 });
@@ -211,15 +240,33 @@ export function serieDeVolumen(
   return [...cubos.values()];
 }
 
+/**
+ * Instante de una sesion, en hora LOCAL.
+ *
+ * Un 'YYYY-MM-DD' pelado lo parsea el motor como medianoche UTC, asi que en
+ * UTC-5 una sesion del 17 de abril se leia como el 16: el historial la
+ * agrupaba en el mes equivocado en la frontera y el grafico la ponia un dia
+ * antes. Con hora explicita se ancla al dia local.
+ */
 export function fechaDe(sesion: HistorySession): Date {
-  const bruta = sesion.savedAt || sesion.date;
-  const d = new Date(bruta);
-  return Number.isNaN(d.getTime()) ? new Date(`${String(bruta).slice(0, 10)}T00:00:00`) : d;
+  const bruta = String(sesion.savedAt || sesion.date || '');
+  const soloFecha = /^\d{4}-\d{2}-\d{2}$/.test(bruta);
+  const d = new Date(soloFecha ? `${bruta}T00:00:00` : bruta);
+  return Number.isNaN(d.getTime()) ? new Date(`${bruta.slice(0, 10)}T00:00:00`) : d;
 }
 
-function etiquetaDeFecha(sesion: HistorySession, _rango: Rango): string {
+/**
+ * Quita el punto de la abreviatura del mes. Segun la version de ICU, es-ES
+ * devuelve "ago" o "ago."; el mockup escribe siempre sin punto, y probarlo a
+ * traves de toLocaleDateString depende del runtime.
+ */
+export function sinPunto(texto: string): string {
+  return texto.replace(/\./g, '');
+}
+
+function etiquetaDeFecha(sesion: HistorySession): string {
   const d = fechaDe(sesion);
-  return d.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' }).replace('.', '');
+  return sinPunto(d.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' }));
 }
 
 /** Lunes de la semana ISO, en formato corto. */
@@ -227,7 +274,7 @@ function claveSemana(fecha: Date): string {
   const lunes = new Date(fecha.getFullYear(), fecha.getMonth(), fecha.getDate());
   const dia = lunes.getDay() === 0 ? 7 : lunes.getDay();
   lunes.setDate(lunes.getDate() - (dia - 1));
-  return lunes.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' }).replace('.', '');
+  return sinPunto(lunes.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' }));
 }
 
 /**
@@ -239,7 +286,7 @@ function claveMes(fecha: Date, conAnio: boolean): string {
   const opciones: Intl.DateTimeFormatOptions = conAnio
     ? { month: 'short', year: '2-digit' }
     : { month: 'short' };
-  return fecha.toLocaleDateString('es-ES', opciones).replace('.', '');
+  return sinPunto(fecha.toLocaleDateString('es-ES', opciones));
 }
 
 /** "ABRIL 2026" en mayusculas, para el separador de meses del historial. */

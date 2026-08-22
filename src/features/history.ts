@@ -1,6 +1,15 @@
+import type { HistorySession } from '@/types';
 import { cifra } from '@/utils/formato';
 import { confirmarDestructivo, mostrarToast } from '@/ui/feedback';
-import { getHistory, deleteFromHistory, getPRs, saveHistory, updatePR } from '@/utils/storage';
+import {
+  getHistory,
+  deleteFromHistory,
+  getPRs,
+  saveHistory,
+  updatePR,
+  getProfile,
+  getBodyMeasurements,
+} from '@/utils/storage';
 import { renderHistorial, renderRecords, abrirDetalle, animarZonas } from '@/ui/hueso';
 import { normalizeExerciseName } from '@/utils/exercise-normalizer';
 
@@ -54,6 +63,22 @@ function alTocarHistorial(evento: Event): void {
 // ELIMINAR DEL HISTORIAL
 // ==========================================
 
+/**
+ * Dos sesiones son la misma si coinciden en lo que las identifica. El
+ * sessionId manda cuando existe; el historial importado de CSV no lo tiene, y
+ * entonces valen la fecha exacta, el grupo y el volumen.
+ */
+function mismaSesion(a: HistorySession, b: HistorySession): boolean {
+  if (a === b) return true;
+  if (a.sessionId && b.sessionId) return a.sessionId === b.sessionId;
+  return (
+    (a.savedAt ?? a.date) === (b.savedAt ?? b.date) &&
+    a.grupo === b.grupo &&
+    (a.volumenTotal ?? 0) === (b.volumenTotal ?? 0) &&
+    a.type === b.type
+  );
+}
+
 export async function deleteHistoryItem(index: number): Promise<void> {
   // La identidad se captura ANTES del await: si entre la pregunta y la
   // respuesta cambia el historial, el indice ya apunta a otra sesion y se
@@ -70,9 +95,16 @@ export async function deleteHistoryItem(index: number): Promise<void> {
     confirmar: 'Eliminar',
   });
   if (!eliminar) return;
+  // Se busca por CONTENIDO, no por identidad de objeto: getHistory() reparsea
+  // el JSON en cada llamada, asi que `indexOf` sobre una lista nueva devolvia
+  // -1 SIEMPRE y el guardia se tragaba todos los borrados en silencio.
   const actual = getHistory();
-  const real = actual.indexOf(sesion);
-  if (real === -1) return; // ya no esta: alguien la borro mientras tanto
+  const real = actual.findIndex((s) => mismaSesion(s, sesion));
+  if (real === -1) {
+    mostrarToast({ tipo: 'aviso', titulo: 'Ese entrenamiento ya no está' });
+    loadHistory();
+    return;
+  }
   deleteFromHistory(real);
   loadHistory();
   mostrarToast({ tipo: 'exito', titulo: 'Entrenamiento eliminado' });
@@ -219,6 +251,39 @@ export function exportToCSV(): void {
     });
   }
 
+  // ==========================================
+  // SECCIÓN 3: PERFIL  (cambio aprobado nº2 del README: el backup deja de
+  // cubrir solo el historial)
+  // ==========================================
+  const perfil = getProfile();
+  if (Object.keys(perfil).length > 0) {
+    rows.push([]);
+    rows.push(['=== PERFIL ===']);
+    rows.push(['Campo', 'Valor']);
+    for (const [campo, valor] of Object.entries(perfil)) {
+      if (valor === undefined || valor === null || valor === '') continue;
+      rows.push([campo, String(valor)]);
+    }
+  }
+
+  // ==========================================
+  // SECCIÓN 4: MEDIDAS CORPORALES
+  // ==========================================
+  const medidas = getBodyMeasurements();
+  if (medidas.length > 0) {
+    rows.push([]);
+    rows.push(['=== MEDIDAS CORPORALES ===']);
+    const campos = [...new Set(medidas.flatMap((m) => Object.keys(m)))].filter((c) => c !== 'date');
+    rows.push(['Fecha', ...campos]);
+    for (const medida of medidas) {
+      const registro = medida as unknown as Record<string, unknown>;
+      rows.push([
+        String(registro.date ?? ''),
+        ...campos.map((c) => (registro[c] === undefined ? '' : String(registro[c]))),
+      ]);
+    }
+  }
+
   if (rows.length === 0) {
     mostrarToast({
       tipo: 'aviso',
@@ -293,20 +358,39 @@ function parseCSVLine(line: string): string[] {
   return result;
 }
 
-function parseSpanishDate(dateStr: string): string {
-  // Formato esperado: DD/MM/YYYY o D/M/YYYY
-  const parts = dateStr.split('/');
+/** DD/MM/YYYY o D/M/YYYY -> ISO. `null` si la fecha no se puede leer. */
+function parseSpanishDate(dateStr: string): string | null {
+  const parts = dateStr.trim().split('/');
   if (parts.length === 3) {
     const day = parts[0].padStart(2, '0');
     const month = parts[1].padStart(2, '0');
     const year = parts[2];
-    return `${year}-${month}-${day}T12:00:00.000Z`;
+    const iso = `${year}-${month}-${day}T12:00:00.000Z`;
+    return Number.isNaN(new Date(iso).getTime()) ? null : iso;
   }
-  // Si ya está en formato ISO, devolverlo
-  return dateStr;
+  // Puede venir ya en ISO de otra exportacion.
+  const d = new Date(dateStr);
+  return Number.isNaN(d.getTime()) ? null : d.toISOString();
 }
 
-export function importFromCSV(file: File): Promise<{ imported: number; duplicates: number }> {
+/**
+ * Clave de deduplicacion. El CSV trae "10/08/2026" y el historial guarda un
+ * ISO: comparar el texto crudo contra `toLocaleDateString` no coincidia nunca
+ * —ni siquiera consigo mismo, porque el locale no pone el cero delante— y se
+ * podia importar el mismo fichero cuatro veces seguidas.
+ */
+function claveDeSesion(iso: string, grupo: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return `?|${grupo}`;
+  const dia = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(
+    d.getDate()
+  ).padStart(2, '0')}`;
+  return `${dia}|${grupo}`;
+}
+
+export function importFromCSV(
+  file: File
+): Promise<{ imported: number; duplicates: number; descartadas: number }> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
 
@@ -322,23 +406,39 @@ export function importFromCSV(file: File): Promise<{ imported: number; duplicate
           return;
         }
 
-        // Verificar headers
-        const headers = parseCSVLine(lines[0]);
+        // El CSV que exporta la app empieza por "=== ENTRENAMIENTOS DE PESAS
+        // ===", asi que mirar solo la primera linea rechazaba el propio
+        // backup de la app: no habia forma de exportar e importar de vuelta.
         const expectedHeaders = ['Fecha', 'Grupo', 'Ejercicio', 'Sets', 'Reps', 'Peso (kg)'];
-        const hasValidHeaders = expectedHeaders.every(h =>
-          headers.some(header => header.toLowerCase().includes(h.toLowerCase().split(' ')[0]))
-        );
-
-        if (!hasValidHeaders) {
+        const esCabeceraDePesas = (linea: string) => {
+          const headers = parseCSVLine(linea);
+          return expectedHeaders.every((h) =>
+            headers.some((header) => header.toLowerCase().includes(h.toLowerCase().split(' ')[0]))
+          );
+        };
+        const iCabecera = lines.findIndex(esCabeceraDePesas);
+        if (iCabecera === -1) {
           reject(new Error('El archivo CSV no tiene el formato correcto de GymMate'));
           return;
         }
+        // Las secciones posteriores (cardio, perfil, medidas) no son filas de
+        // pesas: se corta en el siguiente marcador "=== ... ===".
+        const iFin = lines.findIndex((l, i) => i > iCabecera && l.trim().startsWith('==='));
+        const filasDePesas = lines.slice(iCabecera + 1, iFin === -1 ? lines.length : iFin);
 
         // Parsear filas
         const rows: ParsedCSVRow[] = [];
-        for (let i = 1; i < lines.length; i++) {
-          const values = parseCSVLine(lines[i]);
+        let descartadas = 0;
+        for (const linea of filasDePesas) {
+          const values = parseCSVLine(linea);
           if (values.length >= 10) {
+            // Una fecha ilegible no puede entrar: se colaba tal cual y a la
+            // siguiente recarga la app se quedaba en blanco con un
+            // "Invalid time value" sin capturar.
+            if (!parseSpanishDate(values[0])) {
+              descartadas++;
+              continue;
+            }
             rows.push({
               fecha: values[0],
               grupo: values[1],
@@ -360,10 +460,13 @@ export function importFromCSV(file: File): Promise<{ imported: number; duplicate
           return;
         }
 
-        // Agrupar por fecha + grupo para reconstruir sesiones
+        // Agrupar por fecha + grupo para reconstruir sesiones. La clave se
+        // normaliza a YYYY-MM-DD para que coincida con la del historial.
         const sessionMap = new Map<string, ParsedCSVRow[]>();
         rows.forEach(row => {
-          const key = `${row.fecha}|${row.grupo}`;
+          const iso = parseSpanishDate(row.fecha);
+          if (!iso) return;
+          const key = claveDeSesion(iso, row.grupo);
           if (!sessionMap.has(key)) {
             sessionMap.set(key, []);
           }
@@ -373,10 +476,7 @@ export function importFromCSV(file: File): Promise<{ imported: number; duplicate
         // Construir sesiones
         const existingHistory = getHistory();
         const existingKeys = new Set(
-          existingHistory.map(s => {
-            const date = new Date(s.savedAt || s.date).toLocaleDateString('es-ES');
-            return `${date}|${s.grupo}`;
-          })
+          existingHistory.map((s) => claveDeSesion(s.savedAt || s.date, s.grupo))
         );
 
         const newSessions: import('@/types').HistorySession[] = [];
@@ -390,7 +490,8 @@ export function importFromCSV(file: File): Promise<{ imported: number; duplicate
           }
 
           const firstRow = sessionRows[0];
-          const isoDate = parseSpanishDate(firstRow.fecha);
+          // Ya se valido al filtrar las filas: aqui no puede ser null.
+          const isoDate = parseSpanishDate(firstRow.fecha) as string;
 
           // Calcular volumen por grupo muscular
           const volumenPorGrupo: Record<string, number> = {};
@@ -462,7 +563,7 @@ export function importFromCSV(file: File): Promise<{ imported: number; duplicate
           });
         }
 
-        resolve({ imported: newSessions.length, duplicates });
+        resolve({ imported: newSessions.length, duplicates, descartadas });
       } catch (error) {
         reject(new Error('Error al procesar el archivo CSV: ' + (error as Error).message));
       }
@@ -489,13 +590,23 @@ export function triggerCSVImport(): void {
     try {
       const result = await importFromCSV(file);
 
+      const avisos: string[] = [];
+      if (result.duplicates > 0) {
+        avisos.push(
+          `${result.duplicates} ${result.duplicates === 1 ? 'duplicada omitida' : 'duplicadas omitidas'}`
+        );
+      }
+      if (result.descartadas > 0) {
+        avisos.push(
+          `${result.descartadas} ${
+            result.descartadas === 1 ? 'fila con fecha ilegible' : 'filas con fecha ilegible'
+          }`
+        );
+      }
       mostrarToast({
-        tipo: result.duplicates > 0 ? 'aviso' : 'exito',
+        tipo: avisos.length > 0 ? 'aviso' : 'exito',
         titulo: `CSV importado: ${result.imported} ${result.imported === 1 ? 'sesión' : 'sesiones'}`,
-        detalle:
-          result.duplicates > 0
-            ? `${result.duplicates} ${result.duplicates === 1 ? 'duplicada omitida' : 'duplicadas omitidas'}`
-            : undefined,
+        detalle: avisos.join(' · ') || undefined,
       });
 
       // Recargar historial si estamos en esa pestaña

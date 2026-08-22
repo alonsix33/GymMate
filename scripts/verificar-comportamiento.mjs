@@ -1074,7 +1074,9 @@ const borradorDePrueba = {
 //     lo que agrupa.
 // --------------------------------------------------------------------------
 {
-  const { ctx, pagina } = await abrir({ gymmate_history: historialDePrueba([1, 4, 8, 40, 70, 100]) });
+  // Dos sesiones el MISMO dia: sin eso, "Día" y "Todo" coinciden por
+  // casualidad del escenario y el chequeo no prueba nada.
+  const { ctx, pagina } = await abrir({ gymmate_history: historialDePrueba([1, 1, 4, 8, 40, 70]) });
   await pagina.locator('[data-nav="profile"]').click();
   await pagina.waitForTimeout(300);
   await pagina.locator('[data-action="charts"]').click();
@@ -1084,6 +1086,7 @@ const borradorDePrueba = {
       activos: [...document.querySelectorAll('.f-segmentado__item[aria-pressed="true"]')].map((e) => e.textContent),
       label: document.querySelector('.f-graf__label')?.textContent ?? '',
       puntos: (document.querySelector('.f-graf__linea')?.getAttribute('points') ?? '').split(' ').filter(Boolean).length,
+      linea: document.querySelector('.f-graf__linea')?.getAttribute('points') ?? '',
       canvas: document.querySelectorAll('canvas').length,
     }));
   const mes = await leer();
@@ -1096,9 +1099,17 @@ const borradorDePrueba = {
   await pagina.waitForTimeout(400);
   const dia = await leer();
   chk('cambiar el rango cambia el activo', dia.activos.join(',') === 'Día', dia.activos.join(','));
-  chk('el rotulo dice por SESIÓN cuando cada punto es una sesion',
-    dia.label.includes('SESIÓN'), dia.label);
+  chk('el rotulo dice por DÍA cuando se agrupa por dia', dia.label.includes('DÍA'), dia.label);
   chk('por dia hay mas puntos que por mes', dia.puntos > mes.puntos, `${dia.puntos} vs ${mes.puntos}`);
+
+  // "Todo" tiene que ser algo distinto de "Día": los cuatro botones son
+  // cuatro comportamientos, no tres.
+  await pagina.locator('[data-hueso="rango"][data-rango="todo"]').click();
+  await pagina.waitForTimeout(400);
+  const todo = await leer();
+  chk('el rotulo de Todo dice por SESIÓN', todo.label.includes('SESIÓN'), todo.label);
+  chk('Todo y Día no son el mismo grafico', todo.linea !== dia.linea || todo.puntos !== dia.puntos,
+    `todo ${todo.puntos} pts vs dia ${dia.puntos} pts`);
   await ctx.close();
 }
 
@@ -1454,6 +1465,243 @@ const borradorDePrueba = {
     chk(`el foco de ${nombre} va en Fragua`, color === 'rgb(255, 99, 23)', `${selector} -> ${color}`);
   }
   void azules;
+  await ctx.close();
+}
+
+// --------------------------------------------------------------------------
+// 31. "Eliminar" ELIMINA. El guardia de identidad se tragaba todos los
+//     borrados en silencio: getHistory() reparsea el JSON, asi que indexOf
+//     sobre una lista nueva devolvia -1 siempre.
+// --------------------------------------------------------------------------
+{
+  const { ctx, pagina } = await abrir({ gymmate_history: historialDePrueba([1, 4, 8]) });
+  await pagina.locator('[data-nav="history"]').click();
+  await pagina.waitForTimeout(400);
+  await pagina.locator('.f-hist__fila').first().click();
+  await pagina.waitForTimeout(350);
+  await pagina.locator('[data-hueso="borrar"]').click();
+  await pagina.waitForTimeout(350);
+  await pagina.locator('.f-btn--destructivo').click();
+  await pagina.waitForTimeout(600);
+  const r = await pagina.evaluate(() => ({
+    quedan: JSON.parse(localStorage.getItem('gymmate_history') || '[]').length,
+    filas: document.querySelectorAll('.f-hist__fila').length,
+    toast: document.querySelector('.f-toast__titulo')?.textContent ?? '',
+  }));
+  chk('borrar quita la sesion del almacenamiento', r.quedan === 2, `${r.quedan} sesiones`);
+  chk('y de la pantalla', r.filas === 2, `${r.filas} filas`);
+  chk('y lo dice', r.toast.includes('eliminado'), r.toast || '(sin toast)');
+  await ctx.close();
+}
+
+// --------------------------------------------------------------------------
+// 32. CSV: ida y vuelta, duplicados y fechas ilegibles.
+// --------------------------------------------------------------------------
+{
+  const { ctx, pagina } = await abrir({
+    gymmate_history: historialDePrueba([1, 4]),
+    gymmate_profile: { name: 'Alonso', weight: 75, height: 176 },
+    gymmate_body_measurements: [{ date: '2026-08-10', weight: 75, chest: 98, waist: 82 }],
+  });
+
+  // 1) Exportar y quedarse con el contenido.
+  const csv = await pagina.evaluate(async () => {
+    let capturado = '';
+    const crear = URL.createObjectURL.bind(URL);
+    URL.createObjectURL = (blob) => {
+      blob.text().then((t) => (capturado = t));
+      return crear(blob);
+    };
+    window.exportToExcel?.();
+    await new Promise((r) => setTimeout(r, 400));
+    URL.createObjectURL = crear;
+    return capturado;
+  });
+  chk('el CSV se genera', csv.length > 0, `${csv.length} bytes`);
+  chk('el CSV incluye el PERFIL', /=== PERFIL ===/.test(csv), csv.slice(0, 40));
+  chk('el CSV incluye las MEDIDAS', /=== MEDIDAS CORPORALES ===/.test(csv), '');
+
+  // 2) Importarlo de vuelta en una app vacia: tiene que entrar.
+  await ctx.close();
+  const segunda = await abrir();
+  const dialogo = segunda.pagina.waitForEvent('filechooser', { timeout: 5000 }).catch(() => null);
+  await segunda.pagina.locator('[data-accion="importar"]').first().click();
+  const chooser = await dialogo;
+  if (!chooser) {
+    chk('el CSV exportado se puede volver a importar', false, 'no llego el filechooser');
+  } else {
+    await chooser.setFiles({ name: 'backup.csv', mimeType: 'text/csv', buffer: Buffer.from(csv, 'utf-8') });
+    await segunda.pagina.waitForTimeout(1200);
+    const r = await segunda.pagina.evaluate(() => ({
+      n: JSON.parse(localStorage.getItem('gymmate_history') || '[]').length,
+      toast: document.querySelector('.f-toast__titulo')?.textContent ?? '',
+    }));
+    chk('el CSV que exporta la app se puede volver a importar', r.n === 2, `${r.n} sesiones · ${r.toast}`);
+  }
+  await segunda.ctx.close();
+}
+
+// --------------------------------------------------------------------------
+// 33. Importar el MISMO CSV dos veces no duplica. La clave del CSV era el
+//     texto crudo y la del historial un toLocaleDateString sin cero delante:
+//     no coincidian nunca y se podia importar cuatro veces seguidas.
+// --------------------------------------------------------------------------
+{
+  const { ctx, pagina } = await abrir();
+  const importar = async () => {
+    const espera = pagina.waitForEvent('filechooser', { timeout: 5000 }).catch(() => null);
+    // El boton visible: el de la home o el del header de HISTORIAL, segun
+    // donde este el usuario. Los dos existen en el DOM a la vez.
+    await pagina.locator('[data-accion="importar"]:visible, [data-hueso="importar"]:visible').first().click();
+    const chooser = await espera;
+    if (!chooser) return null;
+    await chooser.setFiles({
+      name: 'historial.csv',
+      mimeType: 'text/csv',
+      buffer: Buffer.from(CSV_DE_PRUEBA, 'utf-8'),
+    });
+    await pagina.waitForTimeout(1100);
+    return pagina.evaluate(() => ({
+      n: JSON.parse(localStorage.getItem('gymmate_history') || '[]').length,
+      detalle: document.querySelector('.f-toast__detalle')?.textContent ?? '',
+    }));
+  };
+  const primera = await importar();
+  chk('la primera importacion entra', primera?.n === 2, JSON.stringify(primera));
+  // Con datos ya dentro, la home deja de tener el boton de importar: el
+  // camino del usuario pasa a ser el header de HISTORIAL.
+  await pagina.locator('[data-nav="history"]').click();
+  await pagina.waitForTimeout(400);
+  const segunda = await importar();
+  chk('la segunda no duplica', segunda?.n === 2, JSON.stringify(segunda));
+  chk('y avisa de las duplicadas', /duplicada/.test(segunda?.detalle ?? ''), segunda?.detalle ?? '');
+  await ctx.close();
+}
+
+// --------------------------------------------------------------------------
+// 34. Un CSV con una fecha ilegible no puede dejar la app en blanco.
+// --------------------------------------------------------------------------
+{
+  const { ctx, pagina } = await abrir();
+  const espera = pagina.waitForEvent('filechooser', { timeout: 5000 }).catch(() => null);
+  await pagina.locator('[data-accion="importar"]').first().click();
+  const chooser = await espera;
+  const roto = [
+    'Fecha,Grupo,Ejercicio,Sets,Reps,Peso (kg),Es Mancuerna,Grupo Muscular,Volumen,Completado,Volumen Total Sesión',
+    'ayer,GRUPO 1 - Piernas + Glúteos,Prensa de Piernas,4,12,120,No,Piernas,5760,Sí,5760',
+    '12/08/2026,GRUPO 1 - Piernas + Glúteos,Prensa de Piernas,4,12,125,No,Piernas,6000,Sí,6000',
+  ].join('\n');
+  if (!chooser) {
+    chk('el selector de fichero se abre', false);
+  } else {
+    await chooser.setFiles({ name: 'roto.csv', mimeType: 'text/csv', buffer: Buffer.from(roto, 'utf-8') });
+    await pagina.waitForTimeout(1200);
+    const tras = await pagina.evaluate(() => ({
+      n: JSON.parse(localStorage.getItem('gymmate_history') || '[]').length,
+      detalle: document.querySelector('.f-toast__detalle')?.textContent ?? '',
+    }));
+    chk('la fila legible entra', tras.n === 1, String(tras.n));
+    chk('y se avisa de la ilegible', /ilegible/.test(tras.detalle), tras.detalle || '(sin detalle)');
+
+    // Y sobre todo: recargar no puede dejar la app en blanco.
+    const errores = [];
+    pagina.on('pageerror', (e) => errores.push(e.message));
+    await pagina.reload({ waitUntil: 'networkidle' });
+    await pagina.waitForTimeout(900);
+    const vivo = await pagina.evaluate(() => ({
+      alto: document.getElementById('fierroHome')?.getBoundingClientRect().height ?? 0,
+      texto: (document.getElementById('fierroHome')?.innerText ?? '').length,
+    }));
+    chk('tras recargar la home sigue viva', vivo.alto > 100 && vivo.texto > 20,
+      `alto ${vivo.alto} · ${vivo.texto} caracteres`);
+    chk('y sin excepciones sin capturar', errores.length === 0, errores.join(' | '));
+  }
+  await ctx.close();
+}
+
+// --------------------------------------------------------------------------
+// 35. Una sesion de cardio en el historial: fila con sus rondas y su tiempo,
+//     y un detalle que no habla de kg.
+// --------------------------------------------------------------------------
+{
+  const hoy = new Date();
+  const d = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate() - 1, 19, 0);
+  const cardio = {
+    type: 'cardio',
+    mode: 'tabata',
+    sessionId: 'cardio_1',
+    date: d.toISOString(),
+    savedAt: d.toISOString(),
+    grupo: 'Cardio - TABATA',
+    ejercicios: [],
+    volumenTotal: 0,
+    volumenPorGrupo: {},
+    stats: { totalTime: 240, workTime: 160, restTime: 80, roundsCompleted: 8, calories: 27 },
+  };
+  const { ctx, pagina } = await abrir({ gymmate_history: [cardio, ...historialDePrueba([4])] });
+  await pagina.locator('[data-nav="history"]').click();
+  await pagina.waitForTimeout(400);
+  const fila = await pagina.evaluate(() => {
+    const f = document.querySelector('.f-hist__fila');
+    return {
+      texto: f?.innerText.replace(/\n/g, ' | ') ?? '',
+      cifra: f?.querySelector('.f-hist__cifra')?.textContent ?? '',
+    };
+  });
+  chk('la fila de cardio dice el modo con su nombre', fila.texto.includes('Tabata'), fila.texto);
+  chk('y las rondas', fila.texto.includes('8 rondas'), fila.texto);
+  chk('y el tiempo, no un guion', fila.cifra === '4:00', fila.cifra);
+
+  await pagina.locator('.f-hist__fila').first().click();
+  await pagina.waitForTimeout(400);
+  const detalle = await pagina.evaluate(() => ({
+    metricas: [...document.querySelectorAll('.f-metrica-hueso__label')].map((e) => e.textContent),
+    hablaDeKg: (document.querySelector('#fierroHistorial')?.innerText ?? '').includes('mejor set histórico'),
+    volumenCero: (document.querySelector('#fierroHistorial')?.innerText ?? '').includes('VOLUMEN\n0 kg'),
+  }));
+  chk('el detalle de cardio enseña tiempo y rondas',
+    detalle.metricas.includes('TIEMPO') && detalle.metricas.includes('RONDAS'), detalle.metricas.join(','));
+  chk('y NO enseña volumen 0 ni la nota de kg', !detalle.hablaDeKg && !detalle.volumenCero,
+    JSON.stringify(detalle));
+  await ctx.close();
+}
+
+// --------------------------------------------------------------------------
+// 36. PR-01 sin sesiones de un ejercicio: ni "SIN DATOS" ni marcador al 100%.
+// --------------------------------------------------------------------------
+{
+  const { ctx, pagina } = await abrir({
+    gymmate_history: historialDePrueba([1, 4]),
+    gymmate_prs: {
+      'Prensa de Piernas': { peso: 120, sets: 4, reps: 12, volumen: 5760, date: new Date().toISOString() },
+      'Hip Thrust': { peso: 90, sets: 3, reps: 10, volumen: 2700, date: new Date().toISOString() },
+    },
+  });
+  await pagina.locator('[data-nav="profile"]').click();
+  await pagina.waitForTimeout(300);
+  await pagina.locator('[data-action="prs"]').click();
+  await pagina.waitForTimeout(600);
+  const r = await pagina.evaluate(() => {
+    const cards = [...document.querySelectorAll('#fierroRecords .f-hueso__card')];
+    const hip = cards.find((c) => c.textContent?.includes('Hip Thrust'));
+    const barras = [...document.querySelectorAll('#fierroRecords .f-zonas__marcador')].map((m) => {
+      const p = m.parentElement.getBoundingClientRect();
+      const b = m.getBoundingClientRect();
+      return { dentro: b.left >= p.left - 0.5 && b.right <= p.right + 0.5 };
+    });
+    return {
+      textoHip: hip?.innerText.replace(/\n/g, ' | ') ?? '',
+      hipTieneBarra: !!hip?.querySelector('.f-zonas'),
+      sinDatos: (document.querySelector('#fierroRecords')?.innerText ?? '').includes('SIN DATOS'),
+      todosDentro: barras.every((b) => b.dentro),
+      cuantas: barras.length,
+    };
+  });
+  chk('un ejercicio sin sesiones NO dibuja una barra vacia', !r.hipTieneBarra, r.textoHip);
+  chk('ni dice "SIN DATOS"', !r.sinDatos, r.textoHip);
+  chk('dice qué hacer', /complétalo una vez/i.test(r.textoHip), r.textoHip);
+  chk('y los marcadores que si existen caben dentro de su pista',
+    r.cuantas > 0 && r.todosDentro, `${r.cuantas} marcadores`);
   await ctx.close();
 }
 

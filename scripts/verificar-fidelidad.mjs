@@ -983,7 +983,6 @@ await compararCaja(
     const mapa = {};
     if (esperado.background) mapa.background = 'background-color';
     if (esperado['border-radius']) mapa['border-radius'] = 'border-radius';
-    if (esperado.width) mapa.width = 'width';
     comparar(
       `zona ${clases[i]}`,
       esperado,
@@ -992,9 +991,25 @@ await compararCaja(
         `.${clases[i]}`,
         ['background-color', 'border-radius', 'width', 'border-bottom-color', 'border-bottom-width']
       ),
-      // El ancho se compara solo donde el mockup lo declara en %.
-      Object.fromEntries(Object.entries(mapa).filter(([k]) => k !== 'width' || esperado.width.endsWith('%') === false))
+      mapa
     );
+    // Las PROPORCIONES de los segmentos: 63/23/resto. Estaban fuera de la
+    // comparacion porque el mockup las declara en %, y con la roja al 40% la
+    // frontera de "territorio PR" se movia entera con las dos puertas verdes.
+    if (esperado.width && esperado.width.endsWith('%')) {
+      const medidoAncho = await computar(
+        `<div style="width:300px"><div class="f-zonas__pista"><div class="f-zonas__roja"></div><div class="f-zonas__ambar"></div><div class="f-zonas__verde"></div></div></div>`,
+        `.${clases[i]}`,
+        ['width']
+      );
+      const esperadoPx = (parseFloat(esperado.width) / 100) * 300;
+      const real = parseFloat(medidoAncho?.width ?? '0');
+      chk(
+        `zona ${clases[i]} · proporcion`,
+        Math.abs(real - esperadoPx) < 0.6,
+        `mockup ${esperado.width} (${esperadoPx.toFixed(1)}px) | app ${real}px`
+      );
+    }
     if (esperado['border-bottom']) {
       const [ancho, , color] = esperado['border-bottom'].split(' ');
       comparar(

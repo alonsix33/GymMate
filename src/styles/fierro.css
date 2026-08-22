@@ -2380,8 +2380,11 @@ body:has(#chartsTab:not(.hidden)) {
   width: 2.5px;
   background: var(--text-hueso-primary);
   border-radius: var(--r-2);
-  /* Al aparecer, viaja desde 0 hasta su posicion (~600ms ease-out). */
-  left: 0;
+  /* El recorrido se acota a su propio ancho: con `left: 100%` el marcador
+     empezaba en el borde derecho y sobresalia 2.5px entero fuera de la pista.
+     Al aparecer viaja desde 0 hasta su posicion (~600ms ease-out). */
+  --t: 0;
+  left: calc((100% - 2.5px) * var(--t));
   transition: left var(--dur-zone-bar) var(--ease-zone-bar);
 }
 .f-zonas__pie {
@@ -2588,6 +2591,15 @@ body:has(#chartsTab:not(.hidden)) {
   font-variant-numeric: tabular-nums;
   font-size: var(--fs-12);
   font-weight: var(--w-600);
+}
+
+/* Sobre Carbon van los tonos planos de zona; los de Hueso solo en las cards
+   claras. [README:34] */
+.f-verde {
+  color: var(--zona-verde);
+}
+.f-rojo {
+  color: var(--zona-roja);
 }
 
 /* Verde y rojo de TEXTO sobre Hueso: mas oscuros por contraste [README:34] */

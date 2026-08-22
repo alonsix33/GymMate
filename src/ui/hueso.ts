@@ -10,8 +10,9 @@
  */
 import { getHistory, getPRs } from '@/utils/storage';
 import { cifra, cifraDecimal } from '@/utils/formato';
+import { formatearTiempo } from '@/utils/cardio-calc';
 import { calculate1RM } from '@/utils/calculations';
-import { getSessionXP } from '@/features/gamification';
+import { getSessionXP, estimateOneRM } from '@/features/gamification';
 import {
   distribucionMuscular,
   estadoDeZona,
@@ -21,6 +22,7 @@ import {
   picoDe,
   polilinea,
   posicionEnZonas,
+  repartirCien,
   serieDeVolumen,
   sesionesCon,
   tituloDeMes,
@@ -38,6 +40,16 @@ import type { ExerciseData, HistorySession } from '@/types';
  * actualice: mirar solo uno de los dos deja la barra y la etiqueta contando
  * historias distintas.
  */
+/** Los modos con su nombre de pantalla, no la clave interna. */
+const NOMBRE_MODO_CARDIO: Record<string, string> = {
+  tabata: 'Tabata',
+  emom: 'EMOM',
+  amrap: 'AMRAP',
+  circuit: 'Circuito',
+  pyramid: 'Pirámide',
+  custom: 'Personalizado',
+};
+
 function picoReal(nombre: string, historial: HistorySession[]): number {
   return Math.max(picoDe(nombre, historial) ?? 0, getPRs()[nombre]?.peso ?? 0);
 }
@@ -98,17 +110,19 @@ export function detalleAbierto(): number | null {
 function filaDeSesion(sesion: HistorySession, indice: number): string {
   const fecha = fechaCorta(fechaDe(sesion));
   if (sesion.type === 'cardio') {
-    const stats = sesion.stats as { rounds?: number; duration?: number } | undefined;
-    const rondas = stats?.rounds ? `${stats.rounds} ${stats.rounds === 1 ? 'ronda' : 'rondas'}` : '';
-    const segundos = stats?.duration ?? 0;
-    const tiempo = segundos
-      ? `${Math.floor(segundos / 60)}:${String(Math.round(segundos % 60)).padStart(2, '0')}`
-      : '—';
+    // Los nombres son los que GUARDA cardio.ts: `roundsCompleted` y
+    // `totalTime`. Leyendo `rounds`/`duration` la fila salia sin rondas y con
+    // un guion donde va el tiempo.
+    const stats = sesion.stats;
+    const cuantas = stats?.roundsCompleted ?? 0;
+    const rondas = cuantas ? `${cuantas} ${cuantas === 1 ? 'ronda' : 'rondas'}` : '';
+    const segundos = stats?.totalTime ?? 0;
+    const tiempo = segundos ? formatearTiempo(segundos) : '—';
     return `
       <button type="button" class="f-hist__fila" data-hueso="detalle" data-indice="${indice}">
         <span class="f-hist__hiit">HIIT</span>
         <span class="f-hist__textos">
-          <span class="f-hist__nombre">${escapar(sesion.mode ?? 'Cardio')}</span>
+          <span class="f-hist__nombre">${escapar(NOMBRE_MODO_CARDIO[sesion.mode ?? ''] ?? 'Cardio')}</span>
           <span class="f-hist__sub">${fecha}${rondas ? ` · ${rondas}` : ''}</span>
         </span>
         <span class="f-hist__cifra">${tiempo}</span>
@@ -168,22 +182,25 @@ export function renderHistorial(contenedor: HTMLElement): void {
 
   // Agrupadas por mes, en el orden en que llegan (mas reciente primero). La
   // clave YYYY-MM corta los bloques; el titulo visible es el nombre del mes.
-  const bloques: string[] = [];
-  let acumulado: string[] = [];
+  // Por CLAVE de mes, no por rachas consecutivas: con el historial desordenado
+  // (lo provoca cualquier sesion con fecha rara) salia "AGOSTO / JULIO /
+  // AGOSTO", el mismo mes partido en dos bloques.
+  const porMes = new Map<string, { titulo: string; filas: string[] }>();
   historial.forEach((sesion, i) => {
     const fecha = fechaDe(sesion);
     const clave = claveDeMes(fecha);
-    acumulado.push(filaDeSesion(sesion, i));
-    const siguiente = historial[i + 1];
-    if (siguiente && claveDeMes(fechaDe(siguiente)) === clave) return;
-    const cuenta = acumulado.length;
-    bloques.push(
-      `<span class="f-hueso__mes">${escapar(tituloDeMes(fecha))} · ${cuenta} ${
-        cuenta === 1 ? 'SESIÓN' : 'SESIONES'
-      }</span>${acumulado.join('')}`
-    );
-    acumulado = [];
+    const bloque = porMes.get(clave) ?? { titulo: tituloDeMes(fecha), filas: [] };
+    bloque.filas.push(filaDeSesion(sesion, i));
+    porMes.set(clave, bloque);
   });
+  const bloques = [...porMes.entries()]
+    .sort((a, b) => b[0].localeCompare(a[0]))
+    .map(([, bloque]) => {
+      const cuenta = bloque.filas.length;
+      return `<span class="f-hueso__mes">${escapar(bloque.titulo)} · ${cuenta} ${
+        cuenta === 1 ? 'SESIÓN' : 'SESIONES'
+      }</span>${bloque.filas.join('')}`;
+    });
 
   contenedor.innerHTML = `
     <div class="f-hueso f-root">
@@ -208,14 +225,21 @@ function anteriorDelGrupo(historial: HistorySession[], indice: number): HistoryS
   return null;
 }
 
-function claseDeDelta(valor: number): string {
-  if (valor > 0) return 'f-verde-hueso';
-  if (valor < 0) return 'f-rojo-hueso';
+/**
+ * @param sobreHueso  true en las cards blancas, donde el README manda los
+ *   tonos oscuros (#3F8F5F / #B5443F). En el header, que es Carbon, van los
+ *   colores de zona planos: el verde oscuro sobre #0B0C0F baja el contraste
+ *   de 7.90 a 4.94.
+ */
+function claseDeDelta(valor: number, sobreHueso = true): string {
+  if (valor > 0) return sobreHueso ? 'f-verde-hueso' : 'f-verde';
+  if (valor < 0) return sobreHueso ? 'f-rojo-hueso' : 'f-rojo';
   return '';
 }
 
+/** El mismo signo en toda la app: U+2212, no el guion de teclado. */
 function signo(valor: number): string {
-  return valor > 0 ? '+' : '';
+  return valor > 0 ? '+' : valor < 0 ? '−' : '';
 }
 
 function cardDeEjercicio(ejercicio: ExerciseData, historial: HistorySession[], indice: number): string {
@@ -244,7 +268,7 @@ function cardDeEjercicio(ejercicio: ExerciseData, historial: HistorySession[], i
   const deltaKg = anterior ? ejercicio.peso - anterior.peso : 0;
   const delta = anterior
     ? `<span class="f-detalle__delta ${claseDeDelta(deltaKg)}">${signo(deltaKg)}${cifraDecimal(
-        deltaKg
+        Math.abs(deltaKg)
       )} kg</span>`
     : '';
   const badge = ejercicio.peso >= pico && pico > 0 ? 'PR' : '';
@@ -271,7 +295,68 @@ function cardDeEjercicio(ejercicio: ExerciseData, historial: HistorySession[], i
   `;
 }
 
+/**
+ * HI-02 de una sesion de CARDIO. El detalle de pesas no le sirve: enseñaba
+ * "VOLUMEN 0 kg", "SETS 0", cero cards y al pie una nota sobre barras de kg.
+ * Se enseña lo que esa sesion SI tiene.
+ */
+function renderDetalleCardio(sesion: HistorySession, indice: number): string {
+  const stats = sesion.stats;
+  const fecha = fechaCorta(fechaDe(sesion));
+  const modo = NOMBRE_MODO_CARDIO[sesion.mode ?? ''] ?? 'Cardio';
+  const xp = getSessionXP(sesion.sessionId);
+  const metricas: Array<{ label: string; valor: string; xp?: boolean }> = [
+    { label: 'TIEMPO', valor: formatearTiempo(stats?.totalTime ?? 0) },
+    { label: 'TRABAJO', valor: formatearTiempo(stats?.workTime ?? 0) },
+    { label: 'RONDAS', valor: String(stats?.roundsCompleted ?? 0) },
+  ];
+  if (xp !== null) metricas.push({ label: 'XP', valor: `+${cifra(xp)}`, xp: true });
+
+  return `
+    <div class="f-hueso f-root">
+      <header class="f-hueso__header">
+        <div class="f-hueso__fila-titulo">
+          <button type="button" class="f-hueso__volver" data-hueso="volver-lista" aria-label="Volver al historial">←</button>
+          <div class="f-sesion__titulos">
+            <span class="f-sesion__titulo">${escapar(modo).toUpperCase()}</span>
+            <span class="f-sesion__sub">${escapar(fecha)}</span>
+          </div>
+          <button type="button" class="f-hueso__accion" data-hueso="borrar" data-indice="${indice}" aria-label="Eliminar esta sesión">⋯</button>
+        </div>
+        <div class="f-detalle__metricas">
+          ${metricas
+            .map(
+              (m) => `
+            <div class="f-metrica-hueso">
+              <span class="f-metrica-hueso__label">${m.label}</span>
+              <span class="f-metrica-hueso__cifra${
+                m.xp ? ' f-metrica-hueso__cifra--xp' : ''
+              }">${escapar(m.valor)}</span>
+            </div>`
+            )
+            .join('')}
+        </div>
+      </header>
+      <div class="f-hueso__cuerpo">
+        <article class="f-hueso__card">
+          <div class="f-detalle__pie">
+            <span class="f-detalle__pie-texto">Descanso</span>
+            <span>${formatearTiempo(stats?.restTime ?? 0)}</span>
+          </div>
+          <div class="f-detalle__pie">
+            <span class="f-detalle__pie-texto">Kcal estimadas</span>
+            <span>~${cifra(stats?.calories ?? 0)}</span>
+          </div>
+        </article>
+      </div>
+    </div>
+  `;
+}
+
 function renderDetalle(historial: HistorySession[], indice: number): string {
+  if (historial[indice]?.type === 'cardio') {
+    return renderDetalleCardio(historial[indice], indice);
+  }
   const sesion = historial[indice];
   const fecha = fechaCorta(fechaDe(sesion));
   const duracion = duracionDe(sesion);
@@ -301,9 +386,9 @@ function renderDetalle(historial: HistorySession[], indice: number): string {
           ? ''
           : `<div class="f-metrica-hueso">
                <span class="f-metrica-hueso__label">VS. ANTERIOR</span>
-               <span class="f-metrica-hueso__cifra ${claseDeDelta(variacion)}">${signo(
+               <span class="f-metrica-hueso__cifra ${claseDeDelta(variacion, false)}">${signo(
                  variacion
-               )}${variacion}%</span>
+               )}${Math.abs(variacion)}%</span>
              </div>`
       }
       <div class="f-metrica-hueso">
@@ -358,7 +443,7 @@ function barraDeZonas(posicion: number, estado: string, pico: number): string {
         <div class="f-zonas__roja"></div>
         <div class="f-zonas__ambar"></div>
         <div class="f-zonas__verde"></div>
-        <div class="f-zonas__marcador" data-zona-pos="${posicion.toFixed(1)}"></div>
+        <div class="f-zonas__marcador" data-zona-pos="${(posicion / 100).toFixed(4)}"></div>
       </div>
       <div class="f-zonas__pie">
         <span>${escapar(estado)}</span>
@@ -384,7 +469,7 @@ export function renderRecords(contenedor: HTMLElement): void {
         <div class="f-hueso__cuerpo">
           <div class="f-vacio-hueso">
             <span class="f-vacio-hueso__label">RÉCORDS SIN DATOS</span>
-            <span class="f-vacio-hueso__titulo">Todavía no hay marcas que batir.</span>
+            <span class="f-vacio-hueso__titulo">Aquí vivirá cada marca que batas.</span>
             <div class="f-vacio-hueso__acciones">
               <button type="button" class="f-btn-hueso" data-hueso="primera">Primera sesión</button>
             </div>
@@ -402,11 +487,31 @@ export function renderRecords(contenedor: HTMLElement): void {
       // del record (un CSV importado guarda el PR y no la sesion), y el
       // record puede quedarse corto si la sesion es mas nueva.
       const pico = picoReal(nombre, historial);
-      const actual = pesoActual(nombre, historial) ?? pr.peso;
+      // Sin sesiones de ese ejercicio en el historial no hay "actual" que
+      // enseñar: la barra decia "SIN DATOS" con el marcador clavado al 100%,
+      // dos cifras contando historias distintas en la misma barra.
+      const actual = pesoActual(nombre, historial);
       const rm = calculate1RM(nombre);
-      const estimado = rm ? Number(rm.average) : pr.peso;
-      const posicion = pico > 0 ? posicionEnZonas(actual / pico) : 0;
+      // Si el historial no tiene el ejercicio, calculate1RM no puede estimar
+      // nada: se estima con el propio record en vez de enseñar el peso crudo
+      // bajo el rotulo "1RM estimado".
+      const estimado = rm ? Number(rm.average) : estimateOneRM(pr.peso, pr.reps) || pr.peso;
       const detalle = `${pr.sets}×${pr.reps} · ${cifraDecimal(pr.peso)} kg`;
+      if (actual === null) {
+        return `
+          <article class="f-hueso__card">
+            <div class="f-pr__cabecera">
+              <div class="f-pr__identidad">
+                <div class="f-pr__nombre">${escapar(nombre)}</div>
+                <div class="f-pr__detalle">${detalle}</div>
+              </div>
+              <span class="f-pr__cifra">${cifraDecimal(estimado)} <span class="f-pr__unidad">kg</span></span>
+            </div>
+            <p class="f-graf__nota">Sin sesiones recientes de este ejercicio: complétalo una vez y estrena su barra de zonas.</p>
+          </article>
+        `;
+      }
+      const posicion = pico > 0 ? posicionEnZonas(actual / pico) : 0;
       return `
         <article class="f-hueso__card">
           <div class="f-pr__cabecera">
@@ -464,8 +569,8 @@ export function renderGraficos(contenedor: HTMLElement): void {
         ${cabecera('GRÁFICOS')}
         <div class="f-hueso__cuerpo">
           <div class="f-vacio-hueso">
-            <span class="f-vacio-hueso__label">GRÁFICOS SIN DATOS</span>
-            <span class="f-vacio-hueso__titulo">Guarda una sesión y aquí empieza la curva.</span>
+            <span class="f-vacio-hueso__label">GRÁFICOS · SIN PUNTOS</span>
+            <span class="f-vacio-hueso__titulo">Un punto todavía no es una curva. A la segunda sesión, esto se convierte en línea.</span>
             <div class="f-vacio-hueso__acciones">
               <button type="button" class="f-btn-hueso" data-hueso="primera">Primera sesión</button>
             </div>
@@ -507,7 +612,7 @@ export function renderGraficos(contenedor: HTMLElement): void {
  * uno que se aparta del mockup. PREGUNTA ABIERTA para el dueño del diseño.
  */
 const ETIQUETA_VOLUMEN: Record<Rango, string> = {
-  dia: 'VOLUMEN POR SESIÓN',
+  dia: 'VOLUMEN POR DÍA',
   semana: 'VOLUMEN POR SEMANA',
   mes: 'VOLUMEN POR MES',
   todo: 'VOLUMEN POR SESIÓN',
@@ -565,17 +670,20 @@ function cardVolumen(historial: HistorySession[]): string {
 function cardDistribucion(historial: HistorySession[]): string {
   const dist = distribucionMuscular(historial);
   if (dist.length === 0) return '';
-  const mayor = dist[0].porcentaje;
+  // El ancho es el porcentaje REAL, no el relativo al mayor: normalizando al
+  // mayor, tres grupos al 33% salian con tres barras llenas identicas.
+  // Y los enteros se reparten por resto mayor para que sumen 100: tres
+  // "33%" que suman 99 los ve cualquiera.
+  const enteros = repartirCien(dist.map((d) => d.porcentaje));
   const filas = dist
     .map(
-      (d) => `
+      (d, i) => `
         <div class="f-dist">
           <span class="f-dist__nombre">${escapar(d.musculo)}</span>
-          <div class="f-dist__pista"><div class="f-dist__relleno" style="width:${(
-            (d.porcentaje / mayor) *
-            100
-          ).toFixed(1)}%"></div></div>
-          <span class="f-dist__pct">${Math.round(d.porcentaje)}%</span>
+          <div class="f-dist__pista"><div class="f-dist__relleno" style="width:${d.porcentaje.toFixed(
+            1
+          )}%"></div></div>
+          <span class="f-dist__pct">${enteros[i]}%</span>
         </div>
       `
     )
@@ -639,7 +747,7 @@ export function animarZonas(contenedor: HTMLElement): void {
   const marcadores = contenedor.querySelectorAll<HTMLElement>('.f-zonas__marcador');
   requestAnimationFrame(() => {
     marcadores.forEach((m) => {
-      m.style.left = `${m.dataset.zonaPos ?? 0}%`;
+      m.style.setProperty('--t', m.dataset.zonaPos ?? '0');
     });
   });
 }

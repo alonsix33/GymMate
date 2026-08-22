@@ -4,6 +4,7 @@ import { confirmarAccion, confirmarDestructivo, mostrarToast } from '@/ui/feedba
 import type { ExerciseData, TabName } from '@/types';
 import { saveDraftNow, sessionData, hasUnsavedData, checkForExistingDraft, restoreFromDraft, endSession } from '@/state/session';
 import { loadHistory, loadPRs } from '@/features/history';
+import { abrirDetalle } from '@/ui/hueso';
 import { initializeCharts } from '@/features/charts';
 import { initializeCalculators } from '@/features/calculators';
 import { loadProfile } from '@/features/profile';
@@ -210,6 +211,9 @@ function updateBottomNav(activeTab: TabName | 'home'): void {
 function loadTabData(tabName: TabName): void {
   switch (tabName) {
     case 'history':
+      // Entrar a HISTORIAL siempre abre la lista: el detalle se quedaba
+      // abierto entre visitas y volver a la pestaña no lo cerraba.
+      abrirDetalle(null);
       loadHistory();
       break;
     case 'prs':

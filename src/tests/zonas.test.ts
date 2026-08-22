@@ -18,6 +18,9 @@ import {
   serieDeVolumen,
   tituloDeMes,
   claveDeMes,
+  fechaDe,
+  repartirCien,
+  sinPunto,
   ZONA_ROJA_HASTA,
   ZONA_AMBAR_HASTA,
   SESIONES_ACTUAL,
@@ -155,6 +158,15 @@ describe('sesionesSinSubir', () => {
     expect(sesionesSinSubir('Prensa', [sesion(1, [EJ('Prensa', 100)])])).toBe(0);
   });
 
+  it('un ejercicio a peso corporal (pico 0) no esta "estancado" en nada', () => {
+    const h = [
+      sesion(1, [EJ('Fondos', 0, 3, 12)]),
+      sesion(3, [EJ('Fondos', 0, 3, 12)]),
+      sesion(5, [EJ('Fondos', 0, 3, 12)]),
+    ];
+    expect(sesionesSinSubir('Fondos', h)).toBe(0);
+  });
+
   it('un pico externo mas alto convierte el pico local en estancamiento', () => {
     const h = [sesion(1, [EJ('Prensa', 100)]), sesion(3, [EJ('Prensa', 100)])];
     expect(sesionesSinSubir('Prensa', h)).toBe(0);
@@ -290,5 +302,154 @@ describe('agrupacion por mes del historial', () => {
 
   it('el mismo mes de dos años distintos tampoco', () => {
     expect(claveDeMes(new Date(2025, 3, 1))).not.toBe(claveDeMes(new Date(2026, 3, 1)));
+  });
+});
+
+describe('fechaDe', () => {
+  it('prefiere savedAt: es el instante real de guardado', () => {
+    const s = sesion(0, []);
+    s.date = '2020-01-01';
+    s.savedAt = '2026-08-13T19:30:00.000Z';
+    expect(fechaDe(s).getFullYear()).toBe(2026);
+  });
+
+  it('cae a date cuando no hay savedAt', () => {
+    const s = sesion(0, []);
+    s.savedAt = undefined;
+    s.date = '2026-04-17T10:00:00.000Z';
+    expect(fechaDe(s).getMonth()).toBe(3);
+  });
+
+  it('una fecha corta se ancla al dia LOCAL, no a medianoche UTC', () => {
+    const s = sesion(0, []);
+    s.savedAt = undefined;
+    s.date = '2026-04-17';
+    const d = fechaDe(s);
+    expect(d.getFullYear()).toBe(2026);
+    expect(d.getMonth()).toBe(3);
+    expect(d.getDate()).toBe(17);
+  });
+});
+
+describe('serieDeVolumen · los cuatro rangos son cuatro cosas distintas', () => {
+  const hoy = new Date();
+  const mismoDia = (hora: number) => {
+    const d = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate() - 1, hora);
+    return {
+      date: d.toISOString(),
+      savedAt: d.toISOString(),
+      grupo: 'G',
+      ejercicios: [],
+      volumenTotal: 1000,
+      volumenPorGrupo: {},
+    } as unknown as HistorySession;
+  };
+  const h = [mismoDia(20), mismoDia(9), sesion(9, [EJ('Prensa', 100)])];
+
+  it('"dia" junta las sesiones del mismo dia', () => {
+    const s = serieDeVolumen(h, 'dia');
+    expect(s.length).toBe(2);
+    expect(s.some((p) => p.volumen === 2000)).toBe(true);
+  });
+
+  it('"todo" da un punto por sesion', () => {
+    expect(serieDeVolumen(h, 'todo').length).toBe(3);
+  });
+
+  it('"semana" agrupa por semanas ISO que empiezan en LUNES', () => {
+    // Domingo 5 y lunes 6 de abril de 2026 caen en semanas distintas.
+    const dom = new Date(2026, 3, 5, 12);
+    const lun = new Date(2026, 3, 6, 12);
+    const mk = (d: Date) =>
+      ({
+        date: d.toISOString(),
+        savedAt: d.toISOString(),
+        grupo: 'G',
+        ejercicios: [],
+        volumenTotal: 500,
+        volumenPorGrupo: {},
+      }) as unknown as HistorySession;
+    expect(serieDeVolumen([mk(lun), mk(dom)], 'semana').length).toBe(2);
+    // Y dos dias de la MISMA semana se juntan.
+    const mar = new Date(2026, 3, 7, 12);
+    expect(serieDeVolumen([mk(mar), mk(lun)], 'semana').length).toBe(1);
+  });
+
+  it('"mes" escribe el año solo cuando la serie lo cruza', () => {
+    const mk = (y: number, m: number) => {
+      const d = new Date(y, m, 15, 12);
+      return {
+        date: d.toISOString(),
+        savedAt: d.toISOString(),
+        grupo: 'G',
+        ejercicios: [],
+        volumenTotal: 500,
+        volumenPorGrupo: {},
+      } as unknown as HistorySession;
+    };
+    const unAnio = serieDeVolumen([mk(2026, 7), mk(2026, 0)], 'mes');
+    expect(unAnio.every((p) => !/\d{2}$/.test(p.etiqueta))).toBe(true);
+    const dosAnios = serieDeVolumen([mk(2026, 0), mk(2025, 0)], 'mes');
+    expect(dosAnios.every((p) => /\d{2}$/.test(p.etiqueta))).toBe(true);
+  });
+
+  it('las etiquetas no arrastran el punto de la abreviatura', () => {
+    // Segun la version de ICU, es-ES devuelve "sept" o "sept.". Se prueba el
+    // helper directamente porque a traves de toLocaleDateString el resultado
+    // depende del runtime y el chequeo no podria fallar.
+    expect(sinPunto('15 sept.')).toBe('15 sept');
+    expect(sinPunto('ene. 26')).toBe('ene 26');
+    expect(serieDeVolumen(h, 'todo').every((p) => !p.etiqueta.includes('.'))).toBe(true);
+  });
+});
+
+describe('polilinea · valores por defecto', () => {
+  it('el viewBox por defecto es el del mockup: 320 de ancho', () => {
+    expect(polilinea([0, 100], 100)).toContain('320.0,');
+  });
+
+  it('y deja 5px de aire arriba y abajo para el trazo de 2.5', () => {
+    expect(polilinea([100], 100, 320, 110)).toBe('160.0,5.0');
+    expect(polilinea([0], 100, 320, 110)).toBe('160.0,105.0');
+  });
+});
+
+describe('repartirCien', () => {
+  it('tres tercios suman 100, no 99', () => {
+    const r = repartirCien([33.34, 33.33, 33.33]);
+    expect(r.reduce((t, v) => t + v, 0)).toBe(100);
+    expect(r).toEqual([34, 33, 33]);
+  });
+
+  it('un solo grupo se lleva el 100', () => {
+    expect(repartirCien([100])).toEqual([100]);
+  });
+
+  it('lista vacia, lista vacia', () => {
+    expect(repartirCien([])).toEqual([]);
+  });
+});
+
+describe('sesionesCon · el cardio no aporta ejercicios de pesas', () => {
+  it('una sesion de cardio con ejercicios dentro no cuenta', () => {
+    const cardio = {
+      type: 'cardio',
+      date: new Date().toISOString(),
+      grupo: 'Cardio',
+      ejercicios: [EJ('Prensa', 999)],
+      volumenTotal: 0,
+      volumenPorGrupo: {},
+    } as unknown as HistorySession;
+    expect(sesionesCon('Prensa', [cardio])).toEqual([]);
+    expect(picoDe('Prensa', [cardio])).toBeNull();
+  });
+});
+
+describe('distribucionMuscular · los grupos en 0 no son filas', () => {
+  it('un grupo con 0 kg no aparece', () => {
+    const h = [
+      sesion(1, [], { volumenPorGrupo: { Piernas: 1000, Core: 0 }, volumenTotal: 1000 }),
+    ];
+    expect(distribucionMuscular(h).map((d) => d.musculo)).toEqual(['Piernas']);
   });
 });

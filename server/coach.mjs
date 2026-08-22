@@ -14,7 +14,18 @@
 const MODELO = process.env.COACH_MODELO || 'claude-sonnet-5';
 const MAX_TOKENS = Number(process.env.COACH_MAX_TOKENS) || 700;
 
-const SISTEMA = `Eres el coach de GymMate, una app de gimnasio de una sola persona.
+/**
+ * A donde se pregunta. Solo se cambia para PROBAR el camino de streaming.
+ *
+ * La puerta comprobaba que la respuesta del coach conservara las cabeceras
+ * CORS, pero sin clave el servidor responde 503 y sale antes de llegar al
+ * `writeHead(200)` del streaming: el chequeo pasaba sin recorrer nunca el
+ * camino que decia cubrir. Con esto la puerta levanta un upstream de mentira
+ * y lo recorre de verdad.
+ */
+const UPSTREAM = process.env.COACH_URL || 'https://api.anthropic.com/v1/messages';
+
+export const SISTEMA = `Eres el coach de GymMate, una app de gimnasio de una sola persona.
 
 Voz:
 - Español de Perú, directo, sin animar de más. Nada de "¡vamos!", "¡tú puedes!"
@@ -28,13 +39,18 @@ Aritmética — la regla más importante:
 - NO calcules NADA. Cualquier cifra que la app enseñe en pantalla —1RM, pico,
   peso actual, sesiones estancado, racha, volumen— te llega ya calculada en
   PANORAMA o en RESUMEN. Cópiala literalmente de ahí.
-- El BITÁCORA es un registro para que recuerdes qué pasó y cuándo. NO hagas
+- La BITÁCORA es un registro para que recuerdes qué pasó y cuándo. NO hagas
   aritmética sobre él. Si estimas un 1RM desde sus series vas a dar un número
   distinto al de la pantalla, porque la app promedia tres fórmulas y tú
   usarías una. Dos números distintos para lo mismo destruyen la confianza en
   todos los demás.
 - Si el dato que te piden no está en PANORAMA ni en RESUMEN, dilo. No lo
-  deduzcas del BITÁCORA.`;
+  deduzcas de la BITÁCORA.
+- Hay DOS cifras de 1RM por ejercicio y NO son intercambiables: "con tu peso
+  de ahora" es la proyección del peso que estás moviendo, y "de tu mejor
+  serie" es la que el usuario ve en la pantalla RÉCORDS. Si dices una, di
+  cuál es. Nunca las promedies ni elijas por tu cuenta.
+- Si un ejercicio dice "1RM no estimable", no lo estimes tú.`;
 
 /**
  * El contexto en texto plano, listo para cachear.
@@ -45,14 +61,30 @@ Aritmética — la regla más importante:
  * pagar el año completo.
  */
 function textoDeContexto(c) {
-  const r = c.resumen ?? {};
-  const filas = (c.panorama ?? [])
-    .map(
-      (e) =>
-        `${e.ejercicio} | 1RM ${e.unaRepMax} | pico ${e.pico} | ahora ${e.actual} | ` +
+  const r = (c && typeof c.resumen === 'object' && c.resumen) || {};
+  // Un `panorama` que no sea array reventaba con 500 y el mensaje de la
+  // excepcion en el cuerpo. Aqui no se confia en la forma de lo que llega.
+  const lista = Array.isArray(c?.panorama) ? c.panorama : [];
+  const filas = lista
+    .map((e) => {
+      // DOS cifras de 1RM y cada una con su nombre. `unaRepMax` se estima
+      // sobre la serie actual —de lo que el coach habla— y `historico` sobre
+      // la mejor serie de siempre, que es la que enseña la pantalla RECORDS.
+      // Con un pico de 120x2 y 100x12 ahora, son 137 y 127. Mandar solo una
+      // con la etiqueta "1RM" y ordenar copiarla literalmente garantizaba que
+      // el coach contradijera a la pantalla.
+      const actual = e.estimable === false
+        ? '1RM no estimable (más de 15 reps)'
+        : `1RM con tu peso de ahora ${e.unaRepMax}`;
+      const hist = e.unaRepMaxHistorico != null
+        ? ` | 1RM de tu mejor serie ${e.unaRepMaxHistorico} (es el que sale en RÉCORDS)`
+        : '';
+      return (
+        `${e.ejercicio} | ${actual}${hist} | pico ${e.pico} | ahora ${e.actual} | ` +
         `zona ${e.zona} | ${e.sesionesEstancado} sesiones sin subir | ` +
         `${e.sesiones} sesiones | ultima ${e.ultimaVez}`
-    )
+      );
+    })
     .join('\n');
   const grupos = Object.entries(r.volumenPorGrupo ?? {})
     .map(([g, kg]) => `${g} ${kg} kg`)
@@ -74,7 +106,7 @@ function textoDeContexto(c) {
     '',
     'BITACORA — el registro tal cual, para recordar que paso y cuando.',
     'NO hagas aritmetica sobre esto:',
-    c.bitacora || '(vacia)',
+    String(c?.bitacora ?? '') || '(vacia)',
   ].join('\n');
 }
 
@@ -108,7 +140,15 @@ export function armarMensajes(cuerpo) {
       {
         role: 'user',
         content: [
-          { type: 'text', text: textoDeContexto(contexto), cache_control: { type: 'ephemeral' } },
+          {
+            type: 'text',
+            text: textoDeContexto(contexto),
+            // Una hora, no los 5 minutos por defecto: una sesion de gimnasio
+            // dura mas que eso y las preguntas se reparten por el medio. La
+            // escritura cuesta 2x en vez de 1,25x, pero con una sola pregunta
+            // extra fuera de los 5 minutos ya sale a cuenta.
+            cache_control: { type: 'ephemeral', ttl: '1h' },
+          },
         ],
       },
       { role: 'assistant', content: 'Tengo tu historial. Dime qué quieres saber.' }
@@ -141,7 +181,7 @@ export async function responderCoach(req, res, cuerpo) {
 
   let upstream;
   try {
-    upstream = await fetch('https://api.anthropic.com/v1/messages', {
+    upstream = await fetch(UPSTREAM, {
       method: 'POST',
       headers: {
         'content-type': 'application/json',

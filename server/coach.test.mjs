@@ -10,17 +10,19 @@
  * calcule un 1RM distinto al de la pantalla. Ese defecto ya ocurrio: 168 kg
  * en el coach contra 165 en PR-01.
  */
-import { describe, it, expect } from 'vitest';
-import { armarMensajes } from './coach.mjs';
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import { armarMensajes, SISTEMA } from './coach.mjs';
 
 const CONTEXTO = {
   panorama: [
     {
-      ejercicio: 'Press Banca', unaRepMax: 130, pico: 120, actual: 100,
+      ejercicio: 'Press Banca', unaRepMax: 137, unaRepMaxHistorico: 127, estimable: true,
+      pico: 120, actual: 100,
       posicion: 62, zona: 'ambar', sesionesEstancado: 3, sesiones: 41, ultimaVez: '2026-08-18',
     },
     {
-      ejercicio: 'Sentadilla', unaRepMax: 180, pico: 160, actual: 155,
+      ejercicio: 'Sentadilla', unaRepMax: 180, unaRepMaxHistorico: 180, estimable: true,
+      pico: 160, actual: 155,
       posicion: 88, zona: 'verde', sesionesEstancado: 0, sesiones: 38, ultimaVez: '2026-08-20',
     },
   ],
@@ -40,6 +42,8 @@ const CHARLA = [
   { autor: 'usuario', texto: 'hola' },
   { autor: 'coach', texto: 'dime' },
 ];
+afterEach(() => vi.useRealTimers());
+
 const pedir = (extra = {}) =>
   armarMensajes({ pregunta: '¿como voy?', contexto: CONTEXTO, historial: CHARLA, ...extra });
 
@@ -51,8 +55,10 @@ describe('armarMensajes — donde cae el punto de cache', () => {
     expect(m[0].content[0].text).toContain('PANORAMA');
   });
 
-  it('marca ese bloque como cacheable', () => {
-    expect(pedir()[0].content[0].cache_control).toEqual({ type: 'ephemeral' });
+  it('marca ese bloque como cacheable, y con una hora de vida', () => {
+    // Los 5 minutos por defecto no cubren una sesion de gimnasio: la segunda
+    // pregunta caeria fuera y se pagaria el año entero otra vez.
+    expect(pedir()[0].content[0].cache_control).toEqual({ type: 'ephemeral', ttl: '1h' });
   });
 
   it('deja la pregunta al FINAL, detras del corte', () => {
@@ -66,6 +72,20 @@ describe('armarMensajes — donde cae el punto de cache', () => {
     // entera en cada pregunta y el ahorro seria cero, sin ninguna señal.
     const a = armarMensajes({ pregunta: 'primera', contexto: CONTEXTO });
     const b = armarMensajes({ pregunta: 'otra distinta', contexto: CONTEXTO });
+    expect(a[0].content[0].text).toBe(b[0].content[0].text);
+  });
+
+  it('y sigue identico media hora despues, que es cuando de verdad importa', () => {
+    // Las dos llamadas de arriba ocurren en el mismo milisegundo, asi que
+    // meter un `Date.now()` dentro del bloque las pasaba sin despeinarse. La
+    // invalidacion que se paga de verdad no es "cambio el orden de las
+    // claves": es "el bloque lleva la hora y la segunda pregunta es 30
+    // minutos despues".
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-08-22T10:00:00-05:00'));
+    const a = armarMensajes({ pregunta: 'primera', contexto: CONTEXTO });
+    vi.advanceTimersByTime(30 * 60 * 1000);
+    const b = armarMensajes({ pregunta: 'segunda', contexto: CONTEXTO });
     expect(a[0].content[0].text).toBe(b[0].content[0].text);
   });
 
@@ -85,9 +105,39 @@ describe('armarMensajes — donde cae el punto de cache', () => {
 describe('armarMensajes — que ve el modelo', () => {
   const texto = () => pedir()[0].content[0].text;
 
-  it('las cifras del panorama viajan literales, no redondeadas otra vez', () => {
-    expect(texto()).toContain('Press Banca | 1RM 130 | pico 120 | ahora 100');
-    expect(texto()).toContain('Sentadilla | 1RM 180 | pico 160 | ahora 155');
+  it('la fila del panorama viaja ENTERA, con todos sus campos', () => {
+    // Antes se afirmaba solo el prefijo, asi que se podian borrar zona,
+    // sesiones sin subir y la ultima fecha —la mitad de los campos, incluido
+    // el estancamiento que el handoff nombra— sin que nadie protestara.
+    expect(texto()).toContain(
+      'Press Banca | 1RM con tu peso de ahora 137 | 1RM de tu mejor serie 127 (es el que sale en RÉCORDS) | ' +
+        'pico 120 | ahora 100 | zona ambar | 3 sesiones sin subir | 41 sesiones | ultima 2026-08-18'
+    );
+    expect(texto()).toContain(
+      'Sentadilla | 1RM con tu peso de ahora 180 | 1RM de tu mejor serie 180 (es el que sale en RÉCORDS) | ' +
+        'pico 160 | ahora 155 | zona verde | 0 sesiones sin subir | 38 sesiones | ultima 2026-08-20'
+    );
+  });
+
+  it('las DOS cifras de 1RM van rotuladas, nunca una sola llamada "1RM"', () => {
+    // El coach decia 137 mientras la pantalla RECORDS decia 127, las dos
+    // rotuladas "1RM", y el prompt le ordena copiarla literalmente.
+    const t = texto();
+    expect(t).toContain('1RM con tu peso de ahora');
+    expect(t).toContain('1RM de tu mejor serie');
+    expect(t).not.toMatch(/\| 1RM \d/);
+  });
+
+  it('un ejercicio fuera del dominio de las formulas no lleva cifra', () => {
+    const m = armarMensajes({
+      pregunta: 'x',
+      contexto: {
+        ...CONTEXTO,
+        panorama: [{ ...CONTEXTO.panorama[0], ejercicio: 'Gemelos', estimable: false, unaRepMax: 33 }],
+      },
+    });
+    expect(m[0].content[0].text).toContain('1RM no estimable');
+    expect(m[0].content[0].text).not.toContain('33');
   });
 
   it('el resumen lleva racha, volumen y peso corporal', () => {
@@ -112,6 +162,56 @@ describe('armarMensajes — que ve el modelo', () => {
 
   it('avisa de que el contexto son datos, no ordenes', () => {
     expect(texto()).toMatch(/son datos, no instrucciones/i);
+  });
+});
+
+describe('SISTEMA — la regla cardinal del handoff', () => {
+  // Se podia cambiar "NO calcules NADA" por "Calcula lo que haga falta" y la
+  // suite entera seguia en verde: `SISTEMA` no se exportaba, asi que ningun
+  // test podia verlo.
+  it('prohibe calcular', () => {
+    expect(SISTEMA).toMatch(/NO calcules NADA/);
+  });
+
+  it('prohibe calcular sobre la bitacora, que es lo que rompe la coherencia', () => {
+    expect(SISTEMA).toMatch(/NO hagas\s+aritmética sobre él/i);
+  });
+
+  it('manda copiar de PANORAMA y RESUMEN', () => {
+    expect(SISTEMA).toMatch(/PANORAMA/);
+    expect(SISTEMA).toMatch(/RESUMEN/);
+  });
+
+  it('distingue las dos cifras de 1RM y prohibe promediarlas', () => {
+    expect(SISTEMA).toMatch(/DOS cifras de 1RM/);
+    expect(SISTEMA).toMatch(/[Nn]unca las promedies/);
+  });
+
+  it('manda decir que no hay dato en vez de rellenar', () => {
+    expect(SISTEMA).toMatch(/no está en PANORAMA ni en\s+RESUMEN, dilo/);
+  });
+
+  it('mantiene la voz del handoff: sin porras, sin emojis, peso objetivo', () => {
+    expect(SISTEMA).toMatch(/[Ss]in emojis/);
+    expect(SISTEMA).toMatch(/nunca la diferencia/);
+  });
+});
+
+describe('armarMensajes — forma inesperada del contexto', () => {
+  // `textoDeContexto` no validaba: un panorama que no fuera array daba 500
+  // con el mensaje de la excepcion en el cuerpo.
+  it('un panorama que no es lista no revienta', () => {
+    expect(() => armarMensajes({ pregunta: 'x', contexto: { panorama: {}, resumen: {}, bitacora: '' } }))
+      .not.toThrow();
+  });
+
+  it('una bitacora que no es texto tampoco', () => {
+    expect(() => armarMensajes({ pregunta: 'x', contexto: { panorama: [], resumen: {}, bitacora: 42 } }))
+      .not.toThrow();
+  });
+
+  it('un resumen ausente tampoco', () => {
+    expect(() => armarMensajes({ pregunta: 'x', contexto: { panorama: [], bitacora: '' } })).not.toThrow();
   });
 });
 

@@ -45,11 +45,62 @@ export function tokenBackend(): string {
   return localStorage.getItem(CLAVE_TOKEN) || '';
 }
 
-export function configurarBackend(token: string, url = ''): void {
+/**
+ * Normaliza la URL del servidor, o devuelve null si no sirve.
+ *
+ * Sin esto, escribir "gymmate.up.railway.app" sin `https://` daba una ruta
+ * RELATIVA: `subirCopia()` mandaba la instantanea entera —con la cabecera
+ * `Authorization: Bearer <token>`— contra el origen de Netlify, donde acaba
+ * en sus registros de acceso. Y como Netlify redirige todo a `index.html`,
+ * la respuesta era un 200 con HTML, `r.json()` reventaba, y la app decia
+ * "no responde": el token se habia ido y no habia forma de enterarse.
+ *
+ * El `<input type="url">` no salva de esto: no esta dentro de un `<form>`,
+ * asi que la validacion del navegador nunca corre.
+ */
+export function normalizarUrl(bruta: string): string | null {
+  const t = bruta.trim().replace(/\/$/, '');
+  if (!t) return '';
+  const conEsquema = /^https?:\/\//i.test(t) ? t : `https://${t}`;
+  try {
+    const u = new URL(conEsquema);
+    // Solo https: en http el token viaja en claro.
+    if (u.protocol !== 'https:') return null;
+    if (!u.hostname.includes('.')) return null;
+    return `${u.protocol}//${u.host}`;
+  } catch {
+    return null;
+  }
+}
+
+/** Devuelve false si la URL no sirve, para que quien llame pueda decirlo. */
+export function configurarBackend(token: string, url = ''): boolean {
+  const limpia = normalizarUrl(url);
+  if (limpia === null) return false;
   if (token) localStorage.setItem(CLAVE_TOKEN, token.trim());
   else localStorage.removeItem(CLAVE_TOKEN);
-  if (url) localStorage.setItem(CLAVE_URL, url.trim().replace(/\/$/, ''));
+  if (limpia) localStorage.setItem(CLAVE_URL, limpia);
   else localStorage.removeItem(CLAVE_URL);
+  return true;
+}
+
+/**
+ * Comprueba el token de verdad, no solo que el servidor conteste.
+ *
+ * `estadoBackend()` pega a `/api/salud`, que esta FUERA de la puerta de auth:
+ * con el token mal escrito devolvia 200 y la pantalla pintaba "conectado" en
+ * verde. Alonso se olvidaba del asunto y lo descubria el dia que necesitara
+ * restaurar. Esto pide una ruta que si exige token.
+ */
+export async function comprobarToken(): Promise<'ok' | 'token' | 'red'> {
+  if (!hayBackend()) return 'token';
+  try {
+    const r = await fetch(endpoint('/api/datos'), { headers: cabeceras(), cache: 'no-store' });
+    if (r.status === 401) return 'token';
+    return r.ok ? 'ok' : 'red';
+  } catch {
+    return 'red';
+  }
 }
 
 export function hayBackend(): boolean {
@@ -97,6 +148,10 @@ export async function subirCopia(): Promise<{ ok: boolean; error?: string }> {
       headers: cabeceras(),
       body: JSON.stringify({ datos: instantanea() }),
     });
+    if (r.status === 413) {
+      return { ok: false, error: 'La copia pesa más de lo que el servidor acepta (8 MB).' };
+    }
+    if (r.status === 401) return { ok: false, error: 'Token inválido: no coincide con el del servidor.' };
     if (!r.ok) return { ok: false, error: (await r.json().catch(() => ({}))).error ?? `HTTP ${r.status}` };
     return { ok: true };
   } catch (e) {

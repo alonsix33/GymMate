@@ -47,6 +47,19 @@ const ORIGENES = (process.env.ORIGEN_PERMITIDO || '')
   .map((o) => o.trim().replace(/\/$/, ''))
   .filter(Boolean);
 
+// `*` es lo primero que escribe quien conoce CORS de oidas, y aqui entraba
+// como cadena literal: `ORIGENES.includes(origen)` no lo casa nunca. El
+// arranque imprimia `origenes CORS : *`, que se lee como "abierto", y la app
+// legitima se quedaba fuera con un 403. Es el mismo rotulo que miente, otra
+// vez. Mejor no arrancar que arrancar mintiendo.
+if (ORIGENES.some((o) => o === '*' || o.includes('*'))) {
+  console.error(
+    'ORIGEN_PERMITIDO no admite comodines. Pon los dominios concretos separados por coma,\n' +
+      'por ejemplo: ORIGEN_PERMITIDO=https://tu-app.netlify.app'
+  );
+  process.exit(1);
+}
+
 const MIME = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
@@ -61,7 +74,14 @@ const MIME = {
 };
 
 const json = (res, codigo, cuerpo) => {
-  res.writeHead(codigo, { 'Content-Type': 'application/json; charset=utf-8' });
+  res.writeHead(codigo, {
+    'Content-Type': 'application/json; charset=utf-8',
+    // Que ninguna cache intermedia se quede con el historial. La RFC dice que
+    // no deberia guardar una respuesta a un pedido con `Authorization`, pero
+    // depender de que todo intermediario entre el telefono y Railway cumpla
+    // la norma no es una defensa.
+    'Cache-Control': 'no-store',
+  });
   res.end(JSON.stringify(cuerpo));
 };
 
@@ -103,27 +123,70 @@ function autorizado(req) {
   if (!TOKEN) return false;
   const cabecera = req.headers.authorization || '';
   const dado = cabecera.startsWith('Bearer ') ? cabecera.slice(7) : '';
-  // Comparacion de longitud constante: con `===` el tiempo de respuesta filtra
+  // Comparacion de tiempo constante: con `===` el tiempo de respuesta filtra
   // cuantos caracteres del token son correctos.
+  // El corte por longitud sale ANTES del bucle, asi que el tiempo constante
+  // solo vale entre tokens de la misma longitud; la longitud si se filtra.
+  // Sobre red esa señal es ruido, y el cuerpo del error es identico en todos
+  // los casos. Se dice aqui para que nadie lea la linea de abajo como una
+  // garantia que no da.
   if (dado.length !== TOKEN.length) return false;
   let dif = 0;
   for (let i = 0; i < TOKEN.length; i++) dif |= dado.charCodeAt(i) ^ TOKEN.charCodeAt(i);
   return dif === 0;
 }
 
+/**
+ * Junta el cuerpo del pedido. Acumula BYTES y decodifica UNA vez al final.
+ *
+ * Antes hacia `bruto += t` sobre cada `Buffer`, y eso decodifica cada trozo
+ * por separado: cuando un caracter UTF-8 de dos bytes cae partido en la
+ * frontera entre dos trozos, cada mitad se convierte en U+FFFD y se pierde
+ * para siempre. Comprobado: un cuerpo de 128 KB de 'ó' volvia con 4
+ * caracteres destruidos, y uno de 400 KB con 12. Con 200 OK y sin una sola
+ * señal.
+ *
+ * No era cosmetico. `gymmate_prs` esta indexado POR EL NOMBRE del ejercicio,
+ * asi que "Elevación lateral" corrompido se convierte en un ejercicio
+ * fantasma y parte su historial de PR en dos. Y `bajarCopia()` escribe la
+ * copia encima de localStorage: restaurar grababa la corrupcion en el dato
+ * bueno.
+ *
+ * De paso el limite pasa a contar bytes de verdad. `bruto.length` sobre una
+ * cadena cuenta unidades UTF-16, que no es lo que el cuerpo pesa.
+ */
 function leerCuerpo(req) {
   return new Promise((resolver, rechazar) => {
-    let bruto = '';
+    const trozos = [];
+    let bytes = 0;
+    let cortado = false;
     req.on('data', (t) => {
-      bruto += t;
-      if (bruto.length > LIMITE_CUERPO) {
-        rechazar(new Error('cuerpo demasiado grande'));
-        req.destroy();
+      if (cortado) return;
+      bytes += t.length;
+      if (bytes > LIMITE_CUERPO) {
+        cortado = true;
+        // Antes se hacia `req.destroy()` a secas: el socket moria sin
+        // respuesta y `fetch` en el navegador daba "Failed to fetch", que es
+        // literalmente lo mismo que se ve sin cobertura. La app culpaba a la
+        // conexion. Un 413 se puede distinguir y explicar.
+        // Se rechaza pero NO se destruye el socket todavia: matarlo aqui
+        // impide escribir la respuesta, y `fetch` en el navegador da
+        // "Failed to fetch", identico a estar sin cobertura. Quien recoge el
+        // rechazo escribe el 413 y destruye despues. Los trozos que sigan
+        // llegando se tiran, asi que la memoria no crece.
+        const e = new Error('la copia es demasiado grande para este servidor');
+        e.codigo = 413;
+        e.cortarDespues = req;
+        rechazar(e);
+        return;
       }
+      trozos.push(t);
     });
     req.on('end', () => {
+      if (cortado) return;
       try {
-        resolver(bruto ? JSON.parse(bruto) : {});
+        const texto = Buffer.concat(trozos).toString('utf8');
+        resolver(texto ? JSON.parse(texto) : {});
       } catch {
         rechazar(new Error('JSON invalido'));
       }
@@ -180,7 +243,9 @@ const servidor = createServer(async (req, res) => {
     return json(res, 200, {
       ok: true,
       almacenamiento: modoAlmacen(),
-      persistente: modoAlmacen() !== 'efimero',
+      // `fichero` NO garantiza persistencia: puede ser un volumen o puede ser
+      // el disco efimero del contenedor, y desde aqui no se distinguen.
+      persistente: modoAlmacen() === 'postgres',
       coach: Boolean(process.env.ANTHROPIC_API_KEY),
       protegido: Boolean(TOKEN),
       // Se dice en voz alta lo que falta, en vez de fingir que todo esta bien.
@@ -189,8 +254,18 @@ const servidor = createServer(async (req, res) => {
         // hace `autorizado()`: sin token devuelve 401 a todo. Un aviso que
         // miente sobre el riesgo hace tomar la decision equivocada.
         !TOKEN && 'Falta GYMMATE_TOKEN: la API no acepta a nadie hasta que la configures.',
+        // Este aviso solo saltaba en modo `efimero`, o sea cuando NI SIQUIERA
+        // se puede escribir un fichero. Pero el caso real y silencioso es el
+        // otro: sin Postgres y sin volumen, `/data` se crea sin problema, el
+        // modo es `fichero`, y la copia se borra igual en el proximo
+        // despliegue. El servidor no puede distinguir un volumen montado de
+        // una carpeta cualquiera, asi que en vez de afirmar, avisa de que hay
+        // que mirarlo en Railway.
         modoAlmacen() === 'efimero' &&
-          'Sin Postgres ni volumen: lo que guardes se borra en el próximo despliegue.',
+          'Sin almacenamiento: lo que guardes se borra en el próximo despliegue.',
+        modoAlmacen() === 'fichero' &&
+          'Copia en fichero: comprueba en Railway que haya un volumen montado en /data. ' +
+            'Sin volumen ni Postgres, se borra en el próximo despliegue.',
         !process.env.ANTHROPIC_API_KEY && 'Falta ANTHROPIC_API_KEY: el coach responde en local.',
       ].filter(Boolean),
     });
@@ -220,7 +295,12 @@ const servidor = createServer(async (req, res) => {
       }
       return json(res, 404, { error: 'no existe' });
     } catch (e) {
-      return json(res, 500, { error: e.message });
+      // El cuerpo demasiado grande tiene su propio codigo: si sale como 500,
+      // la app no puede distinguirlo de un fallo del servidor.
+      json(res, e.codigo ?? 500, { error: e.message });
+      // Ya con la respuesta escrita, se corta lo que quede por llegar.
+      if (e.cortarDespues) e.cortarDespues.destroy();
+      return;
     }
   }
 
@@ -230,8 +310,19 @@ const servidor = createServer(async (req, res) => {
   try {
     await servirEstatico(req, res, ruta);
   } catch (e) {
-    json(res, 500, { error: e.message });
+    // `servirEstatico` escribe la cabecera ANTES de leer el fichero: si la
+    // lectura falla despues (EACCES, o el fichero desaparece a mitad de un
+    // despliegue), un segundo `writeHead` lanza ERR_HTTP_HEADERS_SENT dentro
+    // del catch, escapa del manejador async y tumba el proceso.
+    if (!res.headersSent) json(res, 500, { error: e.message });
+    else res.end();
   }
+});
+
+// Un rechazo suelto no puede tumbar el servidor y dejar a Alonso sin copia ni
+// coach hasta que Railway lo reinicie. Se registra y se sigue.
+process.on('unhandledRejection', (e) => {
+  console.error('rechazo sin capturar:', e instanceof Error ? e.stack : e);
 });
 
 const modo = await iniciarAlmacen();

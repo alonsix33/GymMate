@@ -28,6 +28,9 @@ import type { HistorySession } from '@/types';
 export interface DatoDeEjercicio {
   ejercicio: string;
   unaRepMax: number;
+  /** false cuando las reps caen fuera del dominio de las formulas (>15) y la
+   *  cifra de arriba es un relleno que NO debe enseñarse. */
+  estimable: boolean;
   pico: number;
   actual: number;
   /** Posicion en la barra de zonas, 0-100. */
@@ -132,11 +135,17 @@ export function datosDelEjercicio(nombre: string, historial: HistorySession[] = 
   // determinista; estaba 33 kg baja.
   const reps = repsDeLaSerieActual(nombre, historial, actual);
   const ratio = actual / pico;
+  // Fuera del dominio de las formulas (mas de 15 reps) CA-01 devuelve null y
+  // NO enseña cifra. Aqui se caia en `estimateOneRM`, que es Epley a secas:
+  // 20 reps daban 33 kg donde la calculadora se niega a estimar. Series de 20
+  // son normales en gemelos y abdominales.
+  const promedio = unaRepMaxPromedio(actual, reps);
   return {
     ejercicio: nombre,
     // El PROMEDIO de las tres formulas, igual que PR-01 y CA-01. Con Epley a
     // secas, el mismo ejercicio salia 168 kg aqui y 165 alli.
-    unaRepMax: Math.round(unaRepMaxPromedio(actual, reps) ?? estimateOneRM(actual, reps)),
+    unaRepMax: Math.round(promedio ?? estimateOneRM(actual, reps)),
+    estimable: promedio !== null,
     pico,
     actual,
     posicion: posicionEnZonas(ratio),
@@ -186,6 +195,18 @@ export interface PanoramaEjercicio extends DatoDeEjercicio {
   /** Fecha de la ultima sesion en que aparece, para saber si esta vigente. */
   ultimaVez: string;
   sesiones: number;
+  /**
+   * El 1RM sobre la MEJOR serie de siempre, que es el que enseña PR-01.
+   *
+   * `unaRepMax` se estima sobre la serie ACTUAL, que es de lo que el coach
+   * habla. Las dos son legitimas y las dos son "el promedio de tres
+   * formulas", pero son cuentas distintas: con un pico de 120x2 y 100x12
+   * ahora, PR-01 dice 127 y la actual dice 137. La tarjeta del chat ya lo
+   * desambigua escribiendo "1RM EST. ACTUAL"; el texto que va al modelo no lo
+   * hacia, y el prompt le ordena copiar la cifra literalmente. Van las dos, y
+   * rotuladas.
+   */
+  unaRepMaxHistorico: number | null;
 }
 
 export interface ContextoCoach {
@@ -210,12 +231,16 @@ export const MESES_DE_CONTEXTO = 12;
 function desdeHaceMeses(meses: number): Date {
   // Se construye por componentes locales, nunca desde una cadena: en Lima
   // (UTC-5) `new Date('2026-08-22')` se interpreta como UTC y cae en el dia
-  // anterior. El mediodia es la convencion del resto del proyecto
-  // (`fechaDeClaveLocal`) para no quedar pegado a un cambio de hora; aqui, con
-  // una ventana de un año, no cambia que entre o salga ninguna sesion.
+  // anterior.
+  //
+  // A las 00:00, no a mediodia. Con el corte a mediodia, en el dia limite lo
+  // entrenado por la mañana quedaba FUERA y lo de la tarde dentro. Y no era
+  // teorico: `parseSpanishDate` guarda toda sesion importada de CSV como
+  // `T12:00:00.000Z`, que en Lima son las 07:00, asi que toda sesion
+  // importada que cayera en el dia limite desaparecia del contexto, siempre.
+  // El dia limite entra entero o no entra.
   const hoy = new Date();
-  const d = new Date(hoy.getFullYear(), hoy.getMonth() - meses, hoy.getDate(), 12, 0, 0, 0);
-  return d;
+  return new Date(hoy.getFullYear(), hoy.getMonth() - meses, hoy.getDate(), 0, 0, 0, 0);
 }
 
 /**
@@ -249,8 +274,10 @@ export function contextoCompleto(
     const suyas = orden.filter((s) => (s.ejercicios ?? []).some((e) => e.nombre === nombre));
     panorama.push({
       ...dato,
+      ejercicio: limpio(dato.ejercicio),
       sesiones: suyas.length,
       ultimaVez: suyas[0] ? diaDe(suyas[0]) : '',
+      unaRepMaxHistorico: unaRepMaxDeLaMejorSerie(nombre, orden),
     });
   }
   panorama.sort((a, b) => b.sesiones - a.sesiones);
@@ -263,7 +290,9 @@ export function contextoCompleto(
 
   const volumenPorGrupo: Record<string, number> = {};
   for (const { musculo, volumen } of distribucionMuscular(orden)) {
-    volumenPorGrupo[musculo] = Math.round(volumen);
+    // El grupo tambien lo escribe el usuario y tambien viaja, ademas como
+    // CLAVE dentro del bloque que el prompt llama "ya calculado".
+    volumenPorGrupo[limpio(musculo) || 'sin grupo'] = Math.round(volumen);
   }
 
   return {
@@ -282,11 +311,51 @@ export function contextoCompleto(
   };
 }
 
+/**
+ * El 1RM sobre la mejor serie de siempre: el mismo criterio que `calculate1RM`
+ * usa para PR-01 —mayor peso, y a igual peso mas repeticiones—, para que las
+ * dos cifras no puedan divergir por el desempate.
+ */
+function unaRepMaxDeLaMejorSerie(nombre: string, historial: HistorySession[]): number | null {
+  let mejorPeso = 0;
+  let mejorReps = 0;
+  for (const s of historial) {
+    for (const e of s.ejercicios ?? []) {
+      if (e.nombre !== nombre || !(e.peso > 0)) continue;
+      if (e.peso > mejorPeso || (e.peso === mejorPeso && e.reps > mejorReps)) {
+        mejorPeso = e.peso;
+        mejorReps = e.reps;
+      }
+    }
+  }
+  if (mejorPeso <= 0) return null;
+  const p = unaRepMaxPromedio(mejorPeso, mejorReps || 1);
+  return p === null ? null : Math.round(p);
+}
+
 /** El dia local de una sesion, en ISO corto. */
 function diaDe(sesion: HistorySession): string {
   const f = fechaDe(sesion);
   const p = (n: number) => String(n).padStart(2, '0');
   return `${f.getFullYear()}-${p(f.getMonth() + 1)}-${p(f.getDate())}`;
+}
+
+/**
+ * Limpia un texto que escribio el usuario antes de meterlo en la bitacora.
+ *
+ * `builder.ts` acepta cualquier cosa como nombre de ejercicio, y ese nombre
+ * entra crudo en `NOMBRE SETSxREPS@PESO`. Comprobado: un nombre con `;`
+ * fabrica un ejercicio que no existe, uno llamado `Press 4x8@100` deja al
+ * modelo con dos series y ninguna forma de saber cual es la buena, y un salto
+ * de linea inventa una SESION ENTERA con su fecha. No hace falta un atacante:
+ * el unico que escribe esos nombres es el dueño, y se corrompe igual.
+ */
+function limpio(bruto: unknown): string {
+  return String(bruto ?? '')
+    .replace(/[\r\n;·|@]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 60);
 }
 
 /**
@@ -307,15 +376,15 @@ function bitacoraDe(sesionesNuevaPrimero: HistorySession[]): string {
       // `totalTime` esta en SEGUNDOS —lo confirma `hueso.ts:125`, que lo
       // llama `segundos` y lo pasa a `formatearTiempo`—.
       const min = s.stats?.totalTime ? Math.round(s.stats.totalTime / 60) : null;
-      lineas.push(`${diaDe(s)} cardio${s.mode ? ' ' + s.mode : ''}${min ? ` ${min} min` : ''}`);
+      lineas.push(`${diaDe(s)} cardio${s.mode ? ' ' + limpio(s.mode) : ''}${min ? ` ${min} min` : ''}`);
       continue;
     }
     const ejs = (s.ejercicios ?? [])
       .filter((e) => e.nombre)
-      .map((e) => `${e.nombre} ${e.sets}x${e.reps}@${e.peso}`)
+      .map((e) => `${limpio(e.nombre)} ${e.sets}x${e.reps}@${e.peso}`)
       .join('; ');
     if (!ejs) continue;
-    lineas.push(`${diaDe(s)} ${s.grupo || 'sesion'} · ${ejs}`);
+    lineas.push(`${diaDe(s)} ${limpio(s.grupo) || 'sesion'} · ${ejs}`);
   }
   return lineas.join('\n');
 }
@@ -422,6 +491,17 @@ export class CoachRemoto implements AdaptadorCoach {
   }
 
   async *responder(pregunta: string, historial: TurnoCoach[]): AsyncIterable<string> {
+    // El contexto se calcula UNA vez y `datos` sale de dentro de el, no de
+    // una llamada aparte. `contextoCompleto` filtra a 12 meses y `datosPara`
+    // leia el historial ENTERO: para un ejercicio cuyo pico esta fuera de la
+    // ventana, los dos bloques viajaban en el mismo mensaje con cifras
+    // distintas —uno rotulado "la unica verdad" y el otro "los mismos que la
+    // tarjeta de al lado"—. Ahora es literalmente el mismo objeto.
+    const contexto = contextoCompleto();
+    const nombre = ejercicioMencionado(pregunta);
+    const datos = nombre
+      ? (contexto?.panorama.find((e) => e.ejercicio === nombre) ?? null)
+      : null;
     const r = await fetch(`${this.url}/api/coach`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${this.token}` },
@@ -430,11 +510,11 @@ export class CoachRemoto implements AdaptadorCoach {
         historial: historial.slice(-12).map((t) => ({ autor: t.autor, texto: t.texto })),
         // El ejercicio de la pregunta, si lo hay: es el que se pinta como
         // tarjeta al lado de la respuesta.
-        datos: this.datosPara(pregunta),
+        datos,
         // Y el año entero, sin elegir. Va en cada peticion porque la API no
         // guarda estado; el servidor lo marca como bloque cacheable, asi que
         // de la segunda pregunta en adelante se lee de cache a 0,1x.
-        contexto: contextoCompleto(),
+        contexto,
       }),
     });
     if (!r.ok || !r.body) {

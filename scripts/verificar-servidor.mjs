@@ -19,6 +19,7 @@
  * Sale 1 ante cualquier fallo. Uso: node scripts/verificar-servidor.mjs
  */
 import { spawn } from 'node:child_process';
+import { createServer } from 'node:http';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { resolve, dirname, join } from 'node:path';
@@ -45,12 +46,23 @@ async function levantar(puerto, entorno = {}) {
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   let salida = '';
+  let muerto = null;
   hijo.stdout.on('data', (b) => (salida += b));
   hijo.stderr.on('data', (b) => (salida += b));
+  // Con un servidor de una corrida anterior vivo en el mismo puerto, el hijo
+  // moria con EADDRINUSE, `/api/salud` respondia 200 desde el INTRUSO y la
+  // puerta imprimia 15 OK contra un servidor que no era el suyo.
+  hijo.on('exit', (codigo) => { muerto = codigo; });
 
   const base = `http://127.0.0.1:${puerto}`;
   const limite = Date.now() + 15000;
   for (;;) {
+    if (muerto !== null) {
+      throw new Error(
+        `el servidor murio al arrancar (codigo ${muerto}). ` +
+          `¿Hay otro escuchando en :${puerto} de una corrida anterior?\n${salida}`
+      );
+    }
     if (Date.now() > limite) {
       hijo.kill('SIGKILL');
       throw new Error(`el servidor no arranco en 15 s:\n${salida}`);
@@ -66,8 +78,12 @@ async function levantar(puerto, entorno = {}) {
     base,
     salida: () => salida,
     async cerrar() {
-      hijo.kill('SIGTERM');
-      await new Promise((ok) => hijo.once('exit', ok));
+      // Si ya salio, `once('exit')` no resuelve nunca y la puerta se cuelga
+      // con "unsettled top-level await" en vez de decir que paso.
+      if (muerto === null) {
+        hijo.kill('SIGTERM');
+        await new Promise((ok) => hijo.once('exit', ok));
+      }
       await rm(datos, { recursive: true, force: true });
     },
   };
@@ -146,6 +162,19 @@ const cab = (r, n) => r.headers.get(n);
     });
     chk('cors · y su respuesta no lleva allow-origin, asi el navegador la tira',
       cab(getMalo, 'access-control-allow-origin') === null, String(cab(getMalo, 'access-control-allow-origin')));
+    // `Vary` solo se comprobaba en el caso PERMITIDO, que es justo donde no
+    // importa: el envenenamiento de cache solo es posible en esta rama, y
+    // mover el `setHeader` detras del `includes` no mataba ningun chequeo.
+    chk('cors · el origen ajeno tambien recibe Vary, o una cache reparte mal',
+      /origin/i.test(cab(getMalo, 'vary') ?? ''), String(cab(getMalo, 'vary')));
+    chk('cors · los metodos son exactamente los que existen, ni uno mas',
+      cab(pre, 'access-control-allow-methods') === 'GET, PUT, POST, OPTIONS',
+      String(cab(pre, 'access-control-allow-methods')));
+    // Con Bearer desde localStorage no hacen falta credenciales; activarlas
+    // seria superficie a cambio de nada, y nadie lo estaba mirando.
+    chk('cors · no se piden credenciales, que aqui no hacen falta',
+      cab(pre, 'access-control-allow-credentials') === null &&
+        cab(get, 'access-control-allow-credentials') === null);
     chk('cors · nunca se responde con el comodin *',
       cab(get, 'access-control-allow-origin') !== '*' && cab(pre, 'access-control-allow-origin') !== '*');
 
@@ -162,8 +191,94 @@ const cab = (r, n) => r.headers.get(n);
     const cuerpo = await vuelta.json();
     chk('datos · y vuelve igual', cuerpo?.datos?.gymmate_history?.[0]?.date === '2026-08-01',
       JSON.stringify(cuerpo?.datos ?? null).slice(0, 80));
+
+    // El respaldo de un año pesa cientos de KB y llega en varios trozos. Con
+    // `bruto += t` sobre cada Buffer, un caracter de dos bytes partido en la
+    // frontera entre trozos se convertia en U+FFFD y se perdia. Comprobado:
+    // 128 KB de 'ó' volvian con 4 destruidos, con 200 OK. Y `gymmate_prs`
+    // esta indexado POR EL NOMBRE del ejercicio, asi que "Elevación lateral"
+    // corrompido parte su historial de PR en dos.
+    //
+    // Se usa un cuerpo hecho SOLO de caracteres de dos bytes: cualquier corte
+    // en un offset impar parte uno por la mitad, asi que si el troceo existe
+    // esto lo ve seguro. Con nombres realistas el fallo depende del
+    // alineamiento y se escapa la mitad de las veces.
+    for (const kb of [128, 400]) {
+      const texto = 'ó'.repeat((kb * 1024) / 2);
+      const p2 = await fetch(`${s.base}/api/datos`, {
+        method: 'PUT',
+        headers: { Authorization: `Bearer ${TOKEN}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ datos: { gymmate_history: texto } }),
+      });
+      const v2 = await (await fetch(`${s.base}/api/datos`, { headers: { Authorization: `Bearer ${TOKEN}` } })).json();
+      const vuelto = v2?.datos?.gymmate_history ?? '';
+      const rotos = (vuelto.match(/\uFFFD/g) ?? []).length;
+      chk(`datos · ${kb} KB con acentos vuelven intactos, sin caracteres destruidos`,
+        p2.ok && vuelto === texto,
+        rotos ? `${rotos} caracteres destruidos` : `codigo ${p2.status}, ${vuelto.length} de ${texto.length}`);
+    }
+
+    // El limite de 8 MB tiene que dar 413, no matar el socket: `fetch` daria
+    // "Failed to fetch", que es literalmente lo que se ve sin cobertura, y la
+    // app culparia a la conexion para siempre.
+    const enorme = await fetch(`${s.base}/api/datos`, {
+      method: 'PUT',
+      headers: { Authorization: `Bearer ${TOKEN}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ datos: { x: 'a'.repeat(9 * 1024 * 1024) } }),
+    }).catch((e) => ({ status: 0, error: e.message }));
+    chk('datos · una copia de mas de 8 MB da 413, no una caida de socket',
+      enorme.status === 413, enorme.status === 0 ? `el socket murio: ${enorme.error}` : `codigo ${enorme.status}`);
+    const vivo = await fetch(`${s.base}/api/salud`);
+    chk('datos · y el servidor sigue en pie despues', vivo.ok, `codigo ${vivo.status}`);
+
+    // Y la copia buena no se pisa con la que fue rechazada.
+    const tras = await (await fetch(`${s.base}/api/datos`, { headers: { Authorization: `Bearer ${TOKEN}` } })).json();
+    chk('datos · la copia anterior sobrevive al rechazo',
+      typeof tras?.datos?.gymmate_history === 'string', JSON.stringify(tras?.datos ?? null).slice(0, 40));
   } finally {
     await s.cerrar();
+  }
+}
+
+// ==========================================================================
+// A2. El camino de STREAMING de verdad, con un upstream de mentira
+//
+// El chequeo de arriba comprueba la cabecera sobre un 503 —el servidor no
+// tiene clave y sale antes de llegar al `writeHead(200)` del streaming—, o
+// sea sobre el unico camino que NO es el que dice cubrir. Comprobado: borrar
+// las cabeceras justo antes de ese `writeHead(200)` no mataba ni un chequeo.
+// Aqui se levanta un falso api.anthropic.com que responde SSE de verdad.
+// ==========================================================================
+{
+  const falso = createServer((req, res) => {
+    res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+    res.write('data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"cin"}}\n');
+    res.write('data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"cuenta"}}\n');
+    res.end();
+  });
+  await new Promise((ok) => falso.listen(4734, '127.0.0.1', ok));
+
+  const s = await levantar(4735, {
+    ORIGEN_PERMITIDO: BUENO,
+    ANTHROPIC_API_KEY: 'clave-de-mentira',
+    COACH_URL: 'http://127.0.0.1:4734/v1/messages',
+  });
+  try {
+    const r = await fetch(`${s.base}/api/coach`, {
+      method: 'POST',
+      headers: { Origin: BUENO, Authorization: `Bearer ${TOKEN}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pregunta: '¿como voy?', contexto: null }),
+    });
+    chk('streaming · el coach responde 200, no 503', r.status === 200, `codigo ${r.status}`);
+    chk('streaming · y la respuesta del stream lleva allow-origin',
+      cab(r, 'access-control-allow-origin') === BUENO, String(cab(r, 'access-control-allow-origin')));
+    chk('streaming · sin cache, que ahi va el historial',
+      /no-store/.test(cab(r, 'cache-control') ?? ''), String(cab(r, 'cache-control')));
+    const texto = await r.text();
+    chk('streaming · el texto del modelo llega recompuesto', texto === 'cincuenta', JSON.stringify(texto));
+  } finally {
+    await s.cerrar();
+    await new Promise((ok) => falso.close(ok));
   }
 }
 
@@ -224,7 +339,7 @@ const cab = (r, n) => r.headers.get(n);
 }
 
 console.log(`\n${ejecutados} chequeos de servidor ejecutados`);
-const CHEQUEOS_MINIMO = 24;
+const CHEQUEOS_MINIMO = 36;
 if (ejecutados < CHEQUEOS_MINIMO) {
   fallos++;
   console.log(

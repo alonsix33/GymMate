@@ -1,4 +1,4 @@
-import { configurarBackend, tokenBackend, urlBackend, estadoBackend, subirCopia, bajarCopia } from '@/features/backend';
+import { configurarBackend, comprobarToken, tokenBackend, urlBackend, estadoBackend, subirCopia, bajarCopia } from '@/features/backend';
 import { SIN_FECHA, fechaLegible } from '@/utils/fecha';
 /**
  * FIERRO · Calculadoras, Perfil y Medidas — CA-01, CA-02, P-01, P-02, P-03.
@@ -954,34 +954,66 @@ function alTocarPerfil(el: HTMLElement, contenedor: HTMLElement): void {
     case 'conectar': {
       const token = (document.getElementById('perfilBackendToken') as HTMLInputElement | null)?.value ?? '';
       const url = (document.getElementById('perfilBackendUrl') as HTMLInputElement | null)?.value ?? '';
-      configurarBackend(token, url);
+      // Una URL sin `https://` es RELATIVA: mandaria la instantanea y el
+      // token contra el propio dominio de Netlify. Se corta antes de guardar.
+      if (!configurarBackend(token, url)) {
+        mostrarToast({
+          tipo: 'aviso',
+          titulo: 'Esa dirección no sirve',
+          detalle: 'Tiene que empezar por https:// y ser un dominio completo.',
+        });
+        break;
+      }
       const marca = document.getElementById('perfilServidorEstado');
       if (marca) marca.textContent = token ? 'comprobando…' : 'sin conectar';
-      void estadoBackend().then((e) => {
+      void (async () => {
+        const e = await estadoBackend();
         if (!e) {
           if (marca) marca.textContent = 'no responde';
-          // "Revisa la URL" mandaba a mirar donde casi nunca esta el fallo.
-          // Desde otro dominio, la causa numero uno es que al servidor le
-          // falte ORIGEN_PERMITIDO: el navegador bloquea la peticion y esto
-          // se ve exactamente igual que un servidor caido.
+          // Antes decia "Revisa la URL", y luego "revisa ORIGEN_PERMITIDO":
+          // las dos mandaban a Railway. Pero `estadoBackend()` devuelve null
+          // por CUALQUIER fetch fallido, y el estado mas comun de un telefono
+          // es no tener datos. Primero lo que Alonso puede mirar ahi mismo.
           mostrarToast({
             tipo: 'aviso',
             titulo: 'El servidor no responde',
-            detalle: 'Revisa la URL y que ORIGEN_PERMITIDO tenga tu dominio. La app sigue funcionando sin él.',
+            detalle: 'Si tienes datos, revisa la URL y ORIGEN_PERMITIDO en Railway. La app funciona igual sin él.',
           });
           return;
         }
-        // Se dice lo que el servidor dice de si mismo, incluidos sus avisos:
-        // un servidor sin almacenamiento persistente parece funcionar y borra
-        // la copia en el siguiente despliegue.
-        if (marca) marca.textContent = e.coach ? 'conectado · coach con modelo' : 'conectado · coach en local';
+        // `/api/salud` NO exige token, asi que hasta aqui solo sabemos que el
+        // servidor esta vivo. Con el token mal, esto pintaba "conectado" en
+        // verde y el fallo aparecia semanas despues, al querer restaurar.
+        const auth = await comprobarToken();
+        if (auth === 'token') {
+          if (marca) marca.textContent = 'token inválido';
+          mostrarToast({
+            tipo: 'aviso',
+            titulo: 'El token no coincide',
+            detalle: 'El servidor responde, pero no acepta ese token. Cópialo de Railway → Variables → GYMMATE_TOKEN.',
+          });
+          return;
+        }
+
+        // Enganchar el coach AQUI, no solo al arrancar la app. Antes solo se
+        // instalaba en `main.ts`, asi que la pantalla decia "coach con
+        // modelo" y el coach seguia siendo el del telefono hasta reabrir.
+        let conModelo = false;
+        if (e.coach) {
+          const { CoachRemoto, usarAdaptador } = await import('@/features/coach-ia');
+          const { urlBackend, tokenBackend } = await import('@/features/backend');
+          usarAdaptador(new CoachRemoto(urlBackend(), tokenBackend()));
+          conModelo = true;
+        }
+
+        if (marca) marca.textContent = conModelo ? 'conectado · coach con modelo' : 'conectado · coach en local';
         mostrarToast({
           tipo: (e.avisos?.length ?? 0) > 0 ? 'aviso' : 'exito',
           titulo: 'Servidor conectado',
           detalle: e.avisos?.length ? e.avisos.join(' · ') : `Copia en ${e.almacenamiento}.`,
         });
         renderPerfil(contenedor);
-      });
+      })();
       break;
     }
 

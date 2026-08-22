@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { contextoCompleto, MESES_DE_CONTEXTO } from '@/features/coach-ia';
-import { unaRepMaxPromedio } from '@/utils/calculations';
+import { calculate1RM } from '@/utils/calculations';
+import { initGamification, getStreakInfo } from '@/features/gamification';
+import { saveHistory, savePRs } from '@/utils/storage';
 import type { HistorySession } from '@/types';
 
 /**
@@ -69,10 +71,31 @@ describe('contextoCompleto · la ventana de 12 meses', () => {
   });
 
   it('la del limite justo por dentro entra y la de justo fuera no', () => {
-    const dentro = contextoCompleto([sesion('Press Banca', 100, 8, 360)]);
-    expect(dentro?.resumen.sesiones).toBe(1);
-    const fuera = contextoCompleto([sesion('Press Banca', 100, 8, 372)]);
-    expect(fuera).toBeNull();
+    // Antes usaba 360 y 372, o sea toleraba SEIS dias de corrimiento del
+    // corte sin protestar. El corte real cae en 365 o 366; se prueba a un dia
+    // de cada lado del corte calculado, no "por ahi cerca".
+    const hoy = new Date();
+    const corte = new Date(hoy.getFullYear(), hoy.getMonth() - 12, hoy.getDate());
+    const dias = Math.round((hoy.getTime() - corte.getTime()) / 86400000);
+    expect(contextoCompleto([sesion('Press Banca', 100, 8, dias)])?.resumen.sesiones).toBe(1);
+    expect(contextoCompleto([sesion('Press Banca', 100, 8, dias + 1)])).toBeNull();
+  });
+
+  it('el dia del limite entra ENTERO, tambien lo entrenado por la mañana', () => {
+    // Con el corte a mediodia, lo de la mañana del dia limite quedaba fuera y
+    // lo de la tarde dentro. Y `parseSpanishDate` guarda toda sesion
+    // importada de CSV a las 07:00 de Lima, asi que toda sesion importada que
+    // cayera ese dia desaparecia del contexto, siempre.
+    const hoy = new Date();
+    const corte = new Date(hoy.getFullYear(), hoy.getMonth() - 12, hoy.getDate());
+    const manana = new Date(corte.getFullYear(), corte.getMonth(), corte.getDate(), 9, 0);
+    const s = {
+      sessionId: 'lim', date: manana.toISOString(), savedAt: manana.toISOString(),
+      grupo: 'Pecho', type: 'weights', volumenTotal: 1, volumenPorGrupo: { Pecho: 1 },
+      ejercicios: [{ nombre: 'Press Banca', sets: 3, reps: 8, peso: 100, volumen: 2400,
+        completado: true, esMancuerna: false, grupoMuscular: 'Pecho' }],
+    } as unknown as HistorySession;
+    expect(contextoCompleto([s])?.resumen.sesiones).toBe(1);
   });
 
   it('la ventana es la declarada, no otra', () => {
@@ -81,12 +104,92 @@ describe('contextoCompleto · la ventana de 12 meses', () => {
 });
 
 describe('contextoCompleto · el panorama no contradice a la pantalla', () => {
-  it('el 1RM es el PROMEDIO de las tres formulas, igual que PR-01 y CA-01', () => {
-    // Con Epley a secas este numero salia distinto al de la pantalla. Dos
-    // cifras para lo mismo destruyen la confianza en todas las demas.
-    const c = contextoCompleto([sesion('Press Banca', 100, 12, 3)]);
-    const fila = c?.panorama.find((e) => e.ejercicio === 'Press Banca');
-    expect(fila?.unaRepMax).toBe(Math.round(unaRepMaxPromedio(100, 12) as number));
+  it('el 1RM historico es EL MISMO que enseña la pantalla RECORDS', () => {
+    // Antes esto llamaba a `unaRepMaxPromedio(100, 12)` —la misma funcion con
+    // los mismos argumentos que el codigo bajo prueba— asi que no podia
+    // fallar aunque PR-01 dijera otra cosa. Y decia otra cosa: con el pico
+    // fuera de las tres ultimas sesiones, 137 contra 127.
+    const hist = [
+      sesion('Press Banca', 100, 12, 3),
+      sesion('Press Banca', 100, 12, 10),
+      sesion('Press Banca', 100, 12, 17),
+      sesion('Press Banca', 120, 2, 45),
+    ];
+    saveHistory(hist);
+    const pantalla = calculate1RM('Press Banca');
+    const fila = contextoCompleto(hist)?.panorama[0];
+    expect(fila?.unaRepMaxHistorico).toBe(Math.round(Number(pantalla?.average)));
+  });
+
+  it('y la cifra "de ahora" es distinta a la de la pantalla, a proposito', () => {
+    // Las dos son legitimas: la pantalla estima sobre la mejor serie de
+    // siempre y el coach sobre lo que estas moviendo. Lo que no puede pasar
+    // es que viajen las dos con la misma etiqueta.
+    const hist = [
+      sesion('Press Banca', 100, 12, 3),
+      sesion('Press Banca', 100, 12, 10),
+      sesion('Press Banca', 100, 12, 17),
+      sesion('Press Banca', 120, 2, 45),
+    ];
+    saveHistory(hist);
+    const fila = contextoCompleto(hist)?.panorama[0];
+    expect(fila?.unaRepMax).toBe(137);
+    expect(fila?.unaRepMaxHistorico).toBe(127);
+  });
+
+  it('usa las reps de la serie ACTUAL, no las del pico', () => {
+    // Mutante que sobrevivia: tomar las reps del pico historico y
+    // multiplicarlas por el peso actual. Con 120x2 y 100x12 daba 107 donde lo
+    // correcto es 137.
+    const hist = [
+      sesion('Press Banca', 100, 12, 3),
+      sesion('Press Banca', 100, 12, 10),
+      sesion('Press Banca', 100, 12, 17),
+      sesion('Press Banca', 120, 2, 45),
+    ];
+    const fila = contextoCompleto(hist)?.panorama[0];
+    expect(fila?.unaRepMax).not.toBe(107);
+    expect(fila?.actual).toBe(100);
+  });
+
+  it('el pico tiene en cuenta el record guardado, no solo el historial', () => {
+    // Mutante que sobrevivia: ignorar `getPRs()`. Un PR importado de CSV sin
+    // su sesion quedaba invisible y el ejercicio salia en zona verde.
+    savePRs({ 'Press Banca': { peso: 200, reps: 1, fecha: '2026-01-01' } } as never);
+    const fila = contextoCompleto([sesion('Press Banca', 100, 8, 3)])?.panorama[0];
+    expect(fila?.pico).toBe(200);
+  });
+
+  it('cuenta las sesiones estancado, que es lo que el mockup enseña', () => {
+    // Mutante que sobrevivia: devolver siempre 0.
+    const hist = [
+      sesion('Press Banca', 100, 8, 3),
+      sesion('Press Banca', 100, 8, 10),
+      sesion('Press Banca', 100, 8, 17),
+      sesion('Press Banca', 120, 2, 45),
+    ];
+    expect(contextoCompleto(hist)?.panorama[0].sesionesEstancado).toBe(3);
+  });
+
+  it('la zona y la posicion salen del ratio, no de una constante', () => {
+    // Dos mutantes que sobrevivian: zona siempre verde, posicion siempre 0.
+    const bajo = contextoCompleto([
+      sesion('Press Banca', 50, 8, 3), sesion('Press Banca', 50, 8, 10),
+      sesion('Press Banca', 50, 8, 17), sesion('Press Banca', 120, 2, 45),
+    ])?.panorama[0];
+    const alto = contextoCompleto([sesion('Sentadilla', 120, 5, 3)])?.panorama[0];
+    expect(bajo?.zona).toBe('roja');
+    expect(alto?.zona).toBe('verde');
+    expect(bajo?.posicion).toBeGreaterThan(0);
+    expect(bajo?.posicion).toBeLessThan(alto?.posicion as number);
+  });
+
+  it('mas de 15 reps: no se estima, igual que hace CA-01', () => {
+    // Caia en `estimateOneRM`, que es Epley a secas: 20 reps daban 33 kg
+    // donde la calculadora se niega a estimar. Series de 20 son normales en
+    // gemelos y abdominales.
+    const fila = contextoCompleto([sesion('Gemelos', 20, 20, 3)])?.panorama[0];
+    expect(fila?.estimable).toBe(false);
   });
 
   it('cubre TODOS los ejercicios, no solo el de la pregunta', () => {
@@ -120,6 +223,49 @@ describe('contextoCompleto · el panorama no contradice a la pantalla', () => {
     const vacio = sesion('Fantasma', 0, 0, 3);
     const c = contextoCompleto([sesion('Press Banca', 100, 8, 3), vacio]);
     expect(c?.panorama.some((e) => e.ejercicio === 'Fantasma')).toBe(false);
+  });
+
+  it('la racha actual y la mejor no salen intercambiadas', () => {
+    // Mutante que sobrevivia: cambiarlas de sitio. Nadie lo veia.
+    // Con sesiones reales en dias consecutivos, no sembrando el estado a mano:
+    // la racha se rederiva del historial y sembrarla suelto la pisa.
+    const hist = [sesion('Press Banca', 100, 8, 0), sesion('Press Banca', 100, 8, 1),
+                  sesion('Press Banca', 100, 8, 2)];
+    localStorage.setItem('gymmate_history', JSON.stringify(hist));
+    initGamification();
+    const r = contextoCompleto(hist)?.resumen;
+    // Mutante que sobrevivia: intercambiar las dos. Con valores distintos, no.
+    expect(r?.racha).toBe(3);
+    expect(r?.mejorRacha).toBeGreaterThanOrEqual(3);
+    expect(r?.racha).toBe(getStreakInfo().current);
+    expect(r?.mejorRacha).toBe(getStreakInfo().best);
+  });
+
+  it('desde y hasta no salen intercambiados', () => {
+    // Mutante que sobrevivia: cambiarlos de sitio.
+    const hist = [sesion('Press Banca', 100, 8, 5), sesion('Press Banca', 100, 8, 200)];
+    const r = contextoCompleto(hist)?.resumen;
+    expect(r!.desde! < r!.hasta!).toBe(true);
+  });
+
+  it('el panorama va del ejercicio mas frecuente al menos', () => {
+    // Mutante que sobrevivia: invertir el orden. Con el año entero delante,
+    // lo primero que lee el modelo tiene que ser lo que mas entrena.
+    const hist = [
+      sesion('Press Banca', 100, 8, 2), sesion('Press Banca', 100, 8, 9),
+      sesion('Press Banca', 100, 8, 16), sesion('Curl', 20, 10, 4, 'Brazo'),
+    ];
+    expect(contextoCompleto(hist)?.panorama.map((e) => e.ejercicio)).toEqual(['Press Banca', 'Curl']);
+  });
+
+  it('el peso corporal viaja de verdad cuando esta registrado', () => {
+    // Mutante que sobrevivia: mandar siempre null.
+    localStorage.setItem('gymmate_body_measurements', JSON.stringify([
+      { date: '2026-08-01', weight: 78.4, bodyFat: 14.42 },
+    ]));
+    const r = contextoCompleto([sesion('Press Banca', 100, 8, 3)])?.resumen;
+    expect(r?.pesoCorporal).toBe(78.4);
+    expect(r?.grasaCorporal).toBe(14.4);
   });
 
   it('el volumen por grupo suma el de todas las sesiones', () => {

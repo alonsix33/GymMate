@@ -402,6 +402,45 @@ for (const f of fuentesTS) {
   }
 }
 
+// G5 · la documentacion no puede citar archivos que no existen.
+//
+// Tres documentos de la raiz describian Tailwind, Lucide, `src/styles/main.css`
+// y `src/utils/icons.ts` DESPUES de que la fase 9 los borrara. Un colaborador
+// nuevo leyendo el README instalaria Tailwind. Un documento que miente sobre la
+// estructura apaga la sospecha igual que un chequeo que miente sobre su
+// alcance, asi que se comprueba igual: cada ruta `src/...` o `scripts/...` que
+// un .md de la raiz mencione tiene que existir.
+//
+// Los .md del handoff quedan fuera: son el contrato de diseno, no describen el
+// arbol. Y el changelog puede nombrar tecnologias retiradas —eso es historia,
+// no una afirmacion sobre el presente—; lo que no puede es citar RUTAS muertas.
+//
+// Dos documentos quedan fuera y se declaran por nombre: son PROPUESTAS, no
+// descripciones del arbol, y las rutas que citan son las que habria que crear.
+// La lista se invierte a proposito —exento por nombre, comprobado por
+// defecto— para que un .md nuevo entre cubierto sin que nadie se acuerde. Si
+// una exencion apunta a un archivo que ya no existe, falla.
+const DOCS_QUE_PROPONEN = ['SUPABASE_INTEGRATION.md', 'MEV_MRV_GUIDE.md'];
+for (const doc of DOCS_QUE_PROPONEN) {
+  if (!existsSync(join(RAIZ, doc))) {
+    fallos.push(`G5 exime '${doc}', que no existe: exencion muerta`);
+  }
+}
+for (const doc of readdirSync(RAIZ).filter((f) => f.endsWith('.md'))) {
+  if (DOCS_QUE_PROPONEN.includes(doc)) continue;
+  const texto = readFileSync(join(RAIZ, doc), 'utf8');
+  const citadas = new Set(
+    [...texto.matchAll(/(?:^|[\s(`[])((?:src|scripts|public)\/[A-Za-z0-9_./-]*[A-Za-z0-9_/])/g)].map((m) => m[1])
+  );
+  const muertas = [...citadas]
+    .filter((r) => !r.endsWith('/'))
+    .filter((r) => !existsSync(join(RAIZ, r)))
+    .sort();
+  if (muertas.length) {
+    fallos.push(`${doc}: cita ${muertas.length} ruta(s) que no existen: ${muertas.slice(0, 5).join(', ')}`);
+  }
+}
+
 // --- salida -----------------------------------------------------------------
 console.log(`tokens en :root            : ${tok.size}`);
 console.log(`rampa + rangos + heatmap   : ${rederivados} valores rederivados del README`);

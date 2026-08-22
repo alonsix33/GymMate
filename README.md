@@ -40,9 +40,9 @@
 
 - Hasta 200 entrenamientos guardados
 - Historial unificado de pesas y cardio
-- Exportación a Excel con datos completos
-- RPE tracking por sesión
-- 4 gráficos interactivos con Chart.js:
+- Backup CSV completo: historial, cardio, perfil, medidas, récords y rutinas propias
+- RPE por ejercicio (chips al completar) y por sesión (slider al terminar)
+- Gráficos SVG dibujados a mano, sin librería:
   - Tendencia de volumen
   - Distribución muscular
   - Progreso de peso
@@ -70,13 +70,18 @@
 |-----------|------------|
 | Build Tool | Vite 5.x |
 | Lenguaje | TypeScript 5.x |
-| Estilos | Tailwind CSS 3.4 (local, no CDN) |
-| Iconos | Lucide Icons |
-| Gráficos | Chart.js 4.x |
-| Excel | SheetJS (xlsx) |
+| Estilos | CSS propio: `src/styles/tokens.css` + `src/styles/fierro.css` |
+| Iconos | Ninguno. Los pocos glifos (←, ›, ✓, ✕, +, ↑) son texto |
+| Gráficos | SVG a mano (sin librería) |
+| CSV | Generado y parseado en `src/features/history.ts` (sin librería) |
 | PWA | vite-plugin-pwa + Workbox |
-| Tests | Vitest |
-| Fonts | Inter + Oswald (Google Fonts) |
+| Tests | Vitest + cuatro puertas propias (`npm run verificar`) |
+| Fonts | Archivo + Instrument Sans, self-hosted en `public/fonts/` |
+
+> El rediseño FIERRO retiró Tailwind, Lucide y Chart.js. `package.json` no
+> tiene bloque `dependencies`: nada del árbol llega al runtime sin bundlear.
+> El color y la tipografía salen **solo** de `src/styles/tokens.css`; cualquier
+> hex suelto fuera de ahí es un defecto y `npm run verificar` lo rechaza.
 
 ---
 
@@ -110,40 +115,57 @@ npm test
 ```
 GymMate/
 ├── src/
-│   ├── main.ts              # Entry point
-│   ├── styles/main.css      # Tailwind + custom CSS
-│   ├── types/index.ts       # TypeScript types
-│   ├── constants/index.ts   # App constants
-│   ├── state/session.ts     # Session state management
+│   ├── main.ts                 # Entry point
+│   ├── styles/
+│   │   ├── tokens.css          # ÚNICA fuente de color y tipografía
+│   │   └── fierro.css          # Componentes del sistema FIERRO
+│   ├── types/index.ts          # TypeScript types
+│   ├── constants/index.ts      # App constants
+│   ├── state/session.ts        # Session state management
 │   ├── data/
 │   │   ├── training-groups.ts  # Rutinas predefinidas
+│   │   ├── exercises.ts        # Catálogo de ejercicios
 │   │   └── cardio-exercises.ts # Ejercicios cardio
 │   ├── features/
-│   │   ├── workout.ts       # Lógica de entrenamiento
-│   │   ├── cardio.ts        # Módulo cardio completo
-│   │   ├── timer.ts         # Timer de descanso
-│   │   ├── history.ts       # Historial y stats
-│   │   ├── charts.ts        # Gráficos Chart.js
-│   │   ├── calculators.ts   # Calculadoras fitness
-│   │   ├── profile.ts       # Perfil y medidas corporales
-│   │   └── coach.ts         # AI Coach dinámico
+│   │   ├── workout.ts          # Lógica de entrenamiento
+│   │   ├── cardio.ts           # Cardio: 6 modos
+│   │   ├── timer.ts            # Timer de descanso
+│   │   ├── history.ts          # Historial, records y CSV
+│   │   ├── charts.ts           # Series para los gráficos SVG
+│   │   ├── calculators.ts      # Calculadoras fitness
+│   │   ├── profile.ts          # Perfil y medidas corporales
+│   │   ├── coach.ts            # Mensajes deterministas de sesión
+│   │   ├── coach-ia.ts         # Coach IA: aritmética local + adaptador
+│   │   └── gamification/       # XP, niveles, rangos, logros, racha
 │   ├── ui/
-│   │   ├── navigation.ts    # Navegación y tabs
-│   │   ├── modals.ts        # Sistema de modales
-│   │   └── components.ts    # Componentes reutilizables
+│   │   ├── navigation.ts       # Navegación y tabs
+│   │   ├── feedback.ts         # Toasts y confirmaciones (F-01)
+│   │   ├── home.ts             # H-01
+│   │   ├── workout-view.ts     # W-01…W-04
+│   │   ├── hueso.ts            # HI-01, HI-02, PR-01, G-01
+│   │   ├── perfil.ts           # CA-01, CA-02, P-01…P-03
+│   │   ├── progreso.ts         # GM-01…GM-03
+│   │   ├── builder.ts          # B-01
+│   │   ├── coach-chat.ts       # CO-01…CO-03
+│   │   └── gamification/       # Mapa muscular
 │   ├── utils/
-│   │   ├── storage.ts       # localStorage helpers
-│   │   ├── icons.ts         # Lucide icons system
-│   │   ├── calculations.ts  # Cálculos matemáticos
-│   │   └── insights.ts      # ML Insights engine
-│   └── tests/
-│       └── calculations.test.ts
-├── public/
-│   ├── icon-192.png
-│   └── icon-512.png
+│   │   ├── storage.ts          # localStorage helpers
+│   │   ├── formato.ts          # Cifras y `escapar()`
+│   │   ├── fecha.ts            # Único sitio que decide qué día es
+│   │   ├── calculations.ts     # 1RM, calorías, volumen
+│   │   ├── rangos.ts           # Rangos y subniveles I–III
+│   │   ├── zonas.ts            # Barra de zonas roja/ámbar/verde
+│   │   └── insights.ts         # Insights de la home
+│   └── tests/                  # 9 archivos, 235 pruebas
+├── scripts/
+│   ├── verificar-tokens.mjs         # Estático: hex, var(), alert(), día UTC
+│   ├── verificar-runtime.mjs        # Navegador: fuentes, consola, red, offline
+│   ├── verificar-fidelidad.mjs      # Estilos computados vs. el mockup
+│   └── verificar-comportamiento.mjs # ~310 chequeos conduciendo la app real
+├── redesign/design_handoff_fierro/  # El contrato de diseño y sus 32 mockups
+├── public/fonts/                    # Archivo e Instrument Sans (offline-first)
 ├── index.html
 ├── vite.config.ts
-├── tailwind.config.js
 ├── tsconfig.json
 └── package.json
 ```
@@ -218,15 +240,12 @@ GymMate/
 --info: #06b6d4;
 ```
 
-### Iconos (Lucide)
+### Iconos
 
-```typescript
-import { icon } from '@/utils/icons';
-
-// Uso
-icon('workout', 'md', 'text-accent')  // → <i data-lucide="dumbbell" class="w-5 h-5 text-accent"></i>
-icon('trophy', 'lg', 'text-status-warning')
-```
+No hay librería de iconos. El handoff FIERRO los prohíbe: los pocos glifos que
+usa la app (←, ›, ✓, ✕, +, ↑, ■, ▾) son **texto**, y las flechas de tendencia
+(↗ ↘) también. `npm run verificar` falla si aparece un emoji con presentación
+de emoji en el código.
 
 ---
 
@@ -264,7 +283,8 @@ icon('trophy', 'lg', 'text-status-warning')
 
 ## Documentación Adicional
 
-- [Sistema de Diseño](DESIGN_SYSTEM.md)
+- [Sistema de Diseño](DESIGN_SYSTEM.md) — apunta al handoff FIERRO, que es el contrato vigente
+- [Handoff FIERRO](redesign/design_handoff_fierro/README.md) — tokens, pantallas y prohibiciones
 - [Guía de Calculadoras](CALCULATORS_GUIDE.md)
 - [MEV/MRV Guide](MEV_MRV_GUIDE.md)
 - [Features Roadmap](FEATURES.md)
@@ -272,6 +292,17 @@ icon('trophy', 'lg', 'text-status-warning')
 ---
 
 ## Changelog
+
+### v5.0.0 — rediseño FIERRO
+- Sistema de diseño propio: `tokens.css` como única fuente de color y tipografía
+- Fuera Tailwind, Lucide, Chart.js y `main.css`; `package.json` sin `dependencies`
+- Las 32 pantallas del handoff, incluidos Coach IA (CO-01…03), gamificación
+  (GM-01…03) y el builder de rutinas (B-01)
+- Fuentes Archivo e Instrument Sans self-hosted: la app arranca sin red
+- Cuatro puertas de verificación en `npm run verificar` (tokens, runtime,
+  fidelidad, comportamiento) además de las pruebas de vitest
+- Cardio: "For Time" retirado, quedan 6 modos
+- Toasts y confirmaciones propias en vez de `alert()`
 
 ### v4.0.0 (Diciembre 2025)
 - ML Insights en hero section

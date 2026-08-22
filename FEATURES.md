@@ -7,8 +7,8 @@
 - Vite 5.x como build tool
 - TypeScript 5.x para tipado estatico
 - 16+ modulos TypeScript organizados
-- Tailwind CSS 3.4 (local, no CDN)
-- Lucide Icons (94+ iconos mapeados)
+- CSS propio: `src/styles/tokens.css` (única fuente de color y tipografía) + `src/styles/fierro.css`
+- Sin librería de iconos: los glifos (←, ›, ✓, ✕, +, ↑, ▾) son texto
 - Vitest para unit testing (21+ tests)
 
 ### 2. Mobile-First y PWA
@@ -101,7 +101,7 @@ Caracteristicas del timer:
 
 - Dark Mode profesional
 - CERO gradientes (colores solidos)
-- CERO emojis (solo Lucide icons)
+- CERO emojis: los glifos son texto, y `npm run verificar` rechaza cualquier emoji con presentación de emoji
 - Alto contraste para legibilidad
 - Feedback tactil (active:scale-95)
 - Tipografia Inter + Oswald

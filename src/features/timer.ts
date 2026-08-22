@@ -1,4 +1,3 @@
-import { icon, refreshIcons } from '@/utils/icons';
 
 /**
  * La barra de DESCANSO de W-01 vive DENTRO de la sesion [REF Pantallas:233].
@@ -122,12 +121,8 @@ function updateTimerDisplay(): void {
 function updatePauseButtonText(): void {
   const pauseBtn = document.getElementById('pauseTimer');
   if (pauseBtn) {
-    if (isPaused) {
-      pauseBtn.innerHTML = `${icon('play', 'sm')} <span class="ml-1">Reanudar</span>`;
-    } else {
-      pauseBtn.innerHTML = `${icon('pause', 'sm')} <span class="ml-1">Pausar</span>`;
-    }
-    refreshIcons();
+    // Texto, no icono: el handoff no usa libreria de iconos.
+    pauseBtn.textContent = isPaused ? 'Reanudar' : 'Pausar';
   }
 }
 

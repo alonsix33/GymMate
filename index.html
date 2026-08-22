@@ -70,22 +70,18 @@
     Cambios sin guardar
   </div>
 
-  <!-- Timer Banner -->
-  <div id="restTimerBanner" class="timer-banner" role="timer" aria-label="Temporizador de descanso">
-    <div class="flex items-center justify-between">
-      <div>
-        <p class="text-xs text-text-secondary" id="timerLabel">Descanso</p>
-        <p id="timerDisplay" class="text-2xl font-bold text-accent font-display" aria-live="off">00:00</p>
-      </div>
-      <div class="flex gap-2">
-        <button id="pauseTimer" class="px-3 py-2 bg-dark-bg border border-dark-border rounded-lg text-text-secondary text-sm flex items-center gap-1" aria-label="Pausar temporizador">
-          <i data-lucide="pause" class="w-4 h-4" aria-hidden="true"></i>
-          <span>Pausar</span>
-        </button>
-        <button id="stopTimer" class="px-3 py-2 bg-status-error/20 border border-status-error/30 rounded-lg text-status-error text-sm" aria-label="Detener temporizador">
-          <i data-lucide="x" class="w-4 h-4" aria-hidden="true"></i>
-        </button>
-      </div>
+  <!-- Banner del descanso. El mockup no lo dibuja como pantalla propia: W-01
+       tiene el bloque de descanso y el cronometro. Este banner es el aviso
+       flotante que sobrevive al cambio de pantalla, y se viste con el sistema
+       —card Carbon, boton claro, destructivo en rojo— en vez de con Tailwind. -->
+  <div id="restTimerBanner" class="f-descanso f-root" role="timer" aria-label="Temporizador de descanso">
+    <div class="f-descanso__textos">
+      <span class="f-descanso__label" id="timerLabel">DESCANSO</span>
+      <span class="f-descanso__cifra" id="timerDisplay" aria-live="off">00:00</span>
+    </div>
+    <div class="f-descanso__acciones">
+      <button id="pauseTimer" type="button" class="f-btn--claro f-descanso__btn" aria-label="Pausar temporizador">Pausar</button>
+      <button id="stopTimer" type="button" class="f-btn--detener f-descanso__btn" aria-label="Detener temporizador">✕</button>
     </div>
   </div>
 
@@ -256,251 +252,14 @@
   </div>
 
   <!-- Workout Builder Modal -->
-  <div id="workoutBuilderModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="workoutBuilderTitle" aria-hidden="true">
-    <div class="modal-content max-h-[90vh] overflow-hidden flex flex-col">
-      <div class="flex items-center justify-between p-4 border-b border-dark-border">
-        <h2 id="workoutBuilderTitle" class="font-bold text-text-primary flex items-center gap-2">
-          <i data-lucide="plus-circle" class="w-5 h-5 text-accent" aria-hidden="true"></i>
-          Nueva Rutina
-        </h2>
-        <button onclick="window.closeWorkoutBuilder()" class="p-2 text-text-muted hover:text-text-primary focus:outline-none focus:ring-2 focus:ring-accent rounded-lg" aria-label="Cerrar creador de rutinas">
-          <i data-lucide="x" class="w-5 h-5" aria-hidden="true"></i>
-        </button>
-      </div>
-
-      <div class="flex-1 overflow-y-auto p-4">
-        <!-- Workout Name -->
-        <div class="mb-4">
-          <label for="customWorkoutName" class="block text-sm text-text-secondary mb-2">Nombre de la rutina</label>
-          <input type="text" id="customWorkoutName" placeholder="Ej: Mi rutina de piernas" class="w-full" aria-required="true" />
-        </div>
-
-        <!-- Selected Exercises -->
-        <div class="mb-4">
-          <p class="block text-sm text-text-secondary mb-2" id="selectedExercisesLabel">Ejercicios seleccionados (<span id="selectedCount">0</span>)</p>
-          <div id="selectedExercisesList" class="min-h-[60px] bg-dark-bg border border-dark-border rounded-xl p-3" role="list" aria-labelledby="selectedExercisesLabel" aria-live="polite">
-            <p class="text-text-muted text-sm text-center">Selecciona ejercicios de la lista</p>
-          </div>
-        </div>
-
-        <!-- Create Custom Exercise -->
-        <div class="mb-4">
-          <button
-            id="toggleCustomExerciseBtn"
-            onclick="window.toggleCustomExerciseForm()"
-            class="w-full flex items-center justify-between p-3 bg-gradient-to-r from-cyan-500/10 to-blue-500/10 border border-cyan-500/30 rounded-xl hover:border-cyan-400/50 transition-all"
-          >
-            <span class="flex items-center gap-2 text-cyan-400 font-medium text-sm">
-              <i data-lucide="plus-square" class="w-4 h-4"></i>
-              Crear ejercicio personalizado
-            </span>
-            <i data-lucide="chevron-down" id="customExerciseChevron" class="w-4 h-4 text-cyan-400 transition-transform duration-200"></i>
-          </button>
-
-          <div id="customExerciseForm" class="hidden mt-3 p-4 bg-dark-bg border border-dark-border rounded-xl space-y-3">
-            <div>
-              <label class="block text-xs text-text-secondary mb-1.5">Nombre del ejercicio</label>
-              <input
-                type="text"
-                id="newExerciseName"
-                placeholder="Ej: Cable Fly Inclinado"
-                class="w-full text-sm"
-              />
-            </div>
-            <div>
-              <label class="block text-xs text-text-secondary mb-1.5">Grupo muscular</label>
-              <select id="newExerciseMuscle" class="w-full text-sm bg-dark-surface border border-dark-border rounded-lg p-2.5 text-text-primary">
-                <option value="Pecho">Pecho</option>
-                <option value="Espalda">Espalda</option>
-                <option value="Hombros">Hombros</option>
-                <option value="Bíceps">Bíceps</option>
-                <option value="Tríceps">Tríceps</option>
-                <option value="Piernas">Piernas</option>
-                <option value="Glúteos">Glúteos</option>
-                <option value="Core">Core</option>
-              </select>
-            </div>
-            <div class="flex items-center gap-3">
-              <label class="flex items-center gap-2 cursor-pointer">
-                <input type="checkbox" id="newExerciseIsDumbbell" class="w-4 h-4 rounded bg-dark-surface border-dark-border text-accent focus:ring-accent" />
-                <span class="text-sm text-text-secondary">Es con mancuernas (peso x2)</span>
-              </label>
-            </div>
-            <button
-              onclick="window.addCustomExercise()"
-              class="w-full bg-cyan-500 hover:bg-cyan-600 text-white font-semibold py-2.5 px-4 rounded-lg active:scale-95 transition-all flex items-center justify-center gap-2 text-sm"
-            >
-              <i data-lucide="plus" class="w-4 h-4"></i>
-              Agregar ejercicio
-            </button>
-          </div>
-        </div>
-
-        <!-- Custom Exercises List -->
-        <div id="customExercisesSection" class="mb-4 hidden">
-          <p class="block text-sm text-text-secondary mb-2">Mis ejercicios personalizados</p>
-          <div id="customExercisesList" class="bg-gradient-to-br from-cyan-500/10 to-blue-600/5 border border-cyan-500/30 rounded-xl p-2 space-y-1">
-            <!-- Se renderiza dinámicamente -->
-          </div>
-        </div>
-
-        <!-- Exercise List by Group -->
-        <div>
-          <p class="block text-sm text-text-secondary mb-2" id="availableExercisesLabel">Ejercicios disponibles</p>
-          <div id="exerciseGroupsList" class="space-y-3" role="group" aria-labelledby="availableExercisesLabel">
-            <!-- Se renderiza dinámicamente -->
-          </div>
-        </div>
-      </div>
-
-      <!-- Save Button -->
-      <div class="p-4 border-t border-dark-border">
-        <button onclick="window.saveCustomWorkout()" class="w-full bg-accent hover:bg-accent-hover text-white font-semibold py-3 px-4 rounded-xl active:scale-95 transition-all flex items-center justify-center gap-2 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-accent" aria-label="Guardar nueva rutina personalizada">
-          <i data-lucide="save" class="w-5 h-5" aria-hidden="true"></i>
-          Guardar Rutina
-        </button>
-      </div>
-    </div>
-  </div>
+  <!-- B-01 · el builder de rutinas lo pinta src/ui/builder.ts sobre un
+       contenedor que crea el propio modulo. El modal legacy que habia aqui
+       (~105 lineas de Tailwind) se retira con el. -->
 
 
   <!-- Body Measurements Modal -->
-  <div id="measurementsModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="measurementsTitle" aria-hidden="true">
-    <div class="modal-content max-w-md">
-      <div class="p-6">
-        <!-- Header -->
-        <div class="flex items-center justify-between mb-6">
-          <div class="flex items-center gap-3">
-            <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-purple-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-purple-500/30">
-              <i data-lucide="ruler" class="w-6 h-6 text-white"></i>
-            </div>
-            <div>
-              <h2 id="measurementsTitle" class="text-lg font-bold text-white">Medidas Corporales</h2>
-              <p class="text-xs text-text-secondary" id="measurementDate"></p>
-            </div>
-          </div>
-          <button onclick="window.closeMeasurementsModal()" class="w-10 h-10 rounded-xl bg-dark-bg border border-dark-border flex items-center justify-center text-text-secondary hover:text-white transition-colors">
-            <i data-lucide="x" class="w-5 h-5"></i>
-          </button>
-        </div>
-
-        <!-- Instructions -->
-        <div class="bg-gradient-to-r from-blue-500/10 to-cyan-500/10 border border-blue-500/20 rounded-xl p-3 mb-4">
-          <p class="text-xs text-blue-300 flex items-start gap-2">
-            <i data-lucide="info" class="w-4 h-4 flex-shrink-0 mt-0.5"></i>
-            <span><strong>Medidas:</strong> Toma todas las medidas con el músculo <strong>relajado</strong>, sin flexionar. Mide por la mañana, antes de comer, para mayor consistencia.</span>
-          </p>
-        </div>
-
-        <!-- Form -->
-        <form id="measurementsForm" class="space-y-4">
-          <!-- Weight -->
-          <div class="bg-dark-bg border border-dark-border rounded-xl p-4">
-            <div class="flex items-center gap-3 mb-3">
-              <i data-lucide="scale" class="w-5 h-5 text-accent"></i>
-              <label class="text-sm font-medium text-text-primary">Peso</label>
-            </div>
-            <div class="flex items-center gap-2">
-              <input type="number" id="measureWeight" step="0.1" placeholder="0.0" class="flex-1 min-w-0 text-center text-2xl font-bold" inputmode="decimal" />
-              <span class="text-text-secondary flex-shrink-0">kg</span>
-            </div>
-          </div>
-
-          <!-- Neck & Chest Row -->
-          <div class="grid grid-cols-2 gap-3">
-            <div class="bg-dark-bg border border-dark-border rounded-xl p-3">
-              <label class="block text-xs text-text-secondary mb-2">Cuello (cm)</label>
-              <input type="number" id="measureNeck" step="0.1" placeholder="0.0" class="w-full text-center" inputmode="decimal" />
-            </div>
-            <div class="bg-dark-bg border border-dark-border rounded-xl p-3">
-              <label class="block text-xs text-text-secondary mb-2">Pecho (cm)</label>
-              <input type="number" id="measureChest" step="0.1" placeholder="0.0" class="w-full text-center" inputmode="decimal" />
-            </div>
-          </div>
-
-          <!-- Waist & Hips Row -->
-          <div class="grid grid-cols-2 gap-3">
-            <div class="bg-dark-bg border border-dark-border rounded-xl p-3">
-              <label class="block text-xs text-text-secondary mb-2">Cintura (cm)</label>
-              <input type="number" id="measureWaist" step="0.1" placeholder="0.0" class="w-full text-center" inputmode="decimal" />
-            </div>
-            <div class="bg-dark-bg border border-dark-border rounded-xl p-3">
-              <label class="block text-xs text-text-secondary mb-2">Cadera (cm)</label>
-              <input type="number" id="measureHips" step="0.1" placeholder="0.0" class="w-full text-center" inputmode="decimal" />
-            </div>
-          </div>
-
-          <!-- Arms Row -->
-          <div class="grid grid-cols-2 gap-3">
-            <div class="bg-dark-bg border border-dark-border rounded-xl p-3">
-              <label class="block text-xs text-text-secondary mb-2">Brazo Izq (cm)</label>
-              <input type="number" id="measureArmLeft" step="0.1" placeholder="0.0" class="w-full text-center" inputmode="decimal" />
-            </div>
-            <div class="bg-dark-bg border border-dark-border rounded-xl p-3">
-              <label class="block text-xs text-text-secondary mb-2">Brazo Der (cm)</label>
-              <input type="number" id="measureArmRight" step="0.1" placeholder="0.0" class="w-full text-center" inputmode="decimal" />
-            </div>
-          </div>
-
-          <!-- Thighs Row -->
-          <div class="grid grid-cols-2 gap-3">
-            <div class="bg-dark-bg border border-dark-border rounded-xl p-3">
-              <label class="block text-xs text-text-secondary mb-2">Muslo Izq (cm)</label>
-              <input type="number" id="measureThighLeft" step="0.1" placeholder="0.0" class="w-full text-center" inputmode="decimal" />
-            </div>
-            <div class="bg-dark-bg border border-dark-border rounded-xl p-3">
-              <label class="block text-xs text-text-secondary mb-2">Muslo Der (cm)</label>
-              <input type="number" id="measureThighRight" step="0.1" placeholder="0.0" class="w-full text-center" inputmode="decimal" />
-            </div>
-          </div>
-
-          <!-- Body Fat Estimate (if enough data) -->
-          <div id="bodyFatEstimate" class="hidden bg-gradient-to-r from-purple-500/10 to-indigo-500/10 border border-purple-500/20 rounded-xl p-4">
-            <div class="flex items-center justify-between">
-              <div class="flex items-center gap-2">
-                <i data-lucide="percent" class="w-5 h-5 text-purple-400"></i>
-                <span class="text-sm text-text-secondary">Grasa corporal est.</span>
-              </div>
-              <span id="bodyFatValue" class="text-xl font-bold text-purple-400">--%</span>
-            </div>
-            <p class="text-xs text-text-muted mt-2">Calculado con el método Navy</p>
-          </div>
-
-          <!-- Actions -->
-          <div class="flex gap-3 pt-2">
-            <button type="button" onclick="window.closeMeasurementsModal()" class="flex-1 py-3 px-4 bg-dark-bg border border-dark-border text-text-secondary font-semibold rounded-xl active:scale-95 transition-all">
-              Cancelar
-            </button>
-            <button type="submit" class="flex-1 py-3 px-4 bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-semibold rounded-xl active:scale-95 transition-all flex items-center justify-center gap-2">
-              <i data-lucide="save" class="w-5 h-5"></i>
-              Guardar
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  </div>
 
   <!-- Measurements History Modal -->
-  <div id="measurementsHistoryModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="measurementsHistoryTitle" aria-hidden="true">
-    <div class="modal-content max-w-md max-h-[80vh] flex flex-col">
-      <div class="p-6 pb-0">
-        <!-- Header -->
-        <div class="flex items-center justify-between mb-4">
-          <h2 id="measurementsHistoryTitle" class="text-lg font-bold text-white flex items-center gap-2">
-            <i data-lucide="history" class="w-5 h-5 text-accent"></i>
-            Historial de Medidas
-          </h2>
-          <button onclick="window.closeMeasurementsHistoryModal()" class="w-10 h-10 rounded-xl bg-dark-bg border border-dark-border flex items-center justify-center text-text-secondary hover:text-white transition-colors">
-            <i data-lucide="x" class="w-5 h-5"></i>
-          </button>
-        </div>
-      </div>
-      <div id="measurementsHistoryList" class="flex-1 overflow-y-auto px-6 pb-6 space-y-3">
-        <!-- History items will be rendered here -->
-      </div>
-    </div>
-  </div>
 
   <script type="module" src="/src/main.ts"></script>
 </body>

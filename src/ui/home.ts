@@ -95,12 +95,15 @@ function bloqueCabecera(hoy: Date, racha: number): string {
 }
 
 function bloqueCoach(insight: Insight): string {
+  // "Estado vacío resuelto de fábrica: tap en el banner de Home abre esta
+  // vista con ese mensaje como primer turno." [REF reglas del coach]
   return `
-    <section class="f-home__coach" aria-label="Mensaje del coach">
-      <div class="f-label">COACH</div>
-      <p class="f-home__coach-mensaje">${mensajeConDato(insight)}</p>
-      ${insight.subtext ? `<p class="f-home__coach-contexto">${escapar(insight.subtext)}</p>` : ''}
-    </section>
+    <button type="button" class="f-home__coach" data-accion="coach"
+      data-mensaje="${escapar(insight.message)}" aria-label="Abrir el coach">
+      <span class="f-label">COACH</span>
+      <span class="f-home__coach-mensaje">${mensajeConDato(insight)}</span>
+      ${insight.subtext ? `<span class="f-home__coach-contexto">${escapar(insight.subtext)}</span>` : ''}
+    </button>
   `;
 }
 

@@ -946,26 +946,30 @@ const borradorDePrueba = {
 // --------------------------------------------------------------------------
 {
   const { ctx, pagina } = await abrir({ gymmate_history: historialDePrueba() });
-  const r = await pagina.evaluate(async () => {
-    window.openWorkoutBuilder?.();
-    await new Promise((r) => setTimeout(r, 300));
-    const nombre = document.getElementById('customWorkoutName');
-    if (nombre) {
-      nombre.value = 'Rutina de prueba';
-      nombre.dispatchEvent(new Event('input', { bubbles: true }));
-    }
-    // Se toca el primer ejercicio de la lista tal cual lo hace el usuario.
-    document.querySelector('#exerciseGroupsList [onclick*="toggleExerciseSelection"]')?.click();
-    await new Promise((r) => setTimeout(r, 150));
-    window.saveCustomWorkout?.();
-    await new Promise((r) => setTimeout(r, 400));
-    return {
-      guardadas: JSON.parse(localStorage.getItem('gymmate_custom_workouts') || '[]').map((w) => w.nombre),
-      enPantalla: [...document.querySelectorAll('#fierroHome [data-custom-workout]')].map(
-        (el) => el.textContent.trim().split('\n')[0].trim()
-      ),
-    };
-  });
+  // B-01, conducido como lo conduce el usuario: nada de llamar a funciones
+  // internas. El builder legacy exponia `saveCustomWorkout` en `window` y el
+  // caso lo invocaba a mano; eso comprobaba el guardado pero no la pantalla.
+  await pagina.evaluate(() => window.openWorkoutBuilder?.());
+  await pagina.waitForTimeout(400);
+  await pagina.fill('#builderNombre', 'Rutina de prueba');
+  await pagina.locator('[data-builder="alternar"]').first().click();
+  await pagina.waitForTimeout(200);
+  const sugerido = await pagina.evaluate(() => ({
+    boton: document.querySelector('[data-builder="guardar"]')?.textContent?.trim() ?? '',
+    chips: [...document.querySelectorAll('[data-builder="quitar"]')].length,
+  }));
+  chk('B-01 · el boton cuenta los ejercicios elegidos', /1 ejercicio\b/.test(sugerido.boton), sugerido.boton);
+  chk('B-01 · el elegido sale como chip', sugerido.chips === 1, String(sugerido.chips));
+  await pagina.locator('[data-builder="guardar"]').click();
+  await pagina.waitForTimeout(500);
+  const r = await pagina.evaluate(() => ({
+    guardadas: JSON.parse(localStorage.getItem('gymmate_custom_workouts') || '[]').map((w) => w.nombre),
+    enPantalla: [...document.querySelectorAll('#fierroHome [data-custom-workout]')].map(
+      (el) => el.textContent.trim().split('\n')[0].trim()
+    ),
+    builderCerrado: document.getElementById('fierroBuilder')?.classList.contains('hidden') ?? false,
+  }));
+  chk('B-01 · el builder se cierra al guardar', r.builderCerrado);
   chk('la rutina nueva se guarda', r.guardadas.includes('Rutina de prueba'), r.guardadas.join(',') || '(ninguna)');
   chk('la rutina nueva aparece en la home sin recargar', r.enPantalla.length === r.guardadas.length && r.enPantalla.length > 0,
     `guardadas ${r.guardadas.length} | en pantalla ${r.enPantalla.length}`);

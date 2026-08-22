@@ -457,7 +457,9 @@ export function cerrarProgreso(): void {
 let pestanaPrevia: string | null = null;
 function marcarPestana(activa: boolean): void {
   const items = [...document.querySelectorAll<HTMLElement>('[data-nav]')];
-  const progreso = items.find((i) => i.dataset.nav === 'progreso');
+  // El atributo del HTML es `progress`, no `progreso`: buscar el castellano
+  // devolvia undefined y la barra se quedaba marcando la pestaña anterior.
+  const progreso = items.find((i) => i.dataset.nav === 'progress');
   if (!progreso) return;
   if (activa) {
     pestanaPrevia = items.find((i) => i.getAttribute('aria-current') === 'page')?.dataset.nav ?? 'home';

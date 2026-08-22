@@ -4207,3 +4207,878 @@ body:has(#chartsTab:not(.hidden)) {
 body:has(#medidasTab:not(.hidden)) {
   background: var(--bg-hueso);
 }
+
+/* --------------------------------------------------------------------------
+   18 · GM-01, GM-02, GM-03 y B-01 — Gamificación y builder
+        [REF Pantallas:1018-1240]
+   -------------------------------------------------------------------------- */
+
+/* Las dos superposiciones: PROGRESO y el builder. No son .tab-content porque
+   el mockup las dibuja con ✕, no con la tab bar activa debajo. */
+.f-prog,
+.f-builder {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  overflow-y: auto;
+  background: var(--bg-app);
+  color: var(--text-primary);
+  padding: 24px var(--pad-screen-l) calc(28px + var(--h-nav-inferior));
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.f-prog.hidden,
+.f-builder.hidden {
+  display: none;
+}
+.f-prog__cabecera,
+.f-builder__cabecera {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.f-prog__titulo,
+.f-builder__titulo {
+  font-family: var(--font-display);
+  font-stretch: var(--stretch-display-xl);
+  font-weight: var(--w-900);
+  font-size: var(--fs-24);
+}
+.f-prog__titulo--con-volver {
+  flex: 1;
+  margin-left: 12px;
+}
+.f-prog__cerrar {
+  color: var(--text-disabled);
+  font-size: var(--fs-18);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0 4px;
+}
+.f-prog__cerrar:hover {
+  color: var(--text-primary);
+}
+.f-prog__sub {
+  font-size: var(--fs-12);
+  color: var(--text-secondary);
+}
+.f-prog__fila-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+.f-prog__pct {
+  font-family: var(--font-display);
+  font-stretch: var(--stretch-112);
+  font-weight: var(--w-900);
+  font-size: var(--fs-20);
+  color: var(--accent);
+}
+.f-prog__label {
+  font-family: var(--font-mono);
+  font-weight: var(--label-weight-strong);
+  font-size: var(--fs-10);
+  line-height: var(--lh-1);
+  letter-spacing: var(--label-tracking);
+  color: var(--text-secondary);
+}
+.f-prog__label--accion {
+  background: none;
+  border: none;
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
+}
+.f-prog__label--accion:hover {
+  color: var(--text-primary);
+}
+.f-prog__vacio {
+  font-size: var(--fs-12_5);
+  color: var(--text-disabled);
+}
+
+/* GM-01 · nivel */
+.f-prog__nivel {
+  background: var(--bg-card);
+  border: 1px solid var(--border-card-active);
+  border-radius: var(--r-16);
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.f-prog__nivel-fila {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+.f-prog__nivel-cifra {
+  font-family: var(--font-display);
+  font-stretch: var(--stretch-display-xl);
+  font-weight: var(--w-900);
+  font-size: var(--fs-30);
+  line-height: var(--lh-1);
+  white-space: nowrap;
+}
+.f-prog__nivel-meta {
+  font-size: var(--fs-13);
+  color: var(--text-secondary);
+  text-align: right;
+}
+.f-prog__pista {
+  height: 7px;
+  border-radius: var(--r-4);
+  background: var(--border-subtle);
+  overflow: hidden;
+}
+.f-prog__relleno {
+  height: 100%;
+  background: var(--accent);
+  border-radius: var(--r-4);
+}
+.f-prog__nivel-pie {
+  font-size: var(--fs-12);
+  color: var(--text-secondary);
+}
+
+/* GM-01 · mapa y rangos */
+.f-prog__mapa {
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--r-16);
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.f-prog__cuerpos {
+  display: flex;
+  justify-content: center;
+  gap: 24px;
+}
+.f-prog__rangos {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 16px;
+}
+.f-prog__rango {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: var(--fs-12_5);
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font-family: inherit;
+  text-align: left;
+}
+.f-prog__rango:hover .f-prog__rango-musculo {
+  color: var(--text-primary);
+}
+.f-prog__rango-musculo {
+  color: var(--text-tertiary);
+}
+.f-prog__rango-dato {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.f-prog__punto {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--r-2);
+  flex: none;
+}
+.f-prog__rango-nombre {
+  font-weight: var(--w-600);
+}
+.f-prog__rango-ratio {
+  color: var(--text-disabled);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--fs-11);
+}
+
+/* GM-01 · resumen de logros y milestone */
+.f-prog__logros {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.f-logro-fila {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--r-12);
+  padding: 13px 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.f-logro-fila__punto {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  flex: none;
+}
+.f-logro-fila__textos {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.f-logro-fila__nombre {
+  font-weight: var(--w-600);
+  font-size: var(--fs-13_5);
+}
+.f-logro-fila__detalle {
+  font-size: var(--fs-11_5);
+  color: var(--text-disabled);
+}
+.f-logro-fila__xp {
+  font-family: var(--font-mono);
+  font-weight: var(--label-weight-strong);
+  font-size: var(--fs-11);
+  color: var(--accent);
+  flex: none;
+}
+.f-prog__hito {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--r-12);
+  padding: 14px 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+.f-prog__hito-textos {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.f-prog__hito-titulo {
+  font-weight: var(--w-600);
+  font-size: var(--fs-13_5);
+}
+.f-prog__hito-detalle {
+  font-size: var(--fs-11_5);
+  color: var(--text-disabled);
+}
+.f-prog__hito-cifra {
+  font-family: var(--font-display);
+  font-stretch: var(--stretch-112);
+  font-weight: var(--w-900);
+  font-size: var(--fs-24);
+  color: var(--accent);
+}
+
+/* GM-02 · escalera */
+.f-escalera {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.f-escalon {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--r-10);
+  padding: 11px 14px;
+  font-size: var(--fs-12_5);
+}
+.f-escalon--tuyo {
+  border-color: var(--accent);
+  background: var(--bg-elevated);
+}
+.f-escalon__punto {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--r-2);
+  flex: none;
+}
+.f-escalon__nombre {
+  font-weight: var(--w-600);
+  flex: 1;
+}
+.f-escalon__sub,
+.f-escalon__franja {
+  font-family: var(--font-mono);
+  font-size: var(--fs-10);
+  color: var(--text-disabled);
+  font-variant-numeric: tabular-nums;
+}
+.f-escalon__tuyo {
+  font-family: var(--font-mono);
+  font-weight: var(--label-weight-strong);
+  font-size: var(--fs-10);
+  color: var(--accent);
+}
+.f-prog__consejo {
+  background: var(--bg-card);
+  border: 1px solid var(--border-card-active);
+  border-radius: var(--r-12);
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.f-prog__consejo-titulo {
+  font-weight: var(--w-700);
+  font-size: var(--fs-13_5);
+}
+.f-prog__consejo-cuerpo {
+  font-size: var(--fs-12_5);
+  line-height: var(--lh-1_5);
+  color: var(--text-secondary);
+}
+.f-especiales {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.f-especial {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--r-12);
+  padding: 13px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.f-especial__nombre {
+  font-family: var(--font-mono);
+  font-weight: var(--label-weight-strong);
+  font-size: var(--fs-11);
+  letter-spacing: var(--label-tracking);
+}
+.f-especial__detalle {
+  font-size: var(--fs-11_5);
+  line-height: var(--lh-1_5);
+  color: var(--text-secondary);
+}
+.f-especial__xp {
+  font-family: var(--font-mono);
+  font-weight: var(--label-weight-strong);
+  font-size: var(--fs-11);
+  color: var(--text-disabled);
+}
+
+/* GM-03 · logros */
+.f-logro-barra {
+  display: flex;
+  gap: 2px;
+}
+.f-logro-seg {
+  flex: 1;
+  height: 6px;
+  border-radius: var(--r-2);
+  background: var(--border-subtle);
+}
+.f-logro-seg--hecho {
+  background: var(--accent);
+}
+.f-filtros {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.f-filtro {
+  font-family: var(--font-mono);
+  font-weight: var(--label-weight-strong);
+  font-size: var(--fs-10);
+  letter-spacing: var(--label-tracking);
+  padding: 7px 11px;
+  border-radius: var(--r-chip);
+  border: 1px solid var(--border-subtle);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.f-filtro--activo {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-fragua);
+}
+.f-logro-bloque {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.f-logro {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--r-12);
+  padding: 13px 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.f-logro--progreso {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+}
+.f-logro__fila {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+}
+.f-logro__nombre {
+  font-weight: var(--w-600);
+  font-size: var(--fs-13_5);
+}
+.f-logro__detalle {
+  font-size: var(--fs-11_5);
+  color: var(--text-disabled);
+}
+.f-logro__xp {
+  font-family: var(--font-mono);
+  font-weight: var(--label-weight-strong);
+  font-size: var(--fs-11);
+  color: var(--text-disabled);
+  flex: none;
+}
+.f-logro__xp--acento {
+  color: var(--accent);
+}
+.f-logro__pista {
+  height: 6px;
+  border-radius: var(--r-3);
+  background: var(--border-subtle);
+  overflow: hidden;
+}
+.f-logro__relleno {
+  height: 100%;
+  background: var(--accent);
+  border-radius: var(--r-3);
+}
+.f-logro--hecho .f-logro__nombre {
+  flex: 1;
+}
+.f-logro__check {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--zona-verde);
+  color: var(--on-fragua);
+  font-size: var(--fs-11);
+  font-weight: var(--w-800);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+}
+.f-logro__fecha {
+  font-family: var(--font-mono);
+  font-size: var(--fs-10);
+  color: var(--text-disabled);
+}
+.f-logro--bloqueado {
+  opacity: 0.72;
+}
+.f-logro__textos {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+/* B-01 · builder */
+.f-chips-elegidos {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.f-chip-elegido {
+  font-family: var(--font-mono);
+  font-weight: var(--label-weight-strong);
+  font-size: var(--fs-11);
+  padding: 8px 11px;
+  background: var(--accent);
+  border: none;
+  border-radius: var(--r-6);
+  color: var(--on-fragua);
+  cursor: pointer;
+}
+.f-builder__crear {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.f-builder__crear-abrir {
+  border: 1px dashed var(--border-secondary-btn);
+  border-radius: var(--r-10);
+  padding: 13px 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: transparent;
+  cursor: pointer;
+  font-family: inherit;
+  width: 100%;
+}
+.f-builder__crear-texto {
+  font-size: var(--fs-13_5);
+  font-weight: var(--w-600);
+  color: var(--accent);
+}
+.f-builder__crear-chevron {
+  color: var(--text-disabled);
+}
+.f-builder__crear-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.f-builder__crear-fila {
+  display: flex;
+  gap: 8px;
+}
+.f-campo__caja--select {
+  flex: 1;
+  cursor: pointer;
+}
+.f-builder__lista {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.f-builder__grupo {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+/* Nombre propio: `.f-ejercicio` ya existe y es la CARD de W-01. Compartirla
+   hacia que la card de la sesion heredara el padding y el ancho de esta fila
+   —380px donde el mockup dice 350— y la pantalla desbordaba en horizontal.
+   Segunda colision del mismo tipo en esta fase; la caza la puerta. */
+.f-fila-ej {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--r-10);
+  padding: 12px 14px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: transparent;
+  cursor: pointer;
+  font-family: inherit;
+  width: 100%;
+  text-align: left;
+}
+.f-fila-ej:hover {
+  border-color: var(--border-card-active);
+}
+.f-fila-ej--marcado {
+  border-color: var(--accent);
+  background: var(--bg-elevated);
+}
+.f-fila-ej__check {
+  width: 20px;
+  height: 20px;
+  border-radius: var(--r-6);
+  border: 2px solid var(--border-secondary-btn);
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--on-fragua);
+  font-size: var(--fs-11);
+  font-weight: var(--w-800);
+}
+.f-fila-ej--marcado .f-fila-ej__check {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+.f-fila-ej__nombre {
+  flex: 1;
+  font-weight: var(--w-600);
+  font-size: var(--fs-14);
+}
+.f-fila-ej__grupo {
+  font-family: var(--font-mono);
+  font-weight: var(--w-500);
+  font-size: var(--fs-10);
+  color: var(--text-secondary);
+}
+/* DESVIACION DECLARADA: el mockup pone el boton al final de la lista, pero su
+   lista son cuatro filas y la real son mas de cien —el propio mockup lo dice:
+   "+ 100 ejercicios más, agrupados por músculo…"—. Un boton de guardar a cien
+   filas de scroll no se usa. Se queda pegado abajo, con fondo propio para que
+   no se lea encima de una fila. */
+.f-builder__guardar {
+  position: sticky;
+  bottom: 0;
+  margin-top: 4px;
+  box-shadow: 0 -10px 16px -6px var(--bg-app);
+}
+
+/* --------------------------------------------------------------------------
+   19 · CO-01, CO-02, CO-03 — Coach IA  [REF Pantallas:1406-1500]
+   -------------------------------------------------------------------------- */
+.f-coach {
+  position: fixed;
+  inset: 0;
+  z-index: 45;
+  background: var(--bg-app);
+  color: var(--text-primary);
+  display: flex;
+  flex-direction: column;
+}
+.f-coach.hidden {
+  display: none;
+}
+.f-coach__cabecera {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 20px var(--pad-screen-l) 14px;
+  border-bottom: 1px solid var(--bg-elevated);
+  flex: none;
+}
+/* Sin nombre propio ni avatar: solo el rotulo. [README §15] */
+.f-coach__titulo {
+  font-family: var(--font-mono);
+  font-weight: var(--w-700);
+  font-size: var(--fs-12);
+  line-height: var(--lh-1);
+  letter-spacing: var(--label-tracking-widest);
+}
+.f-coach__hilo {
+  flex: 1;
+  overflow-y: auto;
+  padding: 18px var(--pad-screen-l);
+  display: flex;
+  flex-direction: column;
+  gap: var(--pad-card);
+}
+.f-coach__turno {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.f-coach__sello {
+  font-family: var(--font-mono);
+  font-weight: var(--label-weight-strong);
+  font-size: var(--fs-9_5);
+  line-height: var(--lh-1);
+  letter-spacing: var(--label-tracking);
+  color: var(--text-secondary);
+}
+/* CO-02 · "PENSANDO" en Fragua, parpadeo 1.3s. Sin puntos suspensivos. */
+.f-coach__sello--pensando {
+  color: var(--accent);
+  animation: fierro-blink var(--dur-blink-slow) step-end infinite;
+}
+/* El turno del coach es una CARD Fierro, no una burbuja de chat. */
+.f-coach__card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--r-14);
+  padding: 15px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.f-coach__texto {
+  font-size: var(--fs-14_5);
+  line-height: var(--lh-1_5);
+}
+/* El del usuario, fila R10 a la derecha. */
+.f-coach__usuario {
+  align-self: flex-end;
+  max-width: 80%;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-card-active);
+  border-radius: var(--r-10);
+  padding: 12px 14px;
+  font-size: var(--fs-14);
+  line-height: var(--body-line-tight);
+}
+.f-coach__usuario--pendiente {
+  opacity: 0.6;
+}
+/* Cursor de bloque del streaming: 8x16, parpadeo .9s step-end. */
+.f-coach__cursor {
+  display: inline-block;
+  width: 8px;
+  height: 16px;
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  background: var(--accent);
+  animation: fierro-blink var(--dur-blink) step-end infinite;
+}
+
+/* El componente de datos: lo calcula la app, no el modelo. */
+.f-coach__dato {
+  background: var(--bg-app);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--r-10);
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.f-coach__dato-fila {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+.f-coach__dato-label {
+  font-family: var(--font-mono);
+  font-weight: var(--label-weight-strong);
+  font-size: var(--fs-9_5);
+  line-height: var(--lh-1);
+  letter-spacing: var(--label-tracking-tight);
+  color: var(--text-secondary);
+}
+.f-coach__dato-cifra {
+  font-family: var(--font-display);
+  font-stretch: var(--stretch-110);
+  font-weight: var(--w-800);
+  font-size: var(--fs-18);
+  font-variant-numeric: tabular-nums;
+}
+.f-coach__dato-unidad {
+  font-size: var(--fs-11);
+  font-weight: var(--w-600);
+  color: var(--text-secondary);
+}
+.f-coach__dato-pie {
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--font-mono);
+  font-weight: var(--w-500);
+  font-size: var(--fs-9_5);
+  line-height: var(--lh-1);
+  color: var(--text-disabled);
+}
+
+/* CO-03 · error de red. La pregunta queda guardada. */
+.f-coach__error {
+  border: 1px solid var(--zona-roja-border);
+  background: var(--bg-card);
+  border-radius: var(--r-14);
+  padding: var(--pad-card);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: flex-start;
+}
+.f-coach__error-label {
+  font-family: var(--font-mono);
+  font-weight: var(--w-700);
+  font-size: var(--fs-10);
+  line-height: var(--lh-1);
+  letter-spacing: var(--label-tracking-wide);
+  color: var(--zona-roja);
+}
+.f-coach__cola {
+  padding: 0 var(--pad-screen-l);
+  font-size: var(--fs-11_5);
+  color: var(--zona-ambar);
+}
+
+.f-coach__compositor {
+  display: flex;
+  gap: 8px;
+  padding: 14px var(--pad-screen-l) calc(26px + var(--safe-area-inset-bottom));
+  border-top: 1px solid var(--bg-elevated);
+  flex: none;
+}
+.f-coach__entrada {
+  flex: 1;
+  background: var(--bg-card);
+  border: 1px solid var(--border-card-active);
+  border-radius: var(--r-12);
+  padding: 14px;
+  font-family: var(--font-ui);
+  font-size: var(--fs-14);
+  color: var(--text-primary);
+  min-width: 0;
+}
+.f-coach__entrada::placeholder {
+  color: var(--text-disabled);
+}
+.f-coach__enviar {
+  width: 50px;
+  flex: none;
+  background: var(--accent);
+  color: var(--on-fragua);
+  border: none;
+  border-radius: var(--r-12);
+  font-size: var(--fs-19);
+  cursor: pointer;
+}
+.f-coach__enviar:disabled {
+  background: var(--bg-elevated);
+  color: var(--text-disabled);
+  cursor: default;
+}
+
+/* La card del coach en la home es ahora un boton: abre CO-01. */
+.f-home__coach {
+  width: 100%;
+  text-align: left;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+/* --------------------------------------------------------------------------
+   20 · Banner de descanso — el aviso flotante que sobrevive al cambio de
+        pantalla. El mockup no lo dibuja como pantalla propia (W-01 tiene su
+        bloque de descanso), asi que se viste con el sistema.
+   -------------------------------------------------------------------------- */
+.f-descanso {
+  position: fixed;
+  left: var(--pad-screen-l);
+  right: var(--pad-screen-l);
+  bottom: calc(var(--h-nav-inferior) + 12px);
+  z-index: 35;
+  display: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--gap-card);
+  background: var(--bg-card);
+  border: 1px solid var(--border-card-active);
+  border-radius: var(--r-14);
+  padding: 14px 16px;
+  box-shadow: var(--shadow-toast);
+}
+.f-descanso.active {
+  display: flex;
+}
+.f-descanso__textos {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.f-descanso__label {
+  font-family: var(--font-mono);
+  font-weight: var(--label-weight-strong);
+  font-size: var(--fs-10);
+  line-height: var(--lh-1);
+  letter-spacing: var(--label-tracking);
+  color: var(--text-secondary);
+}
+.f-descanso__cifra {
+  font-family: var(--font-display);
+  font-stretch: var(--stretch-112);
+  font-weight: var(--w-900);
+  font-size: var(--fs-24);
+  line-height: var(--lh-1);
+  font-variant-numeric: tabular-nums;
+  color: var(--accent);
+}
+.f-descanso__acciones {
+  display: flex;
+  gap: 8px;
+}
+.f-descanso__btn {
+  font-size: var(--fs-13);
+  border-radius: var(--r-10);
+  padding: 10px 14px;
+}

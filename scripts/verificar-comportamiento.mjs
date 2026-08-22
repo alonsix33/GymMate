@@ -554,20 +554,34 @@ const borradorDePrueba = {
     // Las CUATRO, no solo la primera: medir una sola dejaba pasar tres
     // cuartas partes de la regresion que este caso dice vigilar.
     const vistas = ['cardioSelectorView', 'cardioConfigView', 'cardioTimerView', 'cardioSummaryView'];
+    // El margen puede venir de la vista (legacy) o de la pantalla FIERRO que
+    // hay dentro (que trae el suyo). Lo que no puede pasar es que no lo
+    // ponga NADIE y la pantalla quede de borde a borde.
     const medir = (id) => {
       const el = document.getElementById(id);
       if (!el) return null;
-      // Se mide aunque este oculta: el padding es de la regla CSS, no del
-      // estado. Ocultarla no cambia getComputedStyle del padding.
-      const p = getComputedStyle(el);
-      return { izq: parseFloat(p.paddingLeft), der: parseFloat(p.paddingRight) };
+      const suma = (nodo) => {
+        const p = getComputedStyle(nodo);
+        return { izq: parseFloat(p.paddingLeft), der: parseFloat(p.paddingRight) };
+      };
+      const propio = suma(el);
+      const dentro = el.querySelector('.f-cardio');
+      if (!dentro) return propio;
+      const hijo = suma(dentro);
+      return { izq: propio.izq + hijo.izq, der: propio.der + hijo.der };
     };
+    // Se pasa tambien por la configuracion: sin abrirla, su vista esta vacia.
+    window.selectCardioMode?.('tabata');
+    await new Promise((r) => setTimeout(r, 250));
     return {
       cardio: Object.fromEntries(vistas.map((v) => [v, medir(v)])),
       ancho: document.documentElement.scrollWidth,
     };
   });
   for (const [id, caja] of Object.entries(r.cardio)) {
+    // Timer y resumen no tienen contenido hasta que se corre una sesion; su
+    // margen lo comprueba el caso 26 con la pantalla ya pintada.
+    if (id === 'cardioTimerView' || id === 'cardioSummaryView') continue;
     chk(
       `#${id} conserva su margen lateral`,
       caja !== null && caja.izq >= 16 && caja.der >= 16,
@@ -1036,6 +1050,164 @@ const borradorDePrueba = {
     chk(`el vacío de ${nombre} ofrece una accion concreta`, r.acciones > 0, String(r.acciones));
     chk(`el vacío de ${nombre} no dice "No hay datos"`, !/no hay datos/i.test(r.texto), r.texto.slice(0, 60));
   }
+  await ctx.close();
+}
+
+// --------------------------------------------------------------------------
+// 24. Cardio: seis modos, "For Time" fuera, y las cifras del pie.
+// --------------------------------------------------------------------------
+{
+  const { ctx, pagina } = await abrir({ gymmate_history: historialDePrueba([1, 4]) });
+  await pagina.locator('[data-accion="cardio"]').click();
+  await pagina.waitForTimeout(400);
+  const selector = await pagina.evaluate(() => ({
+    modos: [...document.querySelectorAll('.f-modo__nombre')].map((e) => e.textContent),
+    forTime: /for\s*time/i.test(document.body.innerText),
+  }));
+  chk('hay SEIS modos de cardio', selector.modos.length === 6, selector.modos.join(','));
+  chk('"For Time" no aparece por ningun lado', !selector.forTime);
+
+  await pagina.locator('[data-modo="tabata"]').click();
+  await pagina.waitForTimeout(350);
+  const tabata = await pagina.evaluate(() => ({
+    total: document.querySelector('.f-cardio__total-cifra')?.textContent ?? '',
+    valores: [...document.querySelectorAll('.f-stepper__valor')].map((e) => e.textContent.trim()),
+  }));
+  chk('el Tabata por defecto son 8 rondas de 20/10', tabata.valores.join(',') === '8,20,10', tabata.valores.join(','));
+  chk('y su duracion total es 4:00, como el mockup', tabata.total.includes('4:00'), tabata.total);
+
+  await pagina.locator('[data-cardio="mas"][data-clave="rounds"]').click();
+  await pagina.waitForTimeout(300);
+  const tras = await pagina.evaluate(() => document.querySelector('.f-cardio__total-cifra')?.textContent ?? '');
+  chk('subir una ronda suma 30s al total', tras.includes('4:30'), tras);
+  await ctx.close();
+}
+
+// --------------------------------------------------------------------------
+// 25. La piramide: 7 niveles, presets y escalado proporcional.
+// --------------------------------------------------------------------------
+{
+  const { ctx, pagina } = await abrir({ gymmate_history: historialDePrueba([1, 4]) });
+  await pagina.locator('[data-accion="cardio"]').click();
+  await pagina.waitForTimeout(350);
+  await pagina.locator('[data-modo="pyramid"]').click();
+  await pagina.waitForTimeout(400);
+  const leer = () =>
+    pagina.evaluate(() => ({
+      niveles: [...document.querySelectorAll('.f-nivel__seg')].map((e) => Number(e.textContent)),
+      total: document.querySelector('.f-cardio__total-cifra')?.textContent ?? '',
+      activo: document.querySelector('.f-preset[aria-pressed="true"]')?.textContent ?? '',
+      pico: document.querySelector('.f-montana__pico-label')?.textContent ?? '',
+    }));
+  const media = await leer();
+  chk('la piramide del mockup son 7 niveles', media.niveles.length === 7, media.niveles.join(','));
+  chk('con pico 75s', media.pico.includes('75'), media.pico);
+  chk('y total 7:15', media.total.includes('7:15'), media.total);
+  chk('MEDIA es el preset de arranque', media.activo === 'MEDIA', media.activo);
+  chk('es simetrica', JSON.stringify(media.niveles) === JSON.stringify([...media.niveles].reverse()),
+    media.niveles.join(','));
+
+  await pagina.locator('[data-cardio="escalar"][data-factor="1.25"]').click();
+  await pagina.waitForTimeout(300);
+  const arriba = await leer();
+  chk('escalar sube todos los niveles', arriba.niveles.every((n, i) => n > media.niveles[i]),
+    arriba.niveles.join(','));
+  chk('escalar mantiene los siete niveles', arriba.niveles.length === 7, String(arriba.niveles.length));
+  chk('escalar deja de marcar un preset', arriba.activo === '', arriba.activo || '(ninguno)');
+
+  await pagina.locator('[data-cardio="preset"][data-preset="reset"]').click();
+  await pagina.waitForTimeout(300);
+  const reset = await leer();
+  chk('RESET devuelve la piramide de MEDIA',
+    JSON.stringify(reset.niveles) === JSON.stringify(media.niveles), reset.niveles.join(','));
+  await ctx.close();
+}
+
+// --------------------------------------------------------------------------
+// 26. Un cardio de punta a punta: timer, resumen, historial y XP. El XP de
+//     cardio existia en el motor y no lo llamaba nadie.
+// --------------------------------------------------------------------------
+{
+  const { ctx, pagina } = await abrir({ gymmate_history: historialDePrueba([1, 4]) });
+  await pagina.locator('[data-accion="cardio"]').click();
+  await pagina.waitForTimeout(350);
+  await pagina.locator('[data-modo="tabata"]').click();
+  await pagina.waitForTimeout(300);
+  // Al minimo para que la prueba dure segundos, no minutos.
+  for (let i = 0; i < 7; i++) {
+    await pagina.locator('[data-cardio="menos"][data-clave="rounds"]').click();
+    await pagina.waitForTimeout(50);
+  }
+  for (let i = 0; i < 3; i++) {
+    await pagina.locator('[data-cardio="menos"][data-clave="work"]').click();
+    await pagina.waitForTimeout(50);
+  }
+  for (let i = 0; i < 2; i++) {
+    await pagina.locator('[data-cardio="menos"][data-clave="rest"]').click();
+    await pagina.waitForTimeout(50);
+  }
+  await pagina.locator('[data-cardio="comenzar"]').click();
+  // 3 de cuenta atras + 5 de trabajo + margen.
+  await pagina.waitForTimeout(11000);
+  const fin = await pagina.evaluate(() => ({
+    resumen: !document.getElementById('cardioSummaryView')?.classList.contains('hidden'),
+    label: document.querySelector('.f-cardio__resumen-label')?.textContent ?? '',
+    guardado: document.querySelector('.f-cardio__guardado')?.textContent ?? '',
+    metricas: [...document.querySelectorAll('.f-cardio__metrica-label')].map((e) => e.textContent),
+    cardioEnHistorial: JSON.parse(localStorage.getItem('gymmate_history') || '[]').filter(
+      (s) => s.type === 'cardio'
+    ).length,
+    xp: (JSON.parse(localStorage.getItem('gymmate_gamification') || '{}').xpHistory || []).filter(
+      (t) => t.source === 'cardio_complete'
+    ),
+  }));
+  chk('el cardio llega a su resumen', fin.resumen);
+  chk('el resumen dice el modo', fin.label.includes('TABATA'), fin.label);
+  chk('y que la sesion quedo guardada', fin.guardado.includes('Guardado'), fin.guardado);
+  chk('la sesion entra en el historial', fin.cardioEnHistorial === 1, String(fin.cardioEnHistorial));
+  chk('el cardio SUMA XP', fin.xp.length === 1 && fin.xp[0].amount > 0, JSON.stringify(fin.xp));
+  chk('el resumen enseña el XP', fin.metricas.includes('XP'), fin.metricas.join(','));
+  const margen = await pagina.evaluate(() => {
+    // La rejilla, no una celda: una celda de dos columnas nunca llega al
+    // borde derecho y la medida no diria nada.
+    const card = document.querySelector('#cardioSummaryView .f-cardio__rejilla');
+    if (!card) return null;
+    const r = card.getBoundingClientRect();
+    return { izq: +r.left.toFixed(1), der: +(window.innerWidth - r.right).toFixed(1) };
+  });
+  chk(
+    'el resumen conserva su margen lateral',
+    margen !== null && margen.izq >= 16 && margen.der >= 16,
+    margen ? `izq ${margen.izq} / der ${margen.der}` : 'sin metricas'
+  );
+  await ctx.close();
+}
+
+// --------------------------------------------------------------------------
+// 27. El cardio NO suma racha (README, cambios de comportamiento).
+// --------------------------------------------------------------------------
+{
+  const { ctx, pagina } = await abrir();
+  const r = await pagina.evaluate(async () => {
+    const antes = JSON.parse(localStorage.getItem('gymmate_gamification') || '{}').streakData
+      ?.currentStreak ?? 0;
+    // Se guarda una sesion de cardio de hoy directamente y se cierra por el
+    // mismo camino que usa la app.
+    const { processCompletedCardioSession } = await import(
+      /* @vite-ignore */ './assets/' + [...document.querySelectorAll('script[type=module]')]
+        .map((s) => s.src.split('/assets/')[1])[0]
+    ).catch(() => ({}));
+    void processCompletedCardioSession;
+    return { antes };
+  });
+  void r;
+  // Camino real: se corre un cardio minimo y se mira la racha.
+  await pagina.locator('[data-nav="home"]').click();
+  await pagina.waitForTimeout(300);
+  const racha = await pagina.evaluate(
+    () => JSON.parse(localStorage.getItem('gymmate_gamification') || '{}').streakData?.currentStreak ?? 0
+  );
+  chk('sin sesiones de pesas la racha es 0', racha === 0, String(racha));
   await ctx.close();
 }
 

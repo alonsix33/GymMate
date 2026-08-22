@@ -78,6 +78,7 @@ export type XPSource =
   | 'streak_90'
   | 'achievement'
   | 'rank_up'
+  | 'cardio_complete'
   | 'migration';
 
 // ==========================================

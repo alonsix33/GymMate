@@ -1049,6 +1049,14 @@
    en content-box el padding se suma por fuera y la fila sale mas ancha que la
    pantalla. En el mockup son <div> de ancho automatico, donde el padding
    queda dentro; esto reproduce ese comportamiento. */
+.f-modo,
+.f-cardio,
+.f-montana,
+.f-emom,
+.f-cardio__metrica,
+.f-estacion__card,
+.f-amrap__campo,
+.f-preparacion,
 .f-hist__fila,
 .f-hueso__card,
 .f-hueso__cuerpo,
@@ -1087,17 +1095,12 @@ body.f-sin-tabbar {
 }
 
 /* Las pantallas legacy conservan el padding que tenia <main> hasta que su
-   fase las reemplace. Las cuatro vistas de cardio no son .tab-content: son
-   hijas directas de <main>, asi que al retirar su padding quedaron de borde a
-   borde. Se listan aparte hasta que la fase 6 las rehaga.
+   fase las reemplace. Las cuatro vistas de cardio ya son FIERRO y traen el
+   suyo: se quitaron de la lista al rehacerlas.
    Las pantallas ya rehechas quedan FUERA: traen su propio padding (20px en
    Carbon, 18px en Hueso) y sumarles el legacy dejaba las cards 40px mas
    estrechas de lo que manda el mockup. */
-.tab-content:not(#workoutTab):not(#historyTab):not(#prsTab):not(#chartsTab),
-#cardioSelectorView,
-#cardioConfigView,
-#cardioTimerView,
-#cardioSummaryView {
+.tab-content:not(#workoutTab):not(#historyTab):not(#prsTab):not(#chartsTab) {
   padding: 1.5rem 1.25rem 1rem;
 }
 
@@ -2610,4 +2613,839 @@ body:has(#chartsTab:not(.hidden)) {
   font-size: var(--fs-13);
   line-height: var(--body-line-tight);
   color: var(--text-hueso-secondary);
+}
+
+/* --------------------------------------------------------------------------
+   16 · Cardio & HIIT — C-01…C-08  [REF Pantallas:340-617]
+   -------------------------------------------------------------------------- */
+.f-cardio {
+  padding: 10px var(--pad-screen-l) 28px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--pad-card);
+}
+.f-cardio--config {
+  padding: 24px var(--pad-screen-l) 28px;
+  gap: 18px;
+}
+.f-cardio--timer {
+  padding: 32px var(--pad-screen-l) 30px;
+  gap: 24px;
+  align-items: center;
+}
+.f-cardio--piramide {
+  padding: 28px var(--pad-screen-l) 30px;
+  gap: 22px;
+  align-items: center;
+}
+.f-cardio--resumen {
+  padding: 40px var(--pad-screen-l) 28px;
+  gap: 22px;
+}
+
+.f-cardio__cabecera {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-card-l);
+}
+.f-cardio__titulos {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.f-cardio__titulo {
+  font-family: var(--font-display);
+  font-stretch: var(--stretch-115);
+  font-weight: var(--w-900);
+  font-size: var(--fs-24);
+}
+.f-cardio__sub {
+  font-size: var(--fs-12);
+  color: var(--text-secondary);
+}
+.f-cardio__intro {
+  font-size: var(--fs-13);
+  color: var(--text-secondary);
+}
+.f-cardio__nota {
+  font-size: var(--fs-11_5);
+  color: var(--text-disabled);
+}
+
+/* C-01 · lista de modos */
+.f-cardio__modos {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-card-s);
+}
+.f-modo {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--r-row-l);
+  padding: 15px 16px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: none;
+  width: 100%;
+  text-align: left;
+  color: inherit;
+  font-family: inherit;
+  cursor: pointer;
+}
+.f-modo__tag {
+  font-family: var(--font-mono);
+  font-weight: var(--label-weight-strong);
+  font-size: var(--fs-12);
+  line-height: var(--lh-1);
+  color: var(--accent);
+  width: 20px;
+  flex: none;
+}
+.f-modo__textos {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.f-modo__nombre {
+  font-weight: var(--w-700);
+  font-size: var(--fs-15_5);
+}
+.f-modo__desc {
+  font-size: var(--fs-12_5);
+  color: var(--text-secondary);
+}
+.f-modo__chevron {
+  color: var(--text-disabled);
+  flex: none;
+}
+
+/* C-02 · campos de configuracion */
+.f-campo {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.f-campo__label {
+  font-family: var(--font-mono);
+  font-weight: var(--label-weight);
+  font-size: var(--fs-10);
+  line-height: var(--lh-1);
+  letter-spacing: var(--ls-_1);
+  color: var(--text-secondary);
+}
+.f-campo__label--corto {
+  font-size: var(--fs-9_5);
+  letter-spacing: var(--ls-_08);
+}
+.f-stepper--cardio {
+  gap: var(--gap-card-s);
+}
+.f-stepper--cardio .f-stepper__btn {
+  width: 52px;
+  height: 54px;
+  background: var(--bg-elevated);
+  color: var(--text-tertiary);
+  font-size: var(--fs-20);
+  border-radius: var(--r-btn);
+}
+.f-stepper--cardio .f-stepper__valor {
+  height: 54px;
+  font-size: var(--fs-24);
+  border-radius: var(--r-btn);
+  background: var(--bg-card);
+}
+.f-stepper--compacto .f-stepper__btn {
+  width: 34px;
+  height: var(--stepper-h-s);
+  font-size: var(--fs-16);
+  border-radius: var(--r-btn-s);
+}
+.f-stepper--compacto .f-stepper__valor {
+  height: var(--stepper-h-s);
+  font-size: var(--fs-19);
+  border-radius: var(--r-btn-s);
+  background: var(--bg-card);
+}
+.f-stepper__unidad {
+  font-size: var(--fs-11);
+  font-weight: var(--w-600);
+  color: var(--text-secondary);
+}
+.f-cardio__total {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--gap-card);
+  border-top: 1px solid var(--border-subtle);
+  padding-top: var(--pad-card);
+  font-size: var(--fs-13_5);
+}
+.f-cardio__total-label {
+  color: var(--text-secondary);
+}
+.f-cardio__total-cifra {
+  font-weight: var(--w-700);
+  font-variant-numeric: tabular-nums;
+}
+
+/* C-03 · timer de anillo */
+.f-fase {
+  font-family: var(--font-mono);
+  font-weight: var(--label-weight-strong);
+  font-size: var(--fs-12);
+  line-height: var(--lh-1);
+  letter-spacing: var(--ls-_2);
+  padding: 8px 14px;
+  border-radius: var(--r-chip);
+  background: var(--accent);
+  color: var(--on-fragua);
+}
+.f-fase--descanso {
+  background: var(--bg-elevated);
+  color: var(--text-tertiary);
+}
+.f-anillo {
+  position: relative;
+  width: 230px;
+  height: 230px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.f-anillo__svg {
+  position: absolute;
+  inset: 0;
+  transform: rotate(-90deg);
+}
+.f-anillo__pista {
+  fill: none;
+  stroke: var(--border-subtle);
+  stroke-width: 10;
+}
+.f-anillo__avance {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 10;
+  stroke-linecap: round;
+}
+.f-anillo__centro {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+.f-anillo__tiempo {
+  font-family: var(--font-display);
+  font-stretch: var(--stretch-115);
+  font-weight: var(--w-900);
+  font-size: var(--fs-72);
+  line-height: var(--lh-1);
+  font-variant-numeric: tabular-nums;
+}
+.f-anillo__sub {
+  font-size: var(--fs-13);
+  color: var(--text-secondary);
+}
+.f-rondas {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.f-rondas__marca {
+  width: 22px;
+  height: 6px;
+  border-radius: var(--r-bar);
+  background: var(--border-subtle);
+}
+.f-rondas__marca--hecha {
+  background: var(--accent);
+}
+.f-rondas__marca--actual {
+  background: var(--fragua-300);
+}
+.f-cardio__controles {
+  display: flex;
+  gap: var(--gap-card);
+  width: 100%;
+}
+.f-btn--claro {
+  flex: 1;
+  font-family: var(--font-ui);
+  font-weight: var(--w-700);
+  font-size: var(--fs-15);
+  background: var(--text-primary);
+  color: var(--bg-app);
+  border: none;
+  border-radius: var(--r-btn-l);
+  padding: 15px;
+  cursor: pointer;
+}
+.f-btn--detener {
+  flex: 1;
+  font-family: var(--font-ui);
+  font-weight: var(--w-600);
+  font-size: var(--fs-15);
+  background: transparent;
+  color: var(--zona-roja);
+  border: 1px solid var(--zona-roja-border);
+  border-radius: var(--r-btn-l);
+  padding: 15px;
+  cursor: pointer;
+}
+.f-cardio__pie {
+  font-family: var(--font-mono);
+  font-size: var(--fs-11_5);
+  color: var(--text-disabled);
+  text-align: center;
+}
+
+/* C-04 · resumen */
+.f-cardio__resumen-cabecera {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: center;
+  text-align: center;
+}
+.f-cardio__resumen-label {
+  font-family: var(--font-mono);
+  font-weight: var(--label-weight);
+  font-size: var(--fs-10);
+  line-height: var(--lh-1);
+  letter-spacing: var(--ls-_12);
+  color: var(--text-secondary);
+}
+.f-cardio__resumen-cifra {
+  font-family: var(--font-display);
+  font-stretch: var(--stretch-118);
+  font-weight: var(--w-900);
+  font-size: var(--fs-56);
+  line-height: var(--lh-1);
+  font-variant-numeric: tabular-nums;
+}
+.f-cardio__guardado {
+  font-size: var(--fs-13);
+  color: var(--zona-verde);
+  font-weight: var(--w-600);
+}
+.f-cardio__rejilla {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--gap-card);
+}
+.f-cardio__metrica {
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--r-card);
+  padding: var(--pad-card);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.f-cardio__metrica-label {
+  font-family: var(--font-mono);
+  font-weight: var(--label-weight);
+  font-size: var(--fs-9_5);
+  line-height: var(--lh-1);
+  color: var(--text-secondary);
+}
+.f-cardio__metrica-cifra {
+  font-family: var(--font-display);
+  font-weight: var(--w-800);
+  font-stretch: var(--stretch-110);
+  font-size: var(--fs-22);
+  font-variant-numeric: tabular-nums;
+}
+.f-cardio__metrica-cifra--xp {
+  color: var(--accent);
+}
+
+/* C-05 y C-06 · la montaña */
+.f-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.f-preset {
+  font-family: var(--font-mono);
+  font-weight: var(--label-weight);
+  font-size: var(--fs-10_5);
+  line-height: var(--lh-1);
+  padding: 7px 10px;
+  border: 1px solid var(--border-card-active);
+  border-radius: var(--r-chip);
+  color: var(--text-secondary);
+  background: none;
+  cursor: pointer;
+}
+.f-preset[aria-pressed='true'] {
+  font-weight: var(--label-weight-strong);
+  background: var(--accent);
+  border-color: transparent;
+  color: var(--on-fragua);
+}
+.f-montana {
+  background: var(--bg-card);
+  border: 1px solid var(--border-card-active);
+  border-radius: var(--r-card-l);
+  padding: 20px 18px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-card-l);
+}
+.f-montana__grafico {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  height: 150px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.f-montana__grafico--vivo {
+  border-bottom: none;
+  gap: 5px;
+  width: 100%;
+}
+.f-montana__pico-linea {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 14px;
+  border-top: 1px dashed var(--border-secondary-btn);
+}
+.f-montana__pico-label {
+  position: absolute;
+  right: 0;
+  top: 2px;
+  font-family: var(--font-mono);
+  font-weight: var(--w-500);
+  font-size: var(--fs-9);
+  line-height: var(--lh-1);
+  color: var(--text-disabled);
+}
+.f-nivel {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 5px;
+  height: 100%;
+}
+.f-nivel__seg {
+  font-family: var(--font-mono);
+  font-weight: var(--label-weight-strong);
+  font-size: var(--fs-10_5);
+  line-height: var(--lh-1);
+  color: var(--text-tertiary);
+  text-align: center;
+}
+.f-nivel__barra {
+  border-radius: var(--r-5) var(--r-5) 0 0;
+  background: var(--fragua-700);
+  box-sizing: border-box;
+}
+.f-nivel__barra--pico {
+  background: var(--accent);
+}
+.f-nivel__barra--hecho {
+  background: var(--brasa);
+}
+.f-nivel__barra--activo {
+  background: var(--accent);
+  animation: fierro-pulse var(--dur-pulse) ease-in-out infinite;
+}
+.f-nivel__barra--proximo {
+  background: transparent;
+  border: 1.5px dashed var(--border-card-active);
+}
+.f-montana__pie {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--gap-card-s);
+  font-family: var(--font-mono);
+  font-weight: var(--w-500);
+  font-size: var(--fs-10);
+  line-height: var(--lh-1);
+  color: var(--text-disabled);
+}
+.f-montana__acciones {
+  display: flex;
+  gap: var(--gap-card-s);
+}
+.f-montana__accion {
+  flex: 1;
+  font-family: var(--font-ui);
+  font-weight: var(--w-600);
+  font-size: var(--fs-13);
+  background: transparent;
+  color: var(--text-primary);
+  border: 1px solid var(--border-secondary-btn);
+  border-radius: var(--r-btn);
+  padding: 11px;
+  cursor: pointer;
+}
+.f-montana__nota {
+  font-size: var(--fs-11_5);
+  color: var(--text-disabled);
+}
+
+/* C-06 · cabecera y progreso del timer de piramide */
+.f-piramide__cabecera {
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+  align-items: center;
+  gap: var(--gap-card);
+}
+.f-piramide__nombre {
+  font-family: var(--font-mono);
+  font-weight: var(--label-weight);
+  font-size: var(--fs-10_5);
+  line-height: var(--lh-1);
+  letter-spacing: var(--ls-_1);
+  color: var(--text-secondary);
+}
+.f-piramide__fase {
+  font-family: var(--font-mono);
+  font-weight: var(--label-weight-strong);
+  font-size: var(--fs-11);
+  line-height: var(--lh-1);
+  letter-spacing: var(--ls-_14);
+  padding: 7px 11px;
+  border-radius: var(--r-chip);
+  background: var(--accent);
+  color: var(--on-fragua);
+}
+.f-piramide__fase--descanso {
+  background: var(--bg-elevated);
+  color: var(--text-tertiary);
+}
+.f-piramide__reloj {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+.f-piramide__tiempo {
+  font-family: var(--font-display);
+  font-stretch: var(--stretch-115);
+  font-weight: var(--w-900);
+  font-size: var(--fs-68);
+  line-height: var(--lh-1);
+  font-variant-numeric: tabular-nums;
+}
+.f-piramide__sub {
+  font-size: var(--fs-13);
+  color: var(--text-secondary);
+}
+.f-piramide__progreso {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.f-piramide__pista {
+  height: 5px;
+  border-radius: var(--r-bar);
+  background: var(--border-subtle);
+  overflow: hidden;
+}
+.f-piramide__relleno {
+  height: 100%;
+  border-radius: var(--r-bar);
+  background: var(--accent);
+}
+.f-piramide__marcas {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--gap-card-s);
+  font-family: var(--font-mono);
+  font-weight: var(--w-500);
+  font-size: var(--fs-10_5);
+  line-height: var(--lh-1);
+  color: var(--text-disabled);
+}
+.f-piramide__leyenda {
+  font-family: var(--font-mono);
+  font-weight: var(--w-500);
+  font-size: var(--fs-10);
+  line-height: var(--body-line);
+  color: var(--text-disabled);
+  text-align: center;
+  letter-spacing: var(--ls-_04);
+}
+
+/* C-07 · circuito */
+.f-circuito {
+  display: flex;
+  flex-direction: column;
+}
+.f-estacion {
+  display: flex;
+  gap: var(--gap-card-l);
+}
+.f-estacion__eje {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 26px;
+  flex: none;
+}
+.f-estacion__numero {
+  width: 26px;
+  height: 26px;
+  border-radius: var(--r-pill);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-card-active);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-mono);
+  font-weight: var(--label-weight-strong);
+  font-size: var(--fs-11);
+  line-height: var(--lh-1);
+  color: var(--accent);
+  flex: none;
+}
+.f-estacion__linea {
+  width: 1.5px;
+  flex: 1;
+  background: var(--border-subtle);
+  min-height: 14px;
+}
+.f-estacion__card {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--r-btn);
+  padding: 12px 14px;
+  margin-bottom: var(--gap-card-s);
+  display: flex;
+  align-items: center;
+  gap: var(--gap-card);
+}
+.f-estacion__textos {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.f-estacion__nombre {
+  font-weight: var(--w-600);
+  font-size: var(--fs-14);
+}
+.f-estacion__detalle {
+  font-size: var(--fs-11_5);
+  color: var(--text-secondary);
+}
+.f-estacion__quitar {
+  color: var(--border-secondary-btn);
+  font-size: var(--fs-15);
+  background: none;
+  border: none;
+  cursor: pointer;
+  flex: none;
+  padding: 0;
+}
+.f-estacion__anadir {
+  width: 26px;
+  height: 26px;
+  border-radius: var(--r-pill);
+  border: 1.5px dashed var(--border-secondary-btn);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent);
+  font-size: var(--fs-14);
+  background: none;
+  cursor: pointer;
+  flex: none;
+  padding: 0;
+}
+.f-estacion__anadir-texto {
+  font-size: var(--fs-13_5);
+  font-weight: var(--w-600);
+  color: var(--accent);
+  padding-top: 4px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+}
+.f-cardio__dos-campos {
+  display: flex;
+  gap: var(--gap-card-s);
+}
+.f-cardio__dos-campos .f-campo {
+  flex: 1;
+  min-width: 0;
+  gap: 5px;
+}
+
+/* C-08 · EMOM / AMRAP */
+.f-emom {
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--r-card);
+  padding: var(--pad-card);
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-card);
+}
+.f-emom__barra {
+  display: flex;
+  height: 22px;
+  border-radius: var(--r-chip);
+  overflow: hidden;
+}
+.f-emom__trabajo {
+  background: var(--accent);
+  display: flex;
+  align-items: center;
+  padding-left: var(--gap-card);
+  min-width: 0;
+}
+.f-emom__trabajo-label {
+  font-family: var(--font-mono);
+  font-weight: var(--label-weight-strong);
+  font-size: var(--fs-10);
+  line-height: var(--lh-1);
+  color: var(--on-fragua);
+  white-space: nowrap;
+}
+.f-emom__respira {
+  flex: 1;
+  background: var(--border-subtle);
+  display: flex;
+  align-items: center;
+  padding-left: var(--gap-card);
+  min-width: 0;
+}
+.f-emom__respira-label {
+  font-family: var(--font-mono);
+  font-weight: var(--label-weight);
+  font-size: var(--fs-10);
+  line-height: var(--lh-1);
+  color: var(--text-secondary);
+}
+.f-emom__nota {
+  font-size: var(--fs-11_5);
+  line-height: var(--body-line);
+  color: var(--text-disabled);
+}
+.f-amrap {
+  border-top: 1px solid var(--border-subtle);
+  padding-top: var(--pad-card);
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-card-l);
+}
+.f-amrap__cabecera {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-card);
+}
+.f-amrap__titulo {
+  font-family: var(--font-display);
+  font-stretch: var(--stretch-112);
+  font-weight: var(--w-800);
+  font-size: var(--fs-17);
+  flex: 1;
+}
+.f-amrap__sub {
+  font-size: var(--fs-11_5);
+  color: var(--text-secondary);
+}
+.f-amrap__campos {
+  display: flex;
+  gap: var(--gap-card-s);
+  align-items: center;
+}
+.f-amrap__campo {
+  flex: 1;
+  min-width: 0;
+  background: var(--bg-card);
+  border: 1px solid var(--border-card-active);
+  border-radius: var(--r-btn);
+  padding: 12px 14px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--gap-card-s);
+}
+.f-amrap__campo-label {
+  font-size: var(--fs-13);
+  color: var(--text-secondary);
+}
+.f-amrap__campo-valor {
+  font-family: var(--font-display);
+  font-weight: var(--w-800);
+  font-stretch: var(--stretch-110);
+  font-size: var(--fs-17);
+  font-variant-numeric: tabular-nums;
+}
+.f-amrap__campo-valor--acento {
+  color: var(--accent);
+}
+
+/* Contador de rondas de AMRAP en el timer: el protagonista es el numero. */
+.f-amrap-vivo {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--gap-card-s);
+  background: none;
+  border: none;
+  color: inherit;
+  font-family: inherit;
+  cursor: pointer;
+  padding: 0;
+}
+.f-amrap-vivo__cifra {
+  font-family: var(--font-display);
+  font-stretch: var(--stretch-118);
+  font-weight: var(--w-900);
+  font-size: var(--fs-72);
+  line-height: var(--lh-1);
+  font-variant-numeric: tabular-nums;
+  color: var(--accent);
+}
+.f-amrap-vivo__label {
+  font-family: var(--font-mono);
+  font-weight: var(--label-weight);
+  font-size: var(--fs-10_5);
+  line-height: var(--lh-1);
+  letter-spacing: var(--ls-_12);
+  color: var(--text-secondary);
+}
+
+/* Cuenta atras de preparacion */
+.f-preparacion {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--gap-card-l);
+  padding: 80px var(--pad-screen-l);
+}
+.f-preparacion__label {
+  font-family: var(--font-mono);
+  font-weight: var(--label-weight);
+  font-size: var(--fs-10_5);
+  line-height: var(--lh-1);
+  letter-spacing: var(--ls-_12);
+  color: var(--text-secondary);
+}
+.f-preparacion__cifra {
+  font-family: var(--font-display);
+  font-stretch: var(--stretch-118);
+  font-weight: var(--w-900);
+  font-size: var(--fs-72);
+  line-height: var(--lh-1);
+  color: var(--accent);
 }

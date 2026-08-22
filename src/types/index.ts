@@ -163,14 +163,18 @@ export type MuscleGroup =
   | 'Bíceps'
   | 'Core';
 
+/**
+ * Seis modos. "For Time" se retiro: es uno de los cinco cambios de
+ * comportamiento aprobados en el handoff, y ademas nunca fue alcanzable
+ * (FEATURES §3).
+ */
 export type CardioMode =
   | 'emom'
   | 'tabata'
   | 'circuit'
   | 'pyramid'
   | 'custom'
-  | 'amrap'
-  | 'fortime';
+  | 'amrap';
 
 export interface BodyMeasurement {
   date: string;

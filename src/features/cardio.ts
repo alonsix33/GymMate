@@ -1,478 +1,485 @@
+/**
+ * FIERRO · Cardio & HIIT — C-01…C-08.
+ *
+ *   C-01  Selector de modo (seis; "For Time" se retiro).
+ *   C-02  Configuracion de intervalos.
+ *   C-03  Timer de anillo con marcas de ronda.
+ *   C-04  Resumen con XP real.
+ *   C-05  Piramide: la montaña ES el configurador.
+ *   C-06  Piramide en curso: el timer ES la montaña.
+ *   C-07  Circuito: la lista ES el recorrido.
+ *   C-08  EMOM / AMRAP: un patron, dos modos.
+ *
+ * El motor del temporizador (fases, beeps, vibracion, guardado) se conserva;
+ * lo que cambia es todo lo que se ve. La aritmetica vive en
+ * src/utils/cardio-calc.ts, que se prueba sola.
+ */
 import { confirmarDestructivo } from '@/ui/feedback';
 import type { CardioMode, CardioConfig, CardioSessionStats } from '@/types';
 import { cardioState, resetCardioState } from '@/state/session';
 import { getCardioExerciseNames } from '@/data/cardio-exercises';
-import { addToHistory } from '@/utils/storage';
-import { icon, refreshIcons } from '@/utils/icons';
+import { addToHistory, getHistory } from '@/utils/storage';
+import { processCompletedCardioSession } from '@/features/gamification';
+import { cifra } from '@/utils/formato';
+import {
+  PRESETS_PIRAMIDE,
+  PIRAMIDE_MEDIA,
+  DESCANSO_PIRAMIDE,
+  alturaDeNivel,
+  duracionTotal,
+  escalar,
+  estadoDeNivel,
+  formatearTiempo,
+  offsetDelAnillo,
+  ritmoEmom,
+} from '@/utils/cardio-calc';
 
 // ==========================================
-// ESTADO DEL TIMER
+// ESTADO
 // ==========================================
 
 let timerInterval: ReturnType<typeof setInterval> | null = null;
 let audioContext: AudioContext | null = null;
+let amrapRounds = 0;
+let presetActivo = 'media';
+let ultimoXP: number | null = null;
 
-// ==========================================
-// CONFIGURACIONES POR DEFECTO
-// ==========================================
+const RADIO_ANILLO = 104; // [REF Pantallas:399]
 
 const DEFAULT_CONFIGS: Record<CardioMode, CardioConfig> = {
   tabata: { rounds: 8, work: 20, rest: 10 },
-  emom: { rounds: 10, interval: 60 },
-  amrap: { duration: 600, exercises: [] }, // 10 minutes
+  emom: { rounds: 10, interval: 60, reps: 10 },
+  amrap: { duration: 720, exercises: [] },
   circuit: { rounds: 3, work: 40, rest: 20, roundRest: 60, exercises: [] },
-  pyramid: { levels: [20, 30, 40, 30, 20], rest: 10 },
+  pyramid: { levels: [...PIRAMIDE_MEDIA], rest: DESCANSO_PIRAMIDE },
   custom: { rounds: 5, work: 30, rest: 15 },
-  fortime: { exercises: [], reps: 10 },
 };
 
+const MODOS: Array<{ id: CardioMode; tag: string; nombre: string; desc: string }> = [
+  { id: 'tabata', tag: 'TB', nombre: 'Tabata', desc: '20s trabajo / 10s descanso × 8 rondas' },
+  { id: 'emom', tag: 'EM', nombre: 'EMOM', desc: 'cada minuto, al minuto' },
+  { id: 'amrap', tag: 'AM', nombre: 'AMRAP', desc: 'tantas rondas como puedas' },
+  { id: 'circuit', tag: 'CI', nombre: 'Circuito', desc: 'ejercicios en secuencia · descanso entre rondas' },
+  { id: 'pyramid', tag: 'PI', nombre: 'Pirámide', desc: 'intervalos ascendentes y descendentes' },
+  { id: 'custom', tag: 'PR', nombre: 'Personalizado', desc: 'configura tu propio intervalo' },
+];
+
+const NOMBRE_MODO: Record<CardioMode, string> = {
+  tabata: 'TABATA',
+  emom: 'EMOM',
+  amrap: 'AMRAP',
+  circuit: 'CIRCUITO',
+  pyramid: 'PIRÁMIDE',
+  custom: 'PERSONALIZADO',
+};
+
+const SUB_MODO: Record<CardioMode, string> = {
+  tabata: '20s trabajo / 10s descanso × 8 rondas',
+  emom: 'cada minuto, al minuto — lo que sobra es tu descanso',
+  amrap: 'tantas rondas como puedas en el tiempo límite',
+  circuit: 'ejercicios en secuencia · descanso entre rondas',
+  pyramid: 'intervalos ascendentes y descendentes',
+  custom: 'tu propio intervalo de trabajo y descanso',
+};
+
+function escapar(texto: string): string {
+  const d = document.createElement('div');
+  d.textContent = texto;
+  return d.innerHTML;
+}
+
+function vista(id: string): HTMLElement | null {
+  return document.getElementById(id);
+}
+
+function hideAllCardioViews(): void {
+  ['cardioSelectorView', 'cardioConfigView', 'cardioTimerView', 'cardioSummaryView'].forEach((id) => {
+    vista(id)?.classList.add('hidden');
+  });
+}
+
+/** Un solo listener por vista, que sobrevive a los repintados. */
+function enganchar(el: HTMLElement, manejador: (accion: HTMLElement) => void): void {
+  if (el.dataset.enganchado === 'si') return;
+  el.addEventListener('click', (e) => {
+    const objetivo = (e.target as HTMLElement)?.closest<HTMLElement>('[data-cardio]');
+    if (objetivo) manejador(objetivo);
+  });
+  el.dataset.enganchado = 'si';
+}
+
 // ==========================================
-// MOSTRAR SELECTOR DE CARDIO
+// C-01 · SELECTOR
 // ==========================================
 
 export function showCardioSelector(): void {
-  // Ocultar home view y todos los tabs
-  const homeView = document.getElementById('homeView');
-  if (homeView) homeView.classList.add('hidden');
-
+  vista('homeView')?.classList.add('hidden');
   document.querySelectorAll('.tab-content').forEach((tab) => {
     tab.classList.add('hidden');
     tab.classList.remove('active');
   });
-
   hideAllCardioViews();
 
-  const selectorView = document.getElementById('cardioSelectorView');
-  if (!selectorView) return;
-
-  selectorView.classList.remove('hidden');
-  selectorView.innerHTML = `
-    <!-- Navigation Bar -->
-    <div class="flex items-center gap-3 mb-6">
-      <button onclick="window.showHome()" class="w-11 h-11 flex items-center justify-center bg-dark-surface border border-dark-border rounded-xl active:scale-95 transition-transform">
-        <i data-lucide="arrow-left" class="w-5 h-5 text-text-primary"></i>
-      </button>
-      <h2 class="text-xl font-display font-bold text-text-primary flex items-center gap-2">
-        ${icon('fire', 'lg', 'text-orange-400')}
-        Cardio & HIIT
-      </h2>
-    </div>
-
-    <p class="text-text-secondary text-sm mb-4">Selecciona un modo de entrenamiento</p>
-
-    <div class="space-y-3">
-      ${renderModeCard('tabata', 'Tabata', '20s trabajo / 10s descanso × 8 rondas', 'zap')}
-      ${renderModeCard('emom', 'EMOM', 'Every Minute On the Minute', 'clock')}
-      ${renderModeCard('amrap', 'AMRAP', 'As Many Reps As Possible', 'trending')}
-      ${renderModeCard('circuit', 'Circuito', 'Ejercicios en secuencia con descansos', 'activity')}
-      ${renderModeCard('pyramid', 'Pirámide', 'Intervalos ascendentes y descendentes', 'triangle')}
-      ${renderModeCard('custom', 'Personalizado', 'Configura tu propio intervalo', 'settings')}
+  const v = vista('cardioSelectorView');
+  if (!v) return;
+  v.classList.remove('hidden');
+  v.innerHTML = `
+    <div class="f-cardio f-root">
+      <div class="f-cardio__cabecera">
+        <button type="button" class="f-sesion__volver" data-cardio="inicio" aria-label="Volver al inicio">←</button>
+        <span class="f-cardio__titulo">CARDIO &amp; HIIT</span>
+      </div>
+      <span class="f-cardio__intro">Elige un modo — la sesión se guarda sola al terminar.</span>
+      <div class="f-cardio__modos">
+        ${MODOS.map(
+          (m) => `
+          <button type="button" class="f-modo" data-cardio="modo" data-modo="${m.id}">
+            <span class="f-modo__tag">${m.tag}</span>
+            <span class="f-modo__textos">
+              <span class="f-modo__nombre">${escapar(m.nombre)}</span>
+              <span class="f-modo__desc">${escapar(m.desc)}</span>
+            </span>
+            <span class="f-modo__chevron" aria-hidden="true">›</span>
+          </button>`
+        ).join('')}
+      </div>
     </div>
   `;
-
-  refreshIcons();
+  enganchar(v, alTocarCardio);
 }
-
-function renderModeCard(mode: CardioMode, title: string, description: string, iconName: string): string {
-  return `
-    <button
-      onclick="window.selectCardioMode('${mode}')"
-      class="w-full bg-gradient-to-br from-orange-500/15 to-red-600/10 border border-orange-500/30 rounded-xl p-4 flex items-center gap-4
-             active:scale-[0.98] transition-all hover:border-orange-400/50 text-left"
-    >
-      <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-orange-500 to-red-600 flex items-center justify-center shadow-lg shadow-orange-500/20">
-        ${icon(iconName, 'lg', 'text-white')}
-      </div>
-      <div class="flex-1">
-        <h3 class="font-bold text-white">${title}</h3>
-        <p class="text-sm text-orange-200/70">${description}</p>
-      </div>
-      ${icon('chevronRight', 'md', 'text-orange-300')}
-    </button>
-  `;
-}
-
-// ==========================================
-// SELECCIONAR MODO
-// ==========================================
 
 export function selectCardioMode(mode: CardioMode): void {
   cardioState.mode = mode;
   cardioState.config = { ...DEFAULT_CONFIGS[mode] };
-
+  if (mode === 'pyramid') presetActivo = 'media';
   showCardioConfig();
 }
 
 // ==========================================
-// MOSTRAR CONFIGURACIÓN
+// C-02, C-05, C-07, C-08 · CONFIGURACIÓN
 // ==========================================
+
+function stepper(clave: keyof CardioConfig, paso: number, valor: number, unidad = '', compacto = false): string {
+  return `
+    <div class="f-stepper ${compacto ? 'f-stepper--compacto' : 'f-stepper--cardio'}">
+      <button type="button" class="f-stepper__btn" data-cardio="menos" data-clave="${clave}" data-paso="${paso}" aria-label="Bajar">−</button>
+      <div class="f-stepper__valor" role="status">${valor}${
+        unidad ? `<span class="f-stepper__unidad">${unidad}</span>` : ''
+      }</div>
+      <button type="button" class="f-stepper__btn" data-cardio="mas" data-clave="${clave}" data-paso="${paso}" aria-label="Subir">+</button>
+    </div>
+  `;
+}
+
+function campo(label: string, contenido: string, corto = false): string {
+  return `
+    <div class="f-campo">
+      <span class="f-campo__label${corto ? ' f-campo__label--corto' : ''}">${escapar(label)}</span>
+      ${contenido}
+    </div>
+  `;
+}
+
+function pieDeTotal(etiqueta: string, valor: string): string {
+  return `
+    <div class="f-cardio__total">
+      <span class="f-cardio__total-label">${escapar(etiqueta)}</span>
+      <span class="f-cardio__total-cifra">${escapar(valor)}</span>
+    </div>
+  `;
+}
+
+function botonComenzar(texto = 'Comenzar · 3, 2, 1'): string {
+  return `<button type="button" class="f-btn f-btn--primario f-btn--bloque" data-cardio="comenzar">${escapar(
+    texto
+  )}</button>`;
+}
+
+function configTabata(config: CardioConfig): string {
+  return [
+    campo('RONDAS', stepper('rounds', 1, config.rounds ?? 8)),
+    campo('TRABAJO (S)', stepper('work', 5, config.work ?? 20)),
+    campo('DESCANSO (S)', stepper('rest', 5, config.rest ?? 10)),
+  ].join('');
+}
+
+function configCustom(config: CardioConfig): string {
+  return configTabata(config);
+}
+
+function configAmrap(config: CardioConfig): string {
+  return campo('DURACIÓN (MIN)', stepper('duration', 60, Math.round((config.duration ?? 720) / 60)));
+}
+
+function configEmom(config: CardioConfig): string {
+  const trabajo = ritmoEmom(getHistory());
+  const pct = trabajo ? Math.max(10, Math.min(90, Math.round((trabajo / 60) * 100))) : null;
+  const barra =
+    pct === null
+      ? `<span class="f-emom__nota">Todavía no hay una sesión EMOM con la que estimar tu ritmo. Después de la primera, aquí verás cuánto del minuto te queda para respirar.</span>`
+      : `
+        <div class="f-emom__barra">
+          <div class="f-emom__trabajo" style="width:${pct}%">
+            <span class="f-emom__trabajo-label">TRABAJO ~${trabajo}S</span>
+          </div>
+          <div class="f-emom__respira"><span class="f-emom__respira-label">RESPIRA</span></div>
+        </div>
+        <span class="f-emom__nota">Estimado con tu ritmo de la última sesión EMOM. Termina antes, descansa más — el minuto no negocia.</span>
+      `;
+
+  return `
+    ${campo('MINUTOS TOTALES', stepper('rounds', 1, config.rounds ?? 10))}
+    <section class="f-emom">
+      <span class="f-campo__label f-campo__label--corto">TU MINUTO, VISUALIZADO</span>
+      ${barra}
+    </section>
+    <div class="f-amrap">
+      <div class="f-amrap__cabecera">
+        <span class="f-amrap__titulo">AMRAP</span>
+        <span class="f-amrap__sub">mismo patrón, un solo bloque</span>
+      </div>
+      <div class="f-amrap__campos">
+        <div class="f-amrap__campo">
+          <span class="f-amrap__campo-label">Duración</span>
+          <span class="f-amrap__campo-valor">${formatearTiempo(DEFAULT_CONFIGS.amrap.duration ?? 720)}</span>
+        </div>
+        <div class="f-amrap__campo">
+          <span class="f-amrap__campo-label">Contador</span>
+          <span class="f-amrap__campo-valor f-amrap__campo-valor--acento">rondas ↑</span>
+        </div>
+      </div>
+      <span class="f-emom__nota">En el timer AMRAP el número protagonista no es el reloj: son las rondas completadas — tap grande en cualquier parte para sumar una.</span>
+    </div>
+  `;
+}
+
+function configPiramide(config: CardioConfig): string {
+  const niveles = config.levels ?? [...PIRAMIDE_MEDIA];
+  const pico = Math.max(...niveles);
+  const presets = ['corta', 'media', 'larga', 'intensa', 'extendida', 'reset'];
+  return `
+    <div class="f-presets" role="group" aria-label="Presets de pirámide">
+      ${presets
+        .map(
+          (p) =>
+            `<button type="button" class="f-preset" data-cardio="preset" data-preset="${p}" aria-pressed="${
+              p === presetActivo
+            }">${p.toUpperCase()}</button>`
+        )
+        .join('')}
+    </div>
+    <section class="f-montana">
+      <div class="f-montana__grafico">
+        <div class="f-montana__pico-linea" aria-hidden="true"></div>
+        <span class="f-montana__pico-label">PICO ${pico}S</span>
+        ${niveles
+          .map(
+            (n) => `
+          <div class="f-nivel">
+            <span class="f-nivel__seg">${n}</span>
+            <div class="f-nivel__barra${n === pico ? ' f-nivel__barra--pico' : ''}" style="height:${alturaDeNivel(
+              n,
+              pico
+            )}%"></div>
+          </div>`
+          )
+          .join('')}
+      </div>
+      <div class="f-montana__pie">
+        <span>SUBE ↗</span>
+        <span>${config.rest ?? DESCANSO_PIRAMIDE}S DE DESCANSO ENTRE NIVELES</span>
+        <span>↘ BAJA</span>
+      </div>
+      <div class="f-montana__acciones">
+        <button type="button" class="f-montana__accion" data-cardio="escalar" data-factor="0.8">Escalar ↓</button>
+        <button type="button" class="f-montana__accion" data-cardio="escalar" data-factor="1.25">Escalar ↑</button>
+      </div>
+      <span class="f-montana__nota">Escala toda la montaña — los ${
+        niveles.length
+      } niveles se recalculan en proporción. En el timer, el nivel activo late en Fragua y los superados quedan en brasa.</span>
+    </section>
+  `;
+}
+
+function configCircuito(config: CardioConfig): string {
+  const estaciones = config.exercises ?? [];
+  const filas = estaciones
+    .map(
+      (e, i) => `
+      <div class="f-estacion">
+        <div class="f-estacion__eje">
+          <span class="f-estacion__numero">${i + 1}</span>
+          <span class="f-estacion__linea"></span>
+        </div>
+        <div class="f-estacion__card">
+          <div class="f-estacion__textos">
+            <span class="f-estacion__nombre">${escapar(e.name)}</span>
+            <span class="f-estacion__detalle">${e.target} ${e.type === 'reps' ? 'reps' : 'segundos'}</span>
+          </div>
+          <button type="button" class="f-estacion__quitar" data-cardio="quitar-estacion" data-indice="${i}" aria-label="Quitar ${escapar(
+            e.name
+          )}">✕</button>
+        </div>
+      </div>`
+    )
+    .join('');
+
+  const opciones = getCardioExerciseNames()
+    .map((n) => `<option value="${escapar(n)}">${escapar(n)}</option>`)
+    .join('');
+
+  return `
+    <div class="f-circuito">
+      ${filas}
+      <div class="f-estacion">
+        <div class="f-estacion__eje">
+          <button type="button" class="f-estacion__anadir" data-cardio="anadir-estacion" aria-label="Agregar ejercicio">+</button>
+        </div>
+        <label class="f-estacion__anadir-texto" for="cardioNuevaEstacion">Agregar ejercicio</label>
+      </div>
+      <select id="cardioNuevaEstacion" class="f-graf__selector" data-cardio="nueva-estacion" aria-label="Ejercicio a agregar">
+        <option value="">— elige un ejercicio —</option>
+        ${opciones}
+      </select>
+    </div>
+    <div class="f-cardio__dos-campos">
+      ${campo('RONDAS', stepper('rounds', 1, config.rounds ?? 3, '', true), true)}
+      ${campo('DESCANSO ENTRE RONDAS', stepper('roundRest', 15, config.roundRest ?? 60, 's', true), true)}
+    </div>
+    <div class="f-cardio__dos-campos">
+      ${campo('TRABAJO (S)', stepper('work', 5, config.work ?? 40, '', true), true)}
+      ${campo('DESCANSO (S)', stepper('rest', 5, config.rest ?? 20, '', true), true)}
+    </div>
+  `;
+}
 
 export function showCardioConfig(): void {
   hideAllCardioViews();
-
-  const configView = document.getElementById('cardioConfigView');
-  if (!configView || !cardioState.mode) return;
-
-  configView.classList.remove('hidden');
-
+  const v = vista('cardioConfigView');
   const mode = cardioState.mode;
-  const config = cardioState.config;
+  if (!v || !mode) return;
+  v.classList.remove('hidden');
 
-  let configHTML = '';
+  const config = cardioState.config;
+  let cuerpo = '';
+  let pie = '';
 
   switch (mode) {
     case 'tabata':
-      configHTML = `
-        <div class="space-y-5">
-          <div>
-            <label class="block text-sm text-text-secondary mb-3 text-center">Rondas</label>
-            <div class="flex items-center justify-between">
-              <button onclick="window.adjustCardioConfig('rounds', -1)" class="flex-1 h-14 bg-dark-surface border border-dark-border rounded-xl flex items-center justify-center active:scale-95 transition-transform hover:bg-dark-bg">
-                <span class="text-3xl font-bold text-text-primary">−</span>
-              </button>
-              <span id="configRounds" class="flex-1 text-3xl font-bold text-accent text-center">${config.rounds}</span>
-              <button onclick="window.adjustCardioConfig('rounds', 1)" class="flex-1 h-14 bg-dark-surface border border-dark-border rounded-xl flex items-center justify-center active:scale-95 transition-transform hover:bg-dark-bg">
-                <span class="text-3xl font-bold text-text-primary">+</span>
-              </button>
-            </div>
-          </div>
-          <div>
-            <label class="block text-sm text-text-secondary mb-3 text-center">Trabajo (segundos)</label>
-            <div class="flex items-center justify-between">
-              <button onclick="window.adjustCardioConfig('work', -5)" class="flex-1 h-14 bg-dark-surface border border-dark-border rounded-xl flex items-center justify-center active:scale-95 transition-transform hover:bg-dark-bg">
-                <span class="text-3xl font-bold text-text-primary">−</span>
-              </button>
-              <span id="configWork" class="flex-1 text-3xl font-bold text-status-success text-center">${config.work}</span>
-              <button onclick="window.adjustCardioConfig('work', 5)" class="flex-1 h-14 bg-dark-surface border border-dark-border rounded-xl flex items-center justify-center active:scale-95 transition-transform hover:bg-dark-bg">
-                <span class="text-3xl font-bold text-text-primary">+</span>
-              </button>
-            </div>
-          </div>
-          <div>
-            <label class="block text-sm text-text-secondary mb-3 text-center">Descanso (segundos)</label>
-            <div class="flex items-center justify-between">
-              <button onclick="window.adjustCardioConfig('rest', -5)" class="flex-1 h-14 bg-dark-surface border border-dark-border rounded-xl flex items-center justify-center active:scale-95 transition-transform hover:bg-dark-bg">
-                <span class="text-3xl font-bold text-text-primary">−</span>
-              </button>
-              <span id="configRest" class="flex-1 text-3xl font-bold text-status-error text-center">${config.rest}</span>
-              <button onclick="window.adjustCardioConfig('rest', 5)" class="flex-1 h-14 bg-dark-surface border border-dark-border rounded-xl flex items-center justify-center active:scale-95 transition-transform hover:bg-dark-bg">
-                <span class="text-3xl font-bold text-text-primary">+</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      `;
+      cuerpo = configTabata(config);
+      pie = pieDeTotal('Duración total', `${formatearTiempo(duracionTotal(mode, config))} min`);
       break;
-
-    case 'emom':
-      configHTML = `
-        <div class="space-y-5">
-          <div>
-            <label class="block text-sm text-text-secondary mb-3 text-center">Minutos totales</label>
-            <div class="flex items-center justify-between">
-              <button onclick="window.adjustCardioConfig('rounds', -1)" class="flex-1 h-14 bg-dark-surface border border-dark-border rounded-xl flex items-center justify-center active:scale-95 transition-transform hover:bg-dark-bg">
-                <span class="text-3xl font-bold text-text-primary">−</span>
-              </button>
-              <span id="configRounds" class="flex-1 text-3xl font-bold text-accent text-center">${config.rounds}</span>
-              <button onclick="window.adjustCardioConfig('rounds', 1)" class="flex-1 h-14 bg-dark-surface border border-dark-border rounded-xl flex items-center justify-center active:scale-95 transition-transform hover:bg-dark-bg">
-                <span class="text-3xl font-bold text-text-primary">+</span>
-              </button>
-            </div>
-          </div>
-          <div>
-            <label class="block text-sm text-text-secondary mb-2">Ejercicio</label>
-            <select id="emomExercise" onchange="window.setCardioExercise(this.value)" class="w-full">
-              <option value="">-- Selecciona ejercicio --</option>
-              ${getCardioExerciseNames().map(name => `<option value="${name}">${name}</option>`).join('')}
-            </select>
-          </div>
-          <div>
-            <label class="block text-sm text-text-secondary mb-3 text-center">Repeticiones por minuto</label>
-            <div class="flex items-center justify-between">
-              <button onclick="window.adjustCardioConfig('reps', -1)" class="flex-1 h-14 bg-dark-surface border border-dark-border rounded-xl flex items-center justify-center active:scale-95 transition-transform hover:bg-dark-bg">
-                <span class="text-3xl font-bold text-text-primary">−</span>
-              </button>
-              <span id="configReps" class="flex-1 text-3xl font-bold text-status-warning text-center">${config.reps || 10}</span>
-              <button onclick="window.adjustCardioConfig('reps', 1)" class="flex-1 h-14 bg-dark-surface border border-dark-border rounded-xl flex items-center justify-center active:scale-95 transition-transform hover:bg-dark-bg">
-                <span class="text-3xl font-bold text-text-primary">+</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      `;
+    case 'custom':
+      cuerpo = configCustom(config);
+      pie = pieDeTotal('Duración total', `${formatearTiempo(duracionTotal(mode, config))} min`);
       break;
-
     case 'amrap':
-      configHTML = `
-        <div class="space-y-5">
-          <div>
-            <label class="block text-sm text-text-secondary mb-3 text-center">Duración (minutos)</label>
-            <div class="flex items-center justify-between">
-              <button onclick="window.adjustCardioConfig('duration', -60)" class="flex-1 h-14 bg-dark-surface border border-dark-border rounded-xl flex items-center justify-center active:scale-95 transition-transform hover:bg-dark-bg">
-                <span class="text-3xl font-bold text-text-primary">−</span>
-              </button>
-              <span id="configDuration" class="flex-1 text-3xl font-bold text-accent text-center">${(config.duration || 600) / 60}</span>
-              <button onclick="window.adjustCardioConfig('duration', 60)" class="flex-1 h-14 bg-dark-surface border border-dark-border rounded-xl flex items-center justify-center active:scale-95 transition-transform hover:bg-dark-bg">
-                <span class="text-3xl font-bold text-text-primary">+</span>
-              </button>
-            </div>
-          </div>
-          <p class="text-sm text-text-muted text-center">Completa tantas rondas como puedas en el tiempo límite.</p>
-        </div>
-      `;
+      cuerpo = configAmrap(config);
+      pie = pieDeTotal('Duración total', `${formatearTiempo(duracionTotal(mode, config))} min`);
       break;
-
+    case 'emom':
+      cuerpo = configEmom(config);
+      pie = '';
+      break;
     case 'pyramid':
-      const levels = config.levels || [20, 30, 40, 30, 20];
-      const totalWorkTime = levels.reduce((a, b) => a + b, 0);
-      const totalRestTime = (levels.length - 1) * (config.rest || 10);
-      configHTML = `
-        <div class="space-y-4">
-          <div>
-            <label class="block text-sm text-text-secondary mb-2">Estructura de pirámide</label>
-            <div class="bg-dark-bg border border-dark-border rounded-lg p-3 mb-3">
-              <!-- Visual pyramid -->
-              <div id="pyramidLevels" class="flex items-end justify-center gap-1 mb-4 h-16">
-                ${levels.map((l) => {
-                  const maxLevel = Math.max(...levels);
-                  const height = Math.round((l / maxLevel) * 100);
-                  return `
-                    <div class="flex flex-col items-center">
-                      <span class="text-xs text-status-warning font-bold mb-1">${l}s</span>
-                      <div class="w-8 bg-gradient-to-t from-orange-600 to-yellow-500 rounded-t" style="height: ${height}%"></div>
-                    </div>
-                  `;
-                }).join('')}
-              </div>
-
-              <!-- Presets -->
-              <div class="grid grid-cols-3 gap-2 mb-3">
-                <button onclick="window.adjustPyramidLevel('corta')" class="p-2 bg-dark-surface border border-dark-border rounded-lg text-xs hover:border-orange-500/50 transition-colors">
-                  Corta
-                </button>
-                <button onclick="window.adjustPyramidLevel('media')" class="p-2 bg-dark-surface border border-dark-border rounded-lg text-xs hover:border-orange-500/50 transition-colors">
-                  Media
-                </button>
-                <button onclick="window.adjustPyramidLevel('larga')" class="p-2 bg-dark-surface border border-dark-border rounded-lg text-xs hover:border-orange-500/50 transition-colors">
-                  Larga
-                </button>
-                <button onclick="window.adjustPyramidLevel('intensa')" class="p-2 bg-dark-surface border border-dark-border rounded-lg text-xs hover:border-orange-500/50 transition-colors">
-                  Intensa
-                </button>
-                <button onclick="window.adjustPyramidLevel('extendida')" class="p-2 bg-dark-surface border border-dark-border rounded-lg text-xs hover:border-orange-500/50 transition-colors">
-                  Extendida
-                </button>
-                <button onclick="window.adjustPyramidLevel('reset')" class="p-2 bg-dark-surface border border-dark-border rounded-lg text-xs hover:border-orange-500/50 transition-colors">
-                  Reset
-                </button>
-              </div>
-
-              <!-- Scale buttons -->
-              <div class="flex gap-2">
-                <button onclick="window.adjustPyramidLevel('scale_down')" class="flex-1 p-2 bg-dark-surface border border-dark-border rounded-lg text-sm active:scale-95 transition-transform">
-                  ${icon('minus', 'sm')} Reducir
-                </button>
-                <button onclick="window.adjustPyramidLevel('scale_up')" class="flex-1 p-2 bg-dark-surface border border-dark-border rounded-lg text-sm active:scale-95 transition-transform">
-                  ${icon('plus', 'sm')} Aumentar
-                </button>
-              </div>
-            </div>
-            <p id="pyramidTimeInfo" class="text-xs text-text-muted text-center">Tiempo trabajo: ${Math.floor(totalWorkTime / 60)}:${String(totalWorkTime % 60).padStart(2, '0')} | Total: ${Math.floor((totalWorkTime + totalRestTime) / 60)}:${String((totalWorkTime + totalRestTime) % 60).padStart(2, '0')}</p>
-          </div>
-          <div>
-            <label class="block text-sm text-text-secondary mb-3 text-center">Descanso entre niveles (segundos)</label>
-            <div class="flex items-center justify-between">
-              <button onclick="window.adjustCardioConfig('rest', -5)" class="flex-1 h-14 bg-dark-surface border border-dark-border rounded-xl flex items-center justify-center active:scale-95 transition-transform hover:bg-dark-bg">
-                <span class="text-3xl font-bold text-text-primary">−</span>
-              </button>
-              <span id="configRest" class="flex-1 text-3xl font-bold text-status-error text-center">${config.rest || 10}</span>
-              <button onclick="window.adjustCardioConfig('rest', 5)" class="flex-1 h-14 bg-dark-surface border border-dark-border rounded-xl flex items-center justify-center active:scale-95 transition-transform hover:bg-dark-bg">
-                <span class="text-3xl font-bold text-text-primary">+</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      `;
+      cuerpo = configPiramide(config);
+      pie = pieDeTotal(
+        `Total · ${(config.levels ?? PIRAMIDE_MEDIA).length} niveles + descansos`,
+        `${formatearTiempo(duracionTotal(mode, config))} min`
+      );
       break;
-
-    default: // custom, circuit
-      configHTML = `
-        <div class="space-y-5">
-          <div>
-            <label class="block text-sm text-text-secondary mb-3 text-center">Rondas</label>
-            <div class="flex items-center justify-between">
-              <button onclick="window.adjustCardioConfig('rounds', -1)" class="flex-1 h-14 bg-dark-surface border border-dark-border rounded-xl flex items-center justify-center active:scale-95 transition-transform hover:bg-dark-bg">
-                <span class="text-3xl font-bold text-text-primary">−</span>
-              </button>
-              <span id="configRounds" class="flex-1 text-3xl font-bold text-accent text-center">${config.rounds}</span>
-              <button onclick="window.adjustCardioConfig('rounds', 1)" class="flex-1 h-14 bg-dark-surface border border-dark-border rounded-xl flex items-center justify-center active:scale-95 transition-transform hover:bg-dark-bg">
-                <span class="text-3xl font-bold text-text-primary">+</span>
-              </button>
-            </div>
-          </div>
-          <div>
-            <label class="block text-sm text-text-secondary mb-3 text-center">Trabajo (segundos)</label>
-            <div class="flex items-center justify-between">
-              <button onclick="window.adjustCardioConfig('work', -5)" class="flex-1 h-14 bg-dark-surface border border-dark-border rounded-xl flex items-center justify-center active:scale-95 transition-transform hover:bg-dark-bg">
-                <span class="text-3xl font-bold text-text-primary">−</span>
-              </button>
-              <span id="configWork" class="flex-1 text-3xl font-bold text-status-success text-center">${config.work || 30}</span>
-              <button onclick="window.adjustCardioConfig('work', 5)" class="flex-1 h-14 bg-dark-surface border border-dark-border rounded-xl flex items-center justify-center active:scale-95 transition-transform hover:bg-dark-bg">
-                <span class="text-3xl font-bold text-text-primary">+</span>
-              </button>
-            </div>
-          </div>
-          <div>
-            <label class="block text-sm text-text-secondary mb-3 text-center">Descanso (segundos)</label>
-            <div class="flex items-center justify-between">
-              <button onclick="window.adjustCardioConfig('rest', -5)" class="flex-1 h-14 bg-dark-surface border border-dark-border rounded-xl flex items-center justify-center active:scale-95 transition-transform hover:bg-dark-bg">
-                <span class="text-3xl font-bold text-text-primary">−</span>
-              </button>
-              <span id="configRest" class="flex-1 text-3xl font-bold text-status-error text-center">${config.rest || 15}</span>
-              <button onclick="window.adjustCardioConfig('rest', 5)" class="flex-1 h-14 bg-dark-surface border border-dark-border rounded-xl flex items-center justify-center active:scale-95 transition-transform hover:bg-dark-bg">
-                <span class="text-3xl font-bold text-text-primary">+</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      `;
-  }
-
-  const modeNames: Record<CardioMode, string> = {
-    tabata: 'Tabata',
-    emom: 'EMOM',
-    amrap: 'AMRAP',
-    circuit: 'Circuito',
-    pyramid: 'Pirámide',
-    custom: 'Personalizado',
-    fortime: 'For Time',
-  };
-
-  configView.innerHTML = `
-    <!-- Navigation Bar -->
-    <div class="flex items-center gap-3 mb-6">
-      <button onclick="window.showCardioSelector()" class="w-11 h-11 flex items-center justify-center bg-dark-surface border border-dark-border rounded-xl active:scale-95 transition-transform">
-        <i data-lucide="arrow-left" class="w-5 h-5 text-text-primary"></i>
-      </button>
-      <h2 class="text-xl font-display font-bold text-text-primary flex items-center gap-2">
-        ${icon('settings', 'lg', 'text-orange-400')}
-        Configurar ${modeNames[mode]}
-      </h2>
-    </div>
-
-    <div class="bg-dark-surface border border-dark-border rounded-xl p-4 mb-6">
-      ${configHTML}
-    </div>
-
-    <button
-      onclick="window.startCardioWorkout()"
-      class="w-full bg-gradient-to-r from-orange-500 to-red-600 hover:from-orange-600 hover:to-red-700 text-white font-bold py-4 px-6 rounded-xl
-             active:scale-95 transition-all flex items-center justify-center gap-2 text-lg shadow-lg shadow-orange-500/30"
-    >
-      ${icon('play', 'lg')}
-      Comenzar
-    </button>
-  `;
-
-  refreshIcons();
-}
-
-// ==========================================
-// AJUSTAR CONFIGURACIÓN
-// ==========================================
-
-export function adjustCardioConfig(key: keyof CardioConfig, delta: number): void {
-  const config = cardioState.config;
-  const current = (config[key] as number) || 0;
-  const newValue = Math.max(5, current + delta); // Mínimo 5 segundos
-
-  (config as Record<string, number>)[key] = newValue;
-
-  // Update UI
-  const element = document.getElementById(`config${key.charAt(0).toUpperCase() + key.slice(1)}`);
-  if (element) {
-    if (key === 'duration') {
-      element.textContent = String(newValue / 60);
-    } else {
-      element.textContent = String(newValue);
+    case 'circuit': {
+      cuerpo = configCircuito(config);
+      const estaciones = (config.exercises ?? []).length;
+      pie = pieDeTotal(
+        `${estaciones} ${estaciones === 1 ? 'estación' : 'estaciones'} × ${config.rounds ?? 3} rondas`,
+        `~${formatearTiempo(duracionTotal(mode, config))} min`
+      );
+      break;
     }
   }
 
-  // Si es modo pirámide y se ajusta el descanso, actualizar el tiempo total
-  if (cardioState.mode === 'pyramid' && key === 'rest') {
-    updatePyramidTimeDisplay();
-  }
+  const comenzar =
+    mode === 'emom'
+      ? botonComenzar(`Comenzar EMOM · ${config.rounds ?? 10} min`)
+      : botonComenzar();
+
+  v.innerHTML = `
+    <div class="f-cardio f-cardio--config f-root">
+      <div class="f-cardio__cabecera">
+        <button type="button" class="f-sesion__volver" data-cardio="volver-selector" aria-label="Volver al selector">←</button>
+        <div class="f-cardio__titulos">
+          <span class="f-cardio__titulo">${NOMBRE_MODO[mode]}</span>
+          <span class="f-cardio__sub">${escapar(SUB_MODO[mode])}</span>
+        </div>
+      </div>
+      ${cuerpo}
+      ${pie}
+      ${comenzar}
+    </div>
+  `;
+  enganchar(v, alTocarCardio);
+  const selector = v.querySelector<HTMLSelectElement>('[data-cardio="nueva-estacion"]');
+  selector?.addEventListener('change', () => {
+    if (!selector.value) return;
+    const lista = cardioState.config.exercises ?? [];
+    lista.push({ name: selector.value, target: cardioState.config.work ?? 40, type: 'time' });
+    cardioState.config.exercises = lista;
+    showCardioConfig();
+  });
 }
 
-function updatePyramidTimeDisplay(): void {
-  const config = cardioState.config;
-  const levels = config.levels || [20, 30, 40, 30, 20];
-  const totalWorkTime = levels.reduce((a, b) => a + b, 0);
-  const totalRestTime = (levels.length - 1) * (config.rest || 10);
-  const totalTime = totalWorkTime + totalRestTime;
+/** Minimos por clave: un intervalo de 0s no es un intervalo. */
+const MINIMOS: Partial<Record<keyof CardioConfig, number>> = {
+  rounds: 1,
+  work: 5,
+  rest: 0,
+  roundRest: 0,
+  interval: 10,
+  duration: 60,
+  reps: 1,
+};
 
-  const timeEl = document.getElementById('pyramidTimeInfo');
-  if (timeEl) {
-    timeEl.textContent = `Tiempo trabajo: ${Math.floor(totalWorkTime / 60)}:${String(totalWorkTime % 60).padStart(2, '0')} | Total: ${Math.floor(totalTime / 60)}:${String(totalTime % 60).padStart(2, '0')}`;
-  }
+export function adjustCardioConfig(key: keyof CardioConfig, delta: number): void {
+  const config = cardioState.config;
+  const actual = (config[key] as number) || 0;
+  const minimo = MINIMOS[key] ?? 0;
+  (config as Record<string, number>)[key] = Math.max(minimo, actual + delta);
+  showCardioConfig();
 }
 
 export function setCardioExercise(exercise: string): void {
   cardioState.config.exercise = exercise;
 }
 
-// Presets de pirámide disponibles
-const PYRAMID_PRESETS: Record<string, number[]> = {
-  corta: [15, 20, 30, 20, 15],
-  media: [20, 30, 40, 30, 20],
-  larga: [30, 45, 60, 45, 30],
-  intensa: [20, 40, 60, 40, 20],
-  extendida: [15, 30, 45, 60, 45, 30, 15],
-};
-
 export function adjustPyramidLevel(action: string): void {
-  const currentLevels = cardioState.config.levels || [20, 30, 40, 30, 20];
-
-  if (action === 'scale_up') {
-    // Escalar todos los niveles manteniendo la proporción (multiplicar por 1.25, máximo 120s)
-    const newLevels = currentLevels.map(l => Math.min(120, Math.max(l + 5, Math.round(l * 1.25))));
-    cardioState.config.levels = newLevels;
+  const niveles = cardioState.config.levels ?? [...PIRAMIDE_MEDIA];
+  if (PRESETS_PIRAMIDE[action]) {
+    cardioState.config.levels = [...PRESETS_PIRAMIDE[action]];
+    presetActivo = action === 'reset' ? 'media' : action;
+  } else if (action === 'scale_up') {
+    cardioState.config.levels = escalar(niveles, 1.25);
+    presetActivo = '';
   } else if (action === 'scale_down') {
-    // Reducir manteniendo proporción (dividir por 1.25, mínimo 15 segundos)
-    const newLevels = currentLevels.map(l => Math.max(15, Math.round(l * 0.8)));
-    cardioState.config.levels = newLevels;
-  } else if (PYRAMID_PRESETS[action]) {
-    // Aplicar preset
-    cardioState.config.levels = [...PYRAMID_PRESETS[action]];
-  } else if (action === 'reset') {
-    cardioState.config.levels = [20, 30, 40, 30, 20];
+    cardioState.config.levels = escalar(niveles, 0.8);
+    presetActivo = '';
   }
-
-  // Re-render config
   showCardioConfig();
 }
 
 // ==========================================
-// INICIAR WORKOUT
+// ARRANQUE
 // ==========================================
-
-// Estado para AMRAP round counter
-let amrapRounds = 0;
 
 export function startCardioWorkout(): void {
   hideAllCardioViews();
-
-  const timerView = document.getElementById('cardioTimerView');
-  if (!timerView) return;
-
-  timerView.classList.remove('hidden');
-
-  // Reset AMRAP counter
+  const v = vista('cardioTimerView');
+  if (!v) return;
+  v.classList.remove('hidden');
   amrapRounds = 0;
+  enganchar(v, alTocarCardio);
 
-  // Show preparation countdown first
   showPreparationCountdown(() => {
-    // After countdown, initialize and start
     initializeWorkout();
     renderTimerView();
     startTimer();
@@ -480,60 +487,37 @@ export function startCardioWorkout(): void {
 }
 
 function showPreparationCountdown(onComplete: () => void): void {
-  const timerView = document.getElementById('cardioTimerView');
-  if (!timerView) {
+  const v = vista('cardioTimerView');
+  if (!v || !cardioState.mode) {
     onComplete();
     return;
   }
-
-  const modeNames: Record<CardioMode, string> = {
-    tabata: 'TABATA',
-    emom: 'EMOM',
-    amrap: 'AMRAP',
-    circuit: 'CIRCUITO',
-    pyramid: 'PIRÁMIDE',
-    custom: 'PERSONALIZADO',
-    fortime: 'FOR TIME',
-  };
-
-  let countdown = 3;
-
-  const renderCountdown = () => {
-    const text = countdown > 0 ? String(countdown) : '¡GO!';
-    const color = countdown > 0 ? 'text-orange-400' : 'text-status-success';
-    const scale = countdown > 0 ? 'scale-100' : 'scale-125';
-
-    timerView.innerHTML = `
-      <div class="flex flex-col items-center justify-center min-h-[70vh]">
-        <p class="text-text-secondary text-lg mb-2">Prepárate para</p>
-        <h2 class="text-3xl font-display font-bold text-orange-400 mb-12">${modeNames[cardioState.mode!]}</h2>
-        <div class="w-40 h-40 rounded-full bg-dark-surface border-4 border-orange-500/50 flex items-center justify-center mb-8 transition-transform duration-300 ${scale}">
-          <span class="text-7xl font-display font-bold ${color} transition-all duration-300">${text}</span>
-        </div>
-        <p class="text-text-muted text-sm">El entrenamiento comenzará en breve...</p>
+  let cuenta = 3;
+  const pintar = () => {
+    v.innerHTML = `
+      <div class="f-preparacion f-root">
+        <span class="f-preparacion__label">PREPÁRATE · ${NOMBRE_MODO[cardioState.mode!]}</span>
+        <span class="f-preparacion__cifra" role="status" aria-live="assertive">${
+          cuenta > 0 ? cuenta : 'YA'
+        }</span>
       </div>
     `;
-
-    playBeep(countdown === 0);
+    playBeep(cuenta === 0);
+    if (cuenta === 0) vibrar(200);
   };
-
-  renderCountdown();
-
-  const interval = setInterval(() => {
-    countdown--;
-
-    if (countdown < 0) {
-      clearInterval(interval);
+  pintar();
+  const intervalo = setInterval(() => {
+    cuenta--;
+    if (cuenta < 0) {
+      clearInterval(intervalo);
       onComplete();
       return;
     }
-
-    renderCountdown();
+    pintar();
   }, 1000);
 }
 
 function initializeWorkout(): void {
-  // Initialize state
   cardioState.isPaused = false;
   cardioState.currentRound = 1;
   cardioState.currentPhase = 'work';
@@ -541,346 +525,307 @@ function initializeWorkout(): void {
   cardioState.workTimeTotal = 0;
   cardioState.restTimeTotal = 0;
   cardioState.startTime = Date.now();
+  cardioState.currentExerciseIndex = 0;
 
   const config = cardioState.config;
-  const mode = cardioState.mode;
-
-  // Set initial time based on mode
-  if (mode === 'amrap') {
-    cardioState.timeRemaining = config.duration || 600;
-    cardioState.currentPhase = 'work';
-  } else if (mode === 'emom') {
-    cardioState.timeRemaining = config.interval || 60;
-    cardioState.currentPhase = 'emom';
-  } else if (mode === 'pyramid') {
-    const levels = config.levels || [20, 30, 40, 30, 20];
-    cardioState.currentExerciseIndex = 0;
-    cardioState.timeRemaining = levels[0];
-  } else {
-    cardioState.timeRemaining = config.work || 20;
+  switch (cardioState.mode) {
+    case 'amrap':
+      cardioState.timeRemaining = config.duration ?? 720;
+      break;
+    case 'emom':
+      cardioState.currentPhase = 'emom';
+      cardioState.timeRemaining = config.interval ?? 60;
+      break;
+    case 'pyramid':
+      cardioState.timeRemaining = (config.levels ?? PIRAMIDE_MEDIA)[0];
+      break;
+    default:
+      cardioState.timeRemaining = config.work ?? 20;
   }
 }
 
-// Función para incrementar rondas en AMRAP
 export function incrementAmrapRound(): void {
   amrapRounds++;
-  const counterEl = document.getElementById('amrapCounter');
-  if (counterEl) {
-    counterEl.textContent = String(amrapRounds);
-    counterEl.classList.add('scale-125');
-    setTimeout(() => counterEl.classList.remove('scale-125'), 150);
-  }
+  const el = document.getElementById('amrapCounter');
+  if (el) el.textContent = String(amrapRounds);
   playBeep(false);
 }
 
 // ==========================================
-// TIMER LOGIC
+// MOTOR DEL TEMPORIZADOR
 // ==========================================
 
 function startTimer(): void {
-  if (timerInterval) {
-    clearInterval(timerInterval);
-  }
-
+  if (timerInterval) clearInterval(timerInterval);
   timerInterval = setInterval(() => {
     if (cardioState.isPaused) return;
 
     cardioState.timeRemaining--;
     cardioState.totalTimeElapsed++;
-
-    // Track work/rest time
     if (cardioState.currentPhase === 'work' || cardioState.currentPhase === 'emom') {
       cardioState.workTimeTotal++;
     } else {
       cardioState.restTimeTotal++;
     }
 
-    updateTimerDisplay();
+    actualizarReloj();
 
-    // Check if phase ended
     if (cardioState.timeRemaining <= 0) {
       handlePhaseEnd();
+      return;
     }
-
-    // Play sound at 3, 2, 1
-    if (cardioState.timeRemaining <= 3 && cardioState.timeRemaining > 0) {
-      playBeep();
-    }
+    if (cardioState.timeRemaining <= 3) playBeep();
   }, 1000);
 }
 
 function handlePhaseEnd(): void {
   const config = cardioState.config;
   const mode = cardioState.mode;
-  const totalRounds = config.rounds || 8;
+  const totalRondas = config.rounds ?? 8;
 
-  playBeep(true); // Long beep
+  playBeep(true);
+  vibrar(200);
 
   if (mode === 'amrap') {
-    // AMRAP ended
     finishCardioWorkout();
     return;
   }
 
   if (mode === 'emom') {
-    // EMOM - each minute is a round
-    if (cardioState.currentRound >= totalRounds) {
+    if (cardioState.currentRound >= totalRondas) {
       finishCardioWorkout();
       return;
     }
     cardioState.currentRound++;
-    cardioState.timeRemaining = config.interval || 60;
+    cardioState.timeRemaining = config.interval ?? 60;
     renderTimerView();
     return;
   }
 
   if (mode === 'pyramid') {
-    const levels = config.levels || [20, 30, 40, 30, 20];
-    const currentLevelIndex = cardioState.currentExerciseIndex;
-
+    const niveles = config.levels ?? PIRAMIDE_MEDIA;
     if (cardioState.currentPhase === 'work') {
-      // Switch to rest
-      cardioState.currentPhase = 'rest';
-      cardioState.timeRemaining = config.rest || 10;
-    } else {
-      // Rest ended, check if more levels
-      const nextLevelIndex = currentLevelIndex + 1;
-      if (nextLevelIndex >= levels.length) {
+      // El ultimo nivel no lleva descanso detras.
+      if (cardioState.currentExerciseIndex >= niveles.length - 1) {
         finishCardioWorkout();
         return;
       }
-      cardioState.currentExerciseIndex = nextLevelIndex;
-      cardioState.currentRound = nextLevelIndex + 1;
+      cardioState.currentPhase = 'rest';
+      cardioState.timeRemaining = config.rest ?? DESCANSO_PIRAMIDE;
+    } else {
+      cardioState.currentExerciseIndex++;
+      cardioState.currentRound = cardioState.currentExerciseIndex + 1;
       cardioState.currentPhase = 'work';
-      cardioState.timeRemaining = levels[nextLevelIndex];
+      cardioState.timeRemaining = niveles[cardioState.currentExerciseIndex];
     }
-
     renderTimerView();
     return;
   }
 
-  // Tabata/Custom/Circuit - alternate work/rest
+  // Ciclos completos trabajo+descanso: el ultimo descanso tambien se corre,
+  // que es lo que hace un Tabata de 4:00 y lo que dice el pie de C-02.
   if (cardioState.currentPhase === 'work') {
-    // Switch to rest
     cardioState.currentPhase = 'rest';
-    cardioState.timeRemaining = config.rest || 10;
+    cardioState.timeRemaining = config.rest ?? 10;
   } else {
-    // Rest ended, check if more rounds
-    if (cardioState.currentRound >= totalRounds) {
+    if (cardioState.currentRound >= totalRondas) {
       finishCardioWorkout();
       return;
     }
     cardioState.currentRound++;
     cardioState.currentPhase = 'work';
-    cardioState.timeRemaining = config.work || 20;
+    cardioState.timeRemaining = config.work ?? 20;
   }
-
   renderTimerView();
 }
 
-function updateTimerDisplay(): void {
-  const timerEl = document.getElementById('cardioTimer');
-  if (timerEl) {
-    const mins = Math.floor(cardioState.timeRemaining / 60);
-    const secs = cardioState.timeRemaining % 60;
-    timerEl.textContent = `${mins}:${String(secs).padStart(2, '0')}`;
+/** Parche por segundo: repintar entero cada tick tira la animacion del anillo. */
+function actualizarReloj(): void {
+  const reloj = document.getElementById('cardioTimer');
+  if (reloj) reloj.textContent = formatearTiempo(cardioState.timeRemaining);
+  const arco = document.getElementById('cardioAnillo');
+  if (arco) {
+    arco.setAttribute(
+      'stroke-dashoffset',
+      String(offsetDelAnillo(cardioState.timeRemaining, totalDeLaFase(), RADIO_ANILLO))
+    );
   }
+  const barra = document.getElementById('cardioProgreso');
+  if (barra) {
+    const total = duracionTotal(cardioState.mode!, cardioState.config);
+    barra.style.width = `${total > 0 ? Math.min(100, (cardioState.totalTimeElapsed / total) * 100) : 0}%`;
+  }
+  const transcurrido = document.getElementById('cardioTranscurrido');
+  if (transcurrido) transcurrido.textContent = formatearTiempo(cardioState.totalTimeElapsed);
+  const restante = document.getElementById('cardioRestante');
+  if (restante) {
+    const total = duracionTotal(cardioState.mode!, cardioState.config);
+    restante.textContent = `QUEDAN ${formatearTiempo(Math.max(0, total - cardioState.totalTimeElapsed))}`;
+  }
+}
 
-  const totalEl = document.getElementById('cardioTotalTime');
-  if (totalEl) {
-    const mins = Math.floor(cardioState.totalTimeElapsed / 60);
-    const secs = cardioState.totalTimeElapsed % 60;
-    totalEl.textContent = `${mins}:${String(secs).padStart(2, '0')}`;
+function totalDeLaFase(): number {
+  const config = cardioState.config;
+  switch (cardioState.mode) {
+    case 'amrap':
+      return config.duration ?? 720;
+    case 'emom':
+      return config.interval ?? 60;
+    case 'pyramid': {
+      const niveles = config.levels ?? PIRAMIDE_MEDIA;
+      return cardioState.currentPhase === 'work'
+        ? niveles[cardioState.currentExerciseIndex]
+        : config.rest ?? DESCANSO_PIRAMIDE;
+    }
+    default:
+      return cardioState.currentPhase === 'work' ? config.work ?? 20 : config.rest ?? 10;
   }
+}
+
+// ==========================================
+// C-03 y C-06 · TIMER
+// ==========================================
+
+function controles(): string {
+  return `
+    <div class="f-cardio__controles">
+      <button type="button" class="f-btn--claro" data-cardio="pausa">${
+        cardioState.isPaused ? 'Reanudar' : 'Pausar'
+      }</button>
+      <button type="button" class="f-btn--detener" data-cardio="detener">Detener</button>
+    </div>
+  `;
 }
 
 function renderTimerView(): void {
-  const timerView = document.getElementById('cardioTimerView');
-  if (!timerView) return;
+  const v = vista('cardioTimerView');
+  if (!v || !cardioState.mode) return;
+  v.innerHTML = cardioState.mode === 'pyramid' ? timerPiramide() : timerAnillo();
+  enganchar(v, alTocarCardio);
+}
 
+function timerAnillo(): string {
   const config = cardioState.config;
-  const phase = cardioState.currentPhase;
-  const mode = cardioState.mode;
+  const mode = cardioState.mode!;
+  const descanso = cardioState.currentPhase === 'rest';
+  const etiquetaFase = descanso ? 'DESCANSO' : 'TRABAJO';
+  const total = totalDeLaFase();
+  const c = 2 * Math.PI * RADIO_ANILLO;
 
-  // Colores y fondos por fase
-  const phaseStyles: Record<string, { text: string; bg: string; ring: string; border: string }> = {
-    work: { text: 'text-emerald-400', bg: 'from-emerald-900/40 to-emerald-950/60', ring: 'stroke-emerald-500', border: 'border-emerald-500/30' },
-    rest: { text: 'text-red-400', bg: 'from-red-900/40 to-red-950/60', ring: 'stroke-red-500', border: 'border-red-500/30' },
-    emom: { text: 'text-amber-400', bg: 'from-amber-900/40 to-amber-950/60', ring: 'stroke-amber-500', border: 'border-amber-500/30' },
-    roundRest: { text: 'text-blue-400', bg: 'from-blue-900/40 to-blue-950/60', ring: 'stroke-blue-500', border: 'border-blue-500/30' },
-  };
+  let sub = '';
+  if (mode === 'amrap') sub = `quedan ${formatearTiempo(cardioState.timeRemaining)}`;
+  else if (mode === 'emom') sub = `minuto ${cardioState.currentRound} de ${config.rounds ?? 10}`;
+  else sub = `ronda ${cardioState.currentRound} de ${config.rounds ?? 8}`;
 
-  const phaseNames: Record<string, string> = {
-    work: '¡TRABAJA!',
-    rest: 'DESCANSA',
-    emom: '¡GO!',
-    roundRest: 'RECUPERACIÓN',
-  };
+  const rondasTotales = mode === 'amrap' ? 0 : config.rounds ?? 8;
+  const marcas =
+    rondasTotales > 0 && rondasTotales <= 20
+      ? `<div class="f-rondas" aria-hidden="true">${Array.from({ length: rondasTotales }, (_, i) => {
+          const clase =
+            i + 1 < cardioState.currentRound
+              ? ' f-rondas__marca--hecha'
+              : i + 1 === cardioState.currentRound
+                ? ' f-rondas__marca--actual'
+                : '';
+          return `<span class="f-rondas__marca${clase}"></span>`;
+        }).join('')}</div>`
+      : '';
 
-  const style = phaseStyles[phase] || phaseStyles.work;
-  const mins = Math.floor(cardioState.timeRemaining / 60);
-  const secs = cardioState.timeRemaining % 60;
+  // En AMRAP el protagonista son las rondas, no el reloj.
+  const centro =
+    mode === 'amrap'
+      ? `
+        <button type="button" class="f-amrap-vivo" data-cardio="ronda-amrap" aria-label="Sumar una ronda">
+          <span class="f-amrap-vivo__cifra" id="amrapCounter">${amrapRounds}</span>
+          <span class="f-amrap-vivo__label">RONDAS · TOCA PARA SUMAR</span>
+        </button>`
+      : '';
 
-  // Calcular progreso para el anillo
-  let totalPhaseTime = 1;
-  if (mode === 'amrap') {
-    totalPhaseTime = config.duration || 600;
-  } else if (mode === 'emom') {
-    totalPhaseTime = config.interval || 60;
-  } else if (mode === 'pyramid') {
-    const levels = config.levels || [20, 30, 40, 30, 20];
-    totalPhaseTime = phase === 'work' ? levels[cardioState.currentExerciseIndex] : (config.rest || 10);
-  } else {
-    totalPhaseTime = phase === 'work' ? (config.work || 20) : (config.rest || 10);
-  }
-  const progress = cardioState.timeRemaining / totalPhaseTime;
-  const circumference = 2 * Math.PI * 120;
-  const strokeDashoffset = circumference * (1 - progress);
-
-  // Contenido específico por modo
-  let modeSpecificContent = '';
-
-  if (mode === 'amrap') {
-    modeSpecificContent = `
-      <div class="mb-6">
-        <button
-          onclick="window.incrementAmrapRound()"
-          class="px-8 py-4 bg-gradient-to-r from-amber-500 to-orange-600 rounded-2xl shadow-lg shadow-orange-500/30 active:scale-95 transition-transform"
-        >
-          <div class="text-center">
-            <p class="text-xs text-white/80 uppercase tracking-wider mb-1">Rondas completadas</p>
-            <p id="amrapCounter" class="text-5xl font-display font-bold text-white transition-transform">${amrapRounds}</p>
-          </div>
-        </button>
-        <p class="text-text-muted text-xs mt-2 text-center">Toca para sumar ronda</p>
-      </div>
-    `;
-  } else if (mode === 'emom' && config.exercise) {
-    modeSpecificContent = `
-      <div class="mb-6 text-center">
-        <p class="text-amber-300 font-bold text-lg">${config.exercise}</p>
-        <p class="text-text-secondary">${config.reps || 10} repeticiones</p>
-      </div>
-    `;
-  } else if (mode === 'pyramid') {
-    const levels = config.levels || [20, 30, 40, 30, 20];
-    modeSpecificContent = `
-      <div class="flex items-center gap-1 mb-6">
-        ${levels.map((l, i) => `
-          <div class="flex flex-col items-center">
-            <div class="w-6 h-${Math.round(l / 10)} ${i === cardioState.currentExerciseIndex ? 'bg-orange-500' : 'bg-dark-surface'} rounded-sm"></div>
-            <span class="text-[10px] ${i === cardioState.currentExerciseIndex ? 'text-orange-400 font-bold' : 'text-text-muted'}">${l}s</span>
-          </div>
-        `).join('')}
-      </div>
-    `;
-  }
-
-  // Información de progreso
-  let progressInfo = '';
-  if (mode === 'pyramid') {
-    const levels = config.levels || [20, 30, 40, 30, 20];
-    progressInfo = `Nivel ${cardioState.currentExerciseIndex + 1} de ${levels.length}`;
-  } else if (mode === 'amrap') {
-    progressInfo = 'Completa todas las rondas que puedas';
-  } else if (mode !== 'emom') {
-    progressInfo = `Ronda ${cardioState.currentRound} de ${config.rounds || 8}`;
-  } else {
-    progressInfo = `Minuto ${cardioState.currentRound} de ${config.rounds || 10}`;
-  }
-
-  timerView.innerHTML = `
-    <div class="fixed inset-0 bg-gradient-to-b ${style.bg} -z-10 transition-all duration-500"></div>
-    <div class="flex flex-col items-center justify-center min-h-[75vh] relative">
-      <!-- Phase indicator -->
-      <div class="mb-2">
-        <span class="text-2xl font-bold ${style.text} tracking-wider">${phaseNames[phase]}</span>
-      </div>
-
-      <!-- Mode-specific content -->
-      ${modeSpecificContent}
-
-      <!-- Timer with progress ring -->
-      <div class="relative mb-4">
-        <svg class="w-64 h-64 -rotate-90" viewBox="0 0 256 256">
+  return `
+    <div class="f-cardio f-cardio--timer f-root">
+      <span class="f-fase${descanso ? ' f-fase--descanso' : ''}">${etiquetaFase}</span>
+      <div class="f-anillo">
+        <svg class="f-anillo__svg" viewBox="0 0 230 230" width="230" height="230" aria-hidden="true">
+          <circle class="f-anillo__pista" cx="115" cy="115" r="${RADIO_ANILLO}"></circle>
           <circle
-            cx="128"
-            cy="128"
-            r="120"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="8"
-            class="text-dark-surface"
-          />
-          <circle
-            cx="128"
-            cy="128"
-            r="120"
-            fill="none"
-            stroke-width="8"
-            stroke-linecap="round"
-            class="${style.ring}"
-            style="stroke-dasharray: ${circumference}; stroke-dashoffset: ${strokeDashoffset}; transition: stroke-dashoffset 0.5s ease-out;"
-          />
+            class="f-anillo__avance"
+            id="cardioAnillo"
+            cx="115" cy="115" r="${RADIO_ANILLO}"
+            stroke-dasharray="${c.toFixed(0)}"
+            stroke-dashoffset="${offsetDelAnillo(cardioState.timeRemaining, total, RADIO_ANILLO).toFixed(0)}"
+          ></circle>
         </svg>
-        <div class="absolute inset-0 flex flex-col items-center justify-center">
-          <div id="cardioTimer" class="text-6xl font-display font-bold ${style.text}">
-            ${mins}:${String(secs).padStart(2, '0')}
-          </div>
-          <div class="text-text-secondary text-sm mt-1">${progressInfo}</div>
+        <div class="f-anillo__centro">
+          <span class="f-anillo__tiempo" id="cardioTimer" role="timer">${formatearTiempo(
+            cardioState.timeRemaining
+          )}</span>
+          <span class="f-anillo__sub">${escapar(sub)}</span>
         </div>
       </div>
-
-      <!-- Total time -->
-      <div class="flex items-center gap-2 text-text-muted mb-6">
-        ${icon('clock', 'sm', 'text-text-muted')}
-        <span>Tiempo total: <span id="cardioTotalTime" class="font-mono text-text-secondary">${formatTime(cardioState.totalTimeElapsed)}</span></span>
-      </div>
-
-      <!-- Controls -->
-      <div class="flex gap-4">
-        <button
-          onclick="window.toggleCardioPause()"
-          class="w-16 h-16 rounded-full bg-dark-surface border ${style.border} flex items-center justify-center active:scale-95 transition-all shadow-lg"
-        >
-          ${icon(cardioState.isPaused ? 'play' : 'pause', 'xl', style.text.replace('text-', 'text-'))}
-        </button>
-        <button
-          onclick="window.stopCardioWorkout()"
-          class="w-16 h-16 rounded-full bg-dark-surface border border-red-500/30 flex items-center justify-center active:scale-95 transition-all shadow-lg"
-        >
-          ${icon('stop', 'xl', 'text-red-400')}
-        </button>
-      </div>
-
-      ${cardioState.isPaused ? `
-        <div class="absolute inset-0 bg-black/60 flex items-center justify-center">
-          <div class="text-center">
-            <p class="text-4xl font-bold text-white mb-4">PAUSADO</p>
-            <button
-              onclick="window.toggleCardioPause()"
-              class="px-8 py-3 bg-accent rounded-xl font-bold text-white active:scale-95 transition-transform"
-            >
-              Continuar
-            </button>
-          </div>
-        </div>
-      ` : ''}
+      ${centro}
+      ${marcas}
+      ${controles()}
+      <span class="f-cardio__pie">BEEP EN 3-2-1 · VIBRACIÓN AL CAMBIO DE FASE</span>
     </div>
   `;
-
-  refreshIcons();
 }
 
-function formatTime(seconds: number): string {
-  const mins = Math.floor(seconds / 60);
-  const secs = seconds % 60;
-  return `${mins}:${String(secs).padStart(2, '0')}`;
-}
+function timerPiramide(): string {
+  const config = cardioState.config;
+  const niveles = config.levels ?? PIRAMIDE_MEDIA;
+  const pico = Math.max(...niveles);
+  const actual = cardioState.currentExerciseIndex;
+  const descanso = cardioState.currentPhase === 'rest';
+  const total = duracionTotal('pyramid', config);
+  const esPico = niveles[actual] === pico;
 
-// ==========================================
-// CONTROLES
-// ==========================================
+  const barras = niveles
+    .map((n, i) => {
+      const estado = estadoDeNivel(i, actual);
+      return `
+      <div class="f-nivel">
+        <span class="f-nivel__seg">${n}</span>
+        <div class="f-nivel__barra f-nivel__barra--${estado}" style="height:${alturaDeNivel(n, pico)}%"></div>
+      </div>`;
+    })
+    .join('');
+
+  return `
+    <div class="f-cardio f-cardio--piramide f-root">
+      <div class="f-piramide__cabecera">
+        <span class="f-piramide__nombre">PIRÁMIDE${presetActivo ? ` · ${presetActivo.toUpperCase()}` : ''}</span>
+        <span class="f-piramide__fase${descanso ? ' f-piramide__fase--descanso' : ''}">${
+          descanso ? 'DESCANSO' : 'TRABAJO'
+        }</span>
+      </div>
+      <div class="f-piramide__reloj">
+        <span class="f-piramide__tiempo" id="cardioTimer" role="timer">${formatearTiempo(
+          cardioState.timeRemaining
+        )}</span>
+        <span class="f-piramide__sub">nivel ${actual + 1} de ${niveles.length}${
+          esPico ? ' · el pico' : ''
+        } · ${niveles[actual]}s</span>
+      </div>
+      <div class="f-montana__grafico f-montana__grafico--vivo">${barras}</div>
+      <div class="f-piramide__progreso">
+        <div class="f-piramide__pista">
+          <div class="f-piramide__relleno" id="cardioProgreso" style="width:${
+            total > 0 ? Math.min(100, (cardioState.totalTimeElapsed / total) * 100).toFixed(1) : 0
+          }%"></div>
+        </div>
+        <div class="f-piramide__marcas">
+          <span id="cardioTranscurrido">${formatearTiempo(cardioState.totalTimeElapsed)}</span>
+          <span id="cardioRestante">QUEDAN ${formatearTiempo(
+            Math.max(0, total - cardioState.totalTimeElapsed)
+          )}</span>
+          <span>${formatearTiempo(total)}</span>
+        </div>
+      </div>
+      ${controles()}
+      <span class="f-piramide__leyenda">LOS NIVELES SUPERADOS QUEDAN EN BRASA · EL ACTIVO LATE · LOS PRÓXIMOS, EN LÍNEA DE PUNTOS</span>
+    </div>
+  `;
+}
 
 export function toggleCardioPause(): void {
   cardioState.isPaused = !cardioState.isPaused;
@@ -898,160 +843,193 @@ export async function stopCardioWorkout(): Promise<void> {
 }
 
 // ==========================================
-// FINALIZAR WORKOUT
+// C-04 · CIERRE Y RESUMEN
 // ==========================================
 
 function finishCardioWorkout(): void {
-  // Stop timer
   if (timerInterval) {
     clearInterval(timerInterval);
     timerInterval = null;
   }
 
-  // Calculate stats
   const stats: CardioSessionStats = {
     totalTime: cardioState.totalTimeElapsed,
     workTime: cardioState.workTimeTotal,
     restTime: cardioState.restTimeTotal,
-    roundsCompleted: cardioState.currentRound,
+    roundsCompleted: cardioState.mode === 'amrap' ? amrapRounds : cardioState.currentRound,
     calories: estimateCalories(cardioState.workTimeTotal),
   };
 
-  // Save to history
-  const session = {
+  const ahora = new Date().toISOString();
+  const sesion = {
     type: 'cardio' as const,
     mode: cardioState.mode!,
+    sessionId: `cardio_${Date.now()}`,
     // Instante completo: el heatmap deriva de aqui el dia LOCAL.
-    date: new Date().toISOString(),
-    savedAt: new Date().toISOString(),
+    date: ahora,
+    savedAt: ahora,
     config: { ...cardioState.config },
     stats,
-    grupo: `Cardio - ${cardioState.mode?.toUpperCase()}`,
+    grupo: `Cardio - ${NOMBRE_MODO[cardioState.mode!]}`,
     ejercicios: [],
     volumenTotal: 0,
     volumenPorGrupo: {},
   };
 
-  addToHistory(session);
+  addToHistory(sesion);
 
-  // Show summary
+  // El XP de cardio existia en el motor y no lo llamaba nadie: terminar un
+  // Tabata no sumaba un solo punto. C-04 lo enseña.
+  try {
+    ultimoXP = processCompletedCardioSession(sesion).totalXP;
+  } catch (e) {
+    console.error('No se pudo procesar el XP del cardio', e);
+    ultimoXP = null;
+  }
+
   showCardioSummary(stats);
 }
 
 function estimateCalories(workSeconds: number): number {
-  // Rough estimate: ~10 calories per minute of high intensity work
+  // ~10 kcal por minuto de trabajo de alta intensidad.
   return Math.round((workSeconds / 60) * 10);
 }
 
-// ==========================================
-// RESUMEN
-// ==========================================
-
 function showCardioSummary(stats: CardioSessionStats): void {
   hideAllCardioViews();
+  const v = vista('cardioSummaryView');
+  if (!v) return;
+  v.classList.remove('hidden');
 
-  const summaryView = document.getElementById('cardioSummaryView');
-  if (!summaryView) return;
+  const mode = cardioState.mode!;
+  const rondasObjetivo =
+    mode === 'amrap' ? null : mode === 'pyramid'
+      ? (cardioState.config.levels ?? PIRAMIDE_MEDIA).length
+      : cardioState.config.rounds ?? 0;
+  const rondas = rondasObjetivo ? `${stats.roundsCompleted}/${rondasObjetivo}` : String(stats.roundsCompleted);
 
-  summaryView.classList.remove('hidden');
+  const metricas = [
+    { label: 'RONDAS', valor: rondas },
+    { label: 'TRABAJO', valor: formatearTiempo(stats.workTime) },
+    { label: 'KCAL EST.', valor: `~${cifra(stats.calories)}` },
+  ];
+  if (ultimoXP !== null && ultimoXP > 0) {
+    metricas.push({ label: 'XP', valor: `+${cifra(ultimoXP)}` });
+  }
 
-  const formatTime = (secs: number) => {
-    const m = Math.floor(secs / 60);
-    const s = secs % 60;
-    return `${m}:${String(s).padStart(2, '0')}`;
-  };
-
-  summaryView.innerHTML = `
-    <div class="flex flex-col items-center justify-center min-h-[60vh] text-center">
-      <div class="w-20 h-20 rounded-full bg-status-success/20 flex items-center justify-center mb-6">
-        ${icon('check', 'xl', 'text-status-success')}
+  v.innerHTML = `
+    <div class="f-cardio f-cardio--resumen f-root">
+      <div class="f-cardio__resumen-cabecera">
+        <span class="f-cardio__resumen-label">${NOMBRE_MODO[mode]} COMPLETADO</span>
+        <span class="f-cardio__resumen-cifra">${formatearTiempo(stats.totalTime)}</span>
+        <span class="f-cardio__guardado">Guardado en tu historial</span>
       </div>
-
-      <h2 class="text-2xl font-display font-bold text-text-primary mb-2">
-        ¡Entrenamiento Completado!
-      </h2>
-      <p class="text-text-secondary mb-8">${cardioState.mode?.toUpperCase()}</p>
-
-      <div class="grid grid-cols-2 gap-4 w-full max-w-sm mb-8">
-        <div class="bg-dark-surface border border-dark-border rounded-xl p-4">
-          <p class="text-3xl font-bold text-accent">${formatTime(stats.totalTime)}</p>
-          <p class="text-xs text-text-muted">Tiempo Total</p>
-        </div>
-        <div class="bg-dark-surface border border-dark-border rounded-xl p-4">
-          <p class="text-3xl font-bold text-status-warning">${stats.roundsCompleted}</p>
-          <p class="text-xs text-text-muted">Rondas</p>
-        </div>
-        <div class="bg-dark-surface border border-dark-border rounded-xl p-4">
-          <p class="text-3xl font-bold text-status-success">${formatTime(stats.workTime)}</p>
-          <p class="text-xs text-text-muted">Trabajo</p>
-        </div>
-        <div class="bg-dark-surface border border-dark-border rounded-xl p-4">
-          <p class="text-3xl font-bold text-status-error">${stats.calories}</p>
-          <p class="text-xs text-text-muted">Calorías (est.)</p>
-        </div>
+      <div class="f-cardio__rejilla">
+        ${metricas
+          .map(
+            (m) => `
+          <div class="f-cardio__metrica">
+            <span class="f-cardio__metrica-label">${m.label}</span>
+            <span class="f-cardio__metrica-cifra${
+              m.label === 'XP' ? ' f-cardio__metrica-cifra--xp' : ''
+            }">${escapar(m.valor)}</span>
+          </div>`
+          )
+          .join('')}
       </div>
-
-      <button
-        onclick="window.showHome()"
-        class="w-full max-w-sm bg-accent hover:bg-accent-hover text-white font-bold py-4 px-6 rounded-xl
-               active:scale-95 transition-all flex items-center justify-center gap-2"
-      >
-        ${icon('home', 'md')}
-        Volver al Inicio
-      </button>
+      <button type="button" class="f-btn f-btn--primario f-btn--bloque" data-cardio="inicio">Volver al inicio</button>
     </div>
   `;
 
-  // Reset state
+  enganchar(v, alTocarCardio);
   resetCardioState();
-
-  refreshIcons();
 }
 
 // ==========================================
-// UTILIDADES
+// DELEGACIÓN
 // ==========================================
 
-function hideAllCardioViews(): void {
-  const views = ['cardioSelectorView', 'cardioConfigView', 'cardioTimerView', 'cardioSummaryView'];
-  views.forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.classList.add('hidden');
-  });
+function alTocarCardio(el: HTMLElement): void {
+  switch (el.dataset.cardio) {
+    case 'inicio':
+      void import('@/ui/navigation').then(({ showHome }) => showHome());
+      break;
+    case 'volver-selector':
+      showCardioSelector();
+      break;
+    case 'modo':
+      selectCardioMode(el.dataset.modo as CardioMode);
+      break;
+    case 'menos':
+    case 'mas': {
+      const paso = Number(el.dataset.paso) || 1;
+      const clave = el.dataset.clave as keyof CardioConfig;
+      const delta = el.dataset.cardio === 'mas' ? paso : -paso;
+      // La duracion de AMRAP se enseña en minutos y se guarda en segundos.
+      adjustCardioConfig(clave, clave === 'duration' ? delta * 60 : delta);
+      break;
+    }
+    case 'preset':
+      adjustPyramidLevel(el.dataset.preset ?? 'media');
+      break;
+    case 'escalar':
+      adjustPyramidLevel(Number(el.dataset.factor) > 1 ? 'scale_up' : 'scale_down');
+      break;
+    case 'quitar-estacion': {
+      const lista = cardioState.config.exercises ?? [];
+      lista.splice(Number(el.dataset.indice), 1);
+      cardioState.config.exercises = lista;
+      showCardioConfig();
+      break;
+    }
+    case 'comenzar':
+      startCardioWorkout();
+      break;
+    case 'pausa':
+      toggleCardioPause();
+      break;
+    case 'detener':
+      void stopCardioWorkout();
+      break;
+    case 'ronda-amrap':
+      incrementAmrapRound();
+      break;
+  }
+}
+
+// ==========================================
+// SONIDO Y VIBRACIÓN
+// ==========================================
+
+function vibrar(ms: number): void {
+  try {
+    navigator.vibrate?.(ms);
+  } catch {
+    // Sin soporte: el beep ya avisa.
+  }
 }
 
 function playBeep(long = false): void {
   try {
     if (!audioContext) {
-      audioContext = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
+      audioContext = new (window.AudioContext ||
+        (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
     }
-
-    const oscillator = audioContext.createOscillator();
-    const gainNode = audioContext.createGain();
-
-    oscillator.connect(gainNode);
-    gainNode.connect(audioContext.destination);
-
-    oscillator.frequency.value = long ? 880 : 440;
-    oscillator.type = 'sine';
-
-    gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
-    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + (long ? 0.5 : 0.1));
-
-    oscillator.start(audioContext.currentTime);
-    oscillator.stop(audioContext.currentTime + (long ? 0.5 : 0.1));
+    const oscilador = audioContext.createOscillator();
+    const ganancia = audioContext.createGain();
+    oscilador.connect(ganancia);
+    ganancia.connect(audioContext.destination);
+    oscilador.frequency.value = long ? 880 : 440;
+    oscilador.type = 'sine';
+    ganancia.gain.setValueAtTime(0.3, audioContext.currentTime);
+    ganancia.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + (long ? 0.5 : 0.1));
+    oscilador.start(audioContext.currentTime);
+    oscilador.stop(audioContext.currentTime + (long ? 0.5 : 0.1));
   } catch {
-    // Audio not supported, try vibration
-    if ('vibrate' in navigator) {
-      navigator.vibrate(long ? 300 : 100);
-    }
+    vibrar(long ? 300 : 100);
   }
 }
 
-// ==========================================
-// INICIALIZACIÓN
-// ==========================================
-
 export function initializeCardio(): void {
-  // Nothing to initialize yet, views are created dynamically
+  // Las vistas se crean al vuelo; no hay nada que montar al arrancar.
 }

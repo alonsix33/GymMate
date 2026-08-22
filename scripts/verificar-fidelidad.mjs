@@ -958,6 +958,178 @@ console.log('\n--- Hueso en su pagina real ---');
   await paginaH.close();
 }
 
+// --------------------------------------------------------------------------
+// Cardio — C-01…C-08.
+// --------------------------------------------------------------------------
+const c01 = bloquePantalla('C-01 Cardio selector');
+const c02 = bloquePantalla('C-02 Cardio config');
+const c03 = bloquePantalla('C-03 Cardio timer');
+const c05 = bloquePantalla('C-05 Pirámide');
+
+console.log('\n--- Cardio · componentes ---');
+
+await compararCaja(
+  'fila de modo (C-01)',
+  fragmentoDe(c01, (f) => estiloAbertura(f).includes('padding:15px 16px') && f.includes('{{ m.n }}')),
+  `<button class="f-modo"><span class="f-modo__tag">TB</span>
+     <span class="f-modo__textos"><span class="f-modo__nombre">Tabata</span>
+     <span class="f-modo__desc">20s trabajo / 10s descanso × 8 rondas</span></span>
+     <span class="f-modo__chevron">›</span></button>`,
+  '.f-modo',
+  { contenedor: 'width:350px' }
+);
+
+await compararCaja(
+  'boton de stepper de cardio (C-02)',
+  fragmentoDe(c02, (f) => estiloAbertura(f).includes('width:52px;height:54px')),
+  `<div class="f-stepper f-stepper--cardio"><button class="f-stepper__btn">−</button></div>`,
+  '.f-stepper__btn'
+);
+
+{
+  const declFase = [...c03.matchAll(/style="([^"]*)"[^>]*>TRABAJO</g)].map((m) => m[1])[0];
+  if (declFase) {
+    const esperado = Object.fromEntries(
+      declFase.split(';').filter(Boolean).map((d) => {
+        const c = d.indexOf(':');
+        return [d.slice(0, c).trim(), d.slice(c + 1).trim()];
+      })
+    );
+    comparar(
+      'chip de fase (C-03)',
+      { ...esperado, 'letter-spacing': emAPx(esperado['letter-spacing'] ?? '0', 12) },
+      await computar('<span class="f-fase">TRABAJO</span>', '.f-fase', [
+        'background-color', 'color', 'border-radius', 'padding', 'letter-spacing',
+      ]),
+      {
+        background: 'background-color', color: 'color', 'border-radius': 'border-radius',
+        padding: 'padding', 'letter-spacing': 'letter-spacing',
+      }
+    );
+  } else {
+    chk('chip de fase · se localiza en el mockup', false);
+  }
+}
+
+{
+  // El anillo: r, grosor y colores.
+  const circulos = [...c03.matchAll(/<circle([^>]*)>/g)].map((m) => m[1]);
+  const pista = circulos.find((c) => c.includes('#20242D'));
+  const avance = circulos.find((c) => c.includes('#FF6317'));
+  chk('el anillo del mockup tiene r=104 y grosor 10',
+    !!pista && pista.includes('r="104"') && pista.includes('stroke-width="10"'), pista ?? '(no encontrado)');
+  const medido = await computar(
+    `<div class="f-anillo"><svg class="f-anillo__svg" viewBox="0 0 230 230"><circle class="f-anillo__pista" cx="115" cy="115" r="104"></circle><circle class="f-anillo__avance" cx="115" cy="115" r="104"></circle></svg></div>`,
+    '.f-anillo__pista',
+    ['stroke', 'stroke-width']
+  );
+  chk('la pista del anillo usa el token de borde sutil',
+    norm(medido?.stroke ?? '') === norm('#20242D'), `${medido?.stroke}`);
+  chk('la pista mide 10 de grosor', parseFloat(medido?.['stroke-width'] ?? '0') === 10, String(medido?.['stroke-width']));
+  const medidoAvance = await computar(
+    `<div class="f-anillo"><svg class="f-anillo__svg" viewBox="0 0 230 230"><circle class="f-anillo__avance" cx="115" cy="115" r="104"></circle></svg></div>`,
+    '.f-anillo__avance',
+    ['stroke', 'stroke-width', 'stroke-linecap']
+  );
+  chk('el arco de avance va en Fragua', norm(medidoAvance?.stroke ?? '') === norm('#FF6317'), `${medidoAvance?.stroke}`);
+  chk('el arco tiene las puntas redondeadas', medidoAvance?.['stroke-linecap'] === 'round', String(medidoAvance?.['stroke-linecap']));
+  void avance;
+}
+
+await compararCaja(
+  'marca de ronda (C-03)',
+  fragmentoDe(c03, (f) => estiloAbertura(f).includes('width:22px;height:6px')),
+  `<div class="f-rondas"><span class="f-rondas__marca"></span></div>`,
+  '.f-rondas__marca'
+);
+
+{
+  const declPreset = [...c05.matchAll(/style="([^"]*)"[^>]*>MEDIA</g)].map((m) => m[1])[0];
+  if (declPreset) {
+    const esperado = Object.fromEntries(
+      declPreset.split(';').filter(Boolean).map((d) => {
+        const c = d.indexOf(':');
+        return [d.slice(0, c).trim(), d.slice(c + 1).trim()];
+      })
+    );
+    comparar(
+      'preset activo (C-05)',
+      esperado,
+      await computar(
+        '<div class="f-presets"><button class="f-preset" aria-pressed="true">MEDIA</button></div>',
+        '.f-preset',
+        ['background-color', 'color', 'border-radius', 'padding']
+      ),
+      { background: 'background-color', color: 'color', 'border-radius': 'border-radius', padding: 'padding' }
+    );
+  } else {
+    chk('preset activo · se localiza en el mockup', false);
+  }
+}
+
+// --------------------------------------------------------------------------
+// Cardio en su pagina real.
+// --------------------------------------------------------------------------
+console.log('\n--- Cardio en su pagina real ---');
+{
+  const anchoPantalla = 390;
+  const paginaC = await navegador.newPage({ viewport: { width: anchoPantalla, height: 900 } });
+  await paginaC.addInitScript(() => {
+    const hoy = new Date();
+    const d = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate() - 1, 19, 0);
+    localStorage.setItem('gymmate_history', JSON.stringify([{
+      sessionId: 's1', date: d.toISOString(), savedAt: d.toISOString(),
+      grupo: 'GRUPO 1 - Piernas + Glúteos', volumenTotal: 4800, ejercicios: [],
+      volumenPorGrupo: { Piernas: 4800 },
+    }]));
+  });
+  await paginaC.goto(URL_APP, { waitUntil: 'networkidle', timeout: 60000 });
+  await paginaC.waitForTimeout(1000);
+  await paginaC.locator('[data-accion="cardio"]').click();
+  await paginaC.waitForTimeout(400);
+
+  const selector = await paginaC.evaluate(() => {
+    const fila = document.querySelector('.f-modo');
+    return {
+      ancho: fila ? +fila.getBoundingClientRect().width.toFixed(2) : null,
+      izq: fila ? +fila.getBoundingClientRect().left.toFixed(2) : null,
+      modos: document.querySelectorAll('.f-modo').length,
+      desborda: document.documentElement.scrollWidth > window.innerWidth,
+    };
+  });
+  chk('C-01 · la fila de modo ocupa el ancho del mockup',
+    Math.abs((selector.ancho ?? 0) - 350) < 0.5, `real ${selector.ancho} | mockup 350`);
+  chk('C-01 · el margen izquierdo es el del mockup',
+    Math.abs((selector.izq ?? 0) - 20) < 0.5, `${selector.izq}px | mockup 20`);
+  chk('C-01 · son SEIS modos (sin "For Time")', selector.modos === 6, String(selector.modos));
+  chk('C-01 · no desborda en horizontal', !selector.desborda);
+
+  await paginaC.locator('[data-modo="pyramid"]').click();
+  await paginaC.waitForTimeout(400);
+  const piramide = await paginaC.evaluate(() => {
+    const barras = [...document.querySelectorAll('.f-nivel__barra')];
+    const grafico = document.querySelector('.f-montana__grafico');
+    return {
+      niveles: barras.length,
+      alturas: barras.map((b) => b.getBoundingClientRect().height.toFixed(1)),
+      alto: grafico ? +grafico.getBoundingClientRect().height.toFixed(1) : null,
+      total: document.querySelector('.f-cardio__total-cifra')?.textContent ?? '',
+      desborda: document.documentElement.scrollWidth > window.innerWidth,
+    };
+  });
+  chk('C-05 · siete niveles', piramide.niveles === 7, String(piramide.niveles));
+  // 150 de contenido + 1 de borde inferior: el mockup se dibuja en
+  // content-box y mide exactamente lo mismo.
+  chk('C-05 · la montaña mide lo que el mockup',
+    Math.abs((piramide.alto ?? 0) - 151) < 0.5, `${piramide.alto}px | mockup 151`);
+  chk('C-05 · el total es el 7:15 del mockup', piramide.total.includes('7:15'), piramide.total);
+  chk('C-05 · la montaña es simetrica',
+    JSON.stringify(piramide.alturas) === JSON.stringify([...piramide.alturas].reverse()),
+    piramide.alturas.join(','));
+  chk('C-05 · no desborda en horizontal', !piramide.desborda);
+  await paginaC.close();
+}
+
 await navegador.close();
 servidor.close();
 console.log(fallos ? `\n${fallos} FALLO(S) DE FIDELIDAD` : '\nOK: la app coincide con el mockup en todo lo comprobado');

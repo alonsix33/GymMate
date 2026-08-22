@@ -45,6 +45,7 @@ import {
   calculateSessionXPBreakdown,
   createXPTransaction,
   calculateCurrentStreak,
+  calculateCardioSessionXP,
   estimateOneRM,
 } from './xp';
 
@@ -429,6 +430,72 @@ export function processCompletedSession(
   };
 
   return summary;
+}
+
+/**
+ * Cierra una sesion de CARDIO.
+ *
+ * El motor ya tenia la formula (calculateCardioSessionXP) pero solo la usaba
+ * la migracion: al terminar un Tabata no se sumaba un solo XP, y C-04 enseña
+ * "+78 XP". Aqui se engancha, con dos reglas del README:
+ *   - el cardio NO suma racha (por eso no se toca streakData),
+ *   - el cardio no mueve rangos musculares: no hay kg que comparar.
+ */
+export function processCompletedCardioSession(session: HistorySession): {
+  totalXP: number;
+  desglose: { baseXP: number; timeXP: number; roundsXP: number; modeBonus: number };
+  newLevel: number;
+  oldLevel: number;
+  leveledUp: boolean;
+  titleInfo: LevelTitleInfo;
+  levelProgress: { current: number; max: number; percentage: number };
+} {
+  let state = getState();
+  const xp = calculateCardioSessionXP(session);
+
+  // Los logros SI se revisan: hay logros de cardio.
+  const { achievements, newlyUnlocked } = checkAchievements(
+    state.achievements,
+    getHistory(),
+    getPRs(),
+    state.muscleRanks,
+    state.streakData.currentStreak
+  );
+  state = updateAchievementsInState(state, achievements);
+  const xpLogros = newlyUnlocked.reduce((t, a) => t + a.xpReward, 0);
+
+  const oldLevel = state.playerStats.level;
+  const total = xp.totalXP + xpLogros;
+  if (total > 0) {
+    state = addXPToState(
+      state,
+      createXPTransaction(
+        total,
+        'cardio_complete',
+        `Cardio ${session.mode ?? ''}`.trim(),
+        session.sessionId
+      )
+    );
+  }
+  const newLevel = state.playerStats.level;
+  persistState(state);
+
+  return {
+    totalXP: total,
+    desglose: { baseXP: xp.baseXP, timeXP: xp.timeXP, roundsXP: xp.roundsXP, modeBonus: xp.modeBonus },
+    newLevel,
+    oldLevel,
+    leveledUp: newLevel > oldLevel,
+    titleInfo: state.playerStats.titleInfo,
+    levelProgress: {
+      current: state.playerStats.currentLevelXP,
+      max: state.playerStats.xpToNextLevel,
+      percentage:
+        state.playerStats.xpToNextLevel > 0
+          ? (state.playerStats.currentLevelXP / state.playerStats.xpToNextLevel) * 100
+          : 100,
+    },
+  };
 }
 
 /**

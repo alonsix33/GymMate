@@ -575,8 +575,13 @@ function importarPerfil(filas: string[]): number {
 function fechaDeMedida(bruto: string): string | null {
   const t = bruto.trim();
   if (!t) return null;
-  const directa = new Date(t);
-  if (!Number.isNaN(directa.getTime())) return directa.toISOString();
+  // OJO con el orden: probar `new Date(t)` PRIMERO leia `03/08/2026` como el 8
+  // de MARZO, porque V8 interpreta `M/D/Y`. La seccion de pesas del mismo
+  // archivo lo lee como 3 de agosto con `parseSpanishDate`, asi que el mismo
+  // CSV daba dos meses distintos segun la seccion: en P-03 una fila caia en
+  // agosto y la de al lado en marzo, y la linea de tendencia salia falsa.
+  // `parseSpanishDate` ya cae en `new Date()` cuando no hay tres partes con
+  // barra, asi que el ISO del backup propio sigue entrando igual.
   return parseSpanishDate(t);
 }
 
@@ -829,7 +834,12 @@ export function importFromCSV(
             sessionId: `imported_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
             grupo: firstRow.grupo,
             type: 'weights',
-            volumenTotal: firstRow.volumenTotalSesion || sessionRows.reduce((sum, r) => sum + r.volumen, 0),
+            // La suma de las filas, SIEMPRE. `volumenTotalSesion` es el total
+            // de UNA sesion, y la clave de agrupacion es `dia|grupo`: dos
+            // sesiones del mismo grupo el mismo dia caen en el mismo grupo y
+            // la fusionada declaraba 4.000 kg donde el usuario levanto 8.800.
+            // Esa es la cifra grande de HI-02 y la que alimenta el heatmap.
+            volumenTotal: sessionRows.reduce((sum, r) => sum + r.volumen, 0),
             volumenPorGrupo,
             ejercicios: sessionRows.map(row => ({
               nombre: row.ejercicio,
@@ -889,14 +899,19 @@ export function importFromCSV(
         // Restaurar un backup en un navegador limpio dejaba la gamificacion en
         // cero: `initGamification()` ya habia corrido y creado el estado vacio,
         // asi que la migracion desde historial no se volvia a disparar y la
-        // home decia "NIVEL 1 · 0 XP" con 38 entrenos en el heatmap. La via de
-        // recuperacion oficial borraba meses de progresion.
+        // home decia "NIVEL 1 · 0 XP" con 38 entrenos en el heatmap.
+        //
+        // FUSIONAR, no reinicializar. `reinitGamification()` rederiva desde
+        // cero, y eso le quitaba al usuario el XP de los hitos de racha, el
+        // escalon real de sus PRs, los ascensos de rango y su mejor racha:
+        // importar UNA sesion vieja le bajaba el nivel. Ninguna cifra puede
+        // bajar por importar un archivo.
         if (newSessions.length > 0) {
           try {
-            const { reinitGamification } = await import('@/features/gamification');
-            reinitGamification();
+            const { fusionarGamificacion } = await import('@/features/gamification');
+            fusionarGamificacion();
           } catch (e) {
-            console.warn('No se pudo recalcular la gamificacion tras importar', e);
+            console.warn('No se pudo actualizar la gamificacion tras importar', e);
           }
         }
 

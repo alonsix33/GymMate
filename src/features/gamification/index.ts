@@ -150,12 +150,90 @@ export function initGamification(): GamificationState {
 }
 
 /**
- * Fuerza reinicializacion (para cuando hay nuevos datos)
+ * Fuerza reinicializacion (para cuando hay nuevos datos).
+ *
+ * REEMPLAZA el estado por uno rederivado del historial. Todo lo que se gana en
+ * vivo y no es rederivable se pierde: los bonos de hito de racha, el escalon
+ * real de cada PR (150/250 XP frente a los 60 fijos que asume la migracion),
+ * el XP de ascenso de rango, `bestStreak` y las fechas de desbloqueo de los
+ * logros. Sirve para "Recalcular el XP", que es una accion que el usuario pide
+ * a proposito y que la app le avisa antes de hacer.
+ *
+ * NO sirve despues de importar un CSV. Para eso esta `fusionarGamificacion`.
  */
 export function reinitGamification(): GamificationState {
   const state = migrateExistingData();
   persistState(state);
   return state;
+}
+
+/**
+ * Incorpora los datos nuevos SIN quitarle al usuario nada de lo que ya tenia.
+ *
+ * El defecto que cierra: importar un CSV llamaba a `reinitGamification()`, que
+ * rederiva desde cero. Un usuario con 4.613 XP, racha maxima 31 y cuatro hitos
+ * cobrados importaba UNA sesion vieja —o sea, mas datos, no menos— y salia con
+ * 3.809 XP, racha maxima 1 y cero hitos, un nivel por debajo, bajo un toast
+ * verde que decia "CSV importado". Irreversible: no hay copia del estado
+ * anterior.
+ *
+ * La regla es que ninguna cifra baje. Se toma el maximo del XP y de la mejor
+ * racha, la union de los hitos cobrados y de los logros conseguidos, y el
+ * nivel se recalcula desde el XP que sobrevive. Los rangos musculares y las
+ * fuerzas por ejercicio SI se rederivan enteros: salen del historial, que es
+ * justo lo que la importacion acaba de ampliar.
+ */
+export function fusionarGamificacion(): GamificationState {
+  // Se lee lo PERSISTIDO, no el `_state` en memoria: la importacion acaba de
+  // reescribir localStorage por debajo, y ese es el estado que hay que
+  // respetar. Ademas hace la funcion comprobable sin montar la app entera.
+  const previo = loadGamificationState();
+  const rederivado = migrateExistingData();
+
+  if (!previo.initialized) {
+    persistState(rederivado);
+    return rederivado;
+  }
+
+  const totalXP = Math.max(previo.playerStats.totalXP, rederivado.playerStats.totalXP);
+  const level = calculateLevel(totalXP);
+  const progreso = getLevelProgress(totalXP);
+
+  const logrosPrevios = new Map(previo.achievements.map((a) => [a.id, a]));
+  const achievements = rederivado.achievements.map((a) => {
+    const antes = logrosPrevios.get(a.id);
+    // Un logro conseguido no se puede "desconseguir" por importar un archivo,
+    // y su fecha de desbloqueo es un dato que el historial no sabe reproducir.
+    if (antes?.unlockedAt) return { ...a, unlockedAt: antes.unlockedAt };
+    return a;
+  });
+
+  const fusionado: GamificationState = {
+    ...rederivado,
+    playerStats: {
+      ...rederivado.playerStats,
+      totalXP,
+      level,
+      titleInfo: getLevelTitle(level),
+      currentLevelXP: progreso.currentXP,
+      xpToNextLevel: progreso.maxXP,
+      createdAt: previo.playerStats.createdAt || rederivado.playerStats.createdAt,
+      lastUpdated: new Date().toISOString(),
+    },
+    streakData: {
+      ...rederivado.streakData,
+      bestStreak: Math.max(previo.streakData.bestStreak, rederivado.streakData.bestStreak),
+      streakMilestones: [
+        ...new Set([...previo.streakData.streakMilestones, ...rederivado.streakData.streakMilestones]),
+      ].sort((a, b) => a - b),
+    },
+    achievements,
+    // El historial de XP es el registro de lo que paso: se conserva el previo y
+    // se le añade la linea de la importacion.
+    xpHistory: [...rederivado.xpHistory, ...previo.xpHistory].slice(0, 100),
+  };
+  persistState(fusionado);
+  return fusionado;
 }
 
 // ==========================================

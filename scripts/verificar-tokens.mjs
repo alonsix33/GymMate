@@ -221,17 +221,37 @@ function ficheros(dir, ext) {
 
 const SRC = join(RAIZ, 'src');
 const fuentesTS = ficheros(SRC, ['.ts']);
+/**
+ * Las puertas tambien pasan por G1 y G2: una que se salta su propia regla es
+ * la que menos derecho tiene a la excepcion. `verificar-comportamiento.mjs`
+ * derivaba un dia con `toISOString().split('T')[0]` y, corriendo en
+ * TZ=America/Lima, despues de las 19:00 sembraba un borrador fechado MAÑANA.
+ *
+ * NO pasan por G3b ni G4b, y eso es deliberado: su trabajo es comparar los
+ * colores de la app contra los hex del mockup, asi que tienen que nombrarlos.
+ */
+const fuentesPuertas = [...fuentesTS, ...ficheros(join(RAIZ, 'scripts'), ['.mjs'])];
 const fuentesCSS = ficheros(SRC, ['.css']);
 
+/** Un color escrito a mano no siempre lleva almohadilla: `hsl(0 100% 50%)` y
+ *  `rgb(255 99 23 / .5)` son igual de crudos, y vite los minifica a hex en
+ *  `dist/` — donde ninguna puerta mira. */
+const FUNCION_DE_COLOR = /\b(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch|color)\(/g;
+
 // G1 · cero alert()/confirm()/prompt(): los reemplaza F-01.
-for (const f of fuentesTS) {
+for (const f of fuentesPuertas) {
   const texto = readFileSync(f, 'utf8');
   const sinComent = texto.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
   for (const fn of ['alert', 'confirm', 'prompt']) {
     // El lookbehind excluia el punto para no pillar `foo.confirm(...)`, y con
-    // el se colaba `window.alert('hola')` — la forma mas natural de escribirlo.
-    // Ahora se permite el punto SOLO cuando lo precede `window`.
-    const re = new RegExp(`(?<![\\w.$])(?:window\\s*\\.\\s*)?${fn}\\s*\\(`, 'g');
+    // el se colaban `window.alert('hola')`, `globalThis.confirm(...)`,
+    // `window?.alert(...)` y `window['alert'](...)` — todas formas naturales en
+    // un TS con `strict`. Se permite el acceso SOLO a traves de los objetos
+    // globales conocidos, con punto, con `?.` o con corchetes.
+    const re = new RegExp(
+      `(?<![\\w.$])(?:(?:window|globalThis|self|top|parent)\\s*\\??\\s*[.[]\\s*['"\`]?)?${fn}\\s*['"\`]?\\]?\\s*\\(`,
+      'g'
+    );
     if (re.test(sinComent)) {
       fallos.push(`${relative(RAIZ, f)}: usa ${fn}() — el contrato lo prohibe, va por src/ui/feedback.ts`);
     }
@@ -241,9 +261,15 @@ for (const f of fuentesTS) {
 // G2 · cero dia UTC. `toISOString().split('T')[0]` es dia de Greenwich, y en
 // Lima manda el dia siguiente a partir de las 19:00. Un solo helper decide
 // que dia es: src/utils/fecha.ts.
-for (const f of fuentesTS) {
+for (const f of fuentesPuertas) {
   if (relative(RAIZ, f) === join('src', 'utils', 'fecha.ts')) continue;
-  const texto = readFileSync(f, 'utf8');
+  // Esta puerta ESCRIBE los patrones que busca: mirarse a si misma es un falso
+  // positivo garantizado. Los comentarios tampoco cuentan en ningun archivo —
+  // documentar el defecto que se arreglo no es cometerlo.
+  if (relative(RAIZ, f) === join('scripts', 'verificar-tokens.mjs')) continue;
+  const texto = readFileSync(f, 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/(^|[^:])\/\/.*$/gm, '$1');
   // Dos formas: la cadena contigua, y la partida en dos lineas por una
   // variable intermedia (`const s = d.toISOString(); s.split('T')[0]`), que
   // evadia la regla contigua sin ninguna mala fe.
@@ -251,11 +277,15 @@ for (const f of fuentesTS) {
   // Lo que NO es un defecto, y por eso se descuenta: recortar la fecha para
   // volver a pegarle una hora local — `new Date(`${iso.slice(0,10)}T00:00:00`)`
   // es justamente la forma correcta de parsear un dia en local.
-  const recorte = /(split\(['"]T['"]\)\s*\[0\]|slice\(\s*0\s*,\s*10\s*\)|substring\(\s*0\s*,\s*10\s*\))/;
-  const conHoraLocal = /(split\(['"]T['"]\)\s*\[0\]|slice\(\s*0\s*,\s*10\s*\)|substring\(\s*0\s*,\s*10\s*\))\s*\}?\s*(T\d{2}:\d{2}|\+\s*['"`]T)/g;
+  // `toJSON()` devuelve exactamente lo mismo que `toISOString()`, y `substr`
+  // no estaba en la lista: dos ortografias distintas del mismo defecto que
+  // pasaban en verde.
+  const RECORTE = "(split\\(['\"]T['\"]\\)\\s*\\[0\\]|slice\\(\\s*0\\s*,\\s*10\\s*\\)|substr(?:ing)?\\(\\s*0\\s*,\\s*10\\s*\\))";
+  const recorte = new RegExp(RECORTE);
+  const conHoraLocal = new RegExp(`${RECORTE}\\s*\\}?\\s*(T\\d{2}:\\d{2}|\\+\\s*['\"\`]T)`, 'g');
   const sinLosBuenos = texto.replace(conHoraLocal, '');
-  const contigua = new RegExp(`toISOString\\(\\)\\s*\\.\\s*${recorte.source}`);
-  const partida = /toISOString\(\)/.test(sinLosBuenos) && recorte.test(sinLosBuenos);
+  const contigua = new RegExp(`(toISOString|toJSON)\\(\\)\\s*\\.\\s*${RECORTE}`);
+  const partida = /(toISOString|toJSON)\(\)/.test(sinLosBuenos) && recorte.test(sinLosBuenos);
   if (contigua.test(sinLosBuenos) || partida) {
     fallos.push(
       `${relative(RAIZ, f)}: deriva el dia con toISOString() — eso es UTC. Usa claveDiaLocal() de @/utils/fecha`
@@ -270,11 +300,13 @@ for (const f of fuentesTS) {
   // Alcance real de esta regla, para que no mienta sobre lo que cubre: pilla
   // el literal de 10 caracteres y la llamada directa sobre los tres helpers de
   // fecha.ts. NO pilla `new Date(unaVariable)` cuando la variable trae la clave
-  // de mas lejos — eso lo cubren los tests de racha en src/tests/xp.test.ts.
+  // de mas lejos — eso lo cubren los tests de racha en src/tests/racha.test.ts.
+  // Tambien el literal ARMADO — `new Date(`${a}-${m}-${d}`)` es igual de UTC
+  // que el literal escrito a mano— y `toLocaleDateString('en-CA')`, que es
+  // 'YYYY-MM-DD' pero en la zona del navegador, no en la del helper.
   const claveCruda =
-    /new Date\(\s*(['"`]\d{4}-\d{2}-\d{2}['"`]|claveDiaLocal\(|hoyLocal\(|claveDiaDe\()/;
-  const sinComentarios = texto.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
-  if (claveCruda.test(sinComentarios)) {
+    /new Date\(\s*(['"`][^'"`)]*\d{4}-\d{2}-\d{2}['"`]|['"`]?\$\{[^}]*\}-|claveDiaLocal\(|hoyLocal\(|claveDiaDe\()|toLocaleDateString\(\s*['"`]en-CA['"`]/;
+  if (claveCruda.test(texto)) {
     fallos.push(
       `${relative(RAIZ, f)}: \`new Date('YYYY-MM-DD')\` parsea en UTC y en Lima devuelve el dia ` +
         'anterior. Usa fechaDeClaveLocal() de @/utils/fecha'
@@ -306,7 +338,12 @@ for (const f of [...fuentesCSS, join(RAIZ, 'index.html')]) {
   const texto = readFileSync(f, 'utf8')
     .replace(/\/\*[\s\S]*?\*\//g, '')
     .replace(/<!--[\s\S]*?-->/g, '');
-  const hexes = [...texto.matchAll(/#[0-9a-fA-F]{3,8}\b/g)].map((m) => m[0]);
+  const hexes = [
+    ...[...texto.matchAll(/#[0-9a-fA-F]{3,8}\b/g)].map((m) => m[0]),
+    // Mismo motivo que en G3b: `hsl(0 100% 50%)` es un color escrito a mano
+    // igual que `#ff0000`, y vite lo convierte a hex al minificar.
+    ...[...texto.matchAll(FUNCION_DE_COLOR)].map((m) => m[0]),
+  ];
   const permitidos = HEX_LEGACY_PERMITIDOS[rel];
   if (permitidos === undefined) {
     if (hexes.length) {
@@ -337,7 +374,11 @@ for (const f of fuentesTS) {
   // mano. Los `#` de una ruta o de un ancla no matchean: exigen 3-8 digitos
   // hexadecimales y final de palabra.
   const hexes = [...sinComent.matchAll(/#[0-9a-fA-F]{3,8}\b/g)].map((m) => m[0]);
-  const rgbs = [...sinComent.matchAll(/\brgba?\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}/g)].map((m) => m[0]);
+  // No solo `rgb(1, 2, 3)`: `rgb(255 99 23 / .5)`, `hsl()`, `oklch()` y el
+  // resto de funciones de color son la misma familia, y vite las minifica a
+  // hex en `dist/` — donde ninguna puerta mira. Un heatmap entero se pudo
+  // pintar con `rgb(255 99 23 / …)` sin que nada se pusiera rojo.
+  const rgbs = [...sinComent.matchAll(FUNCION_DE_COLOR)].map((m) => m[0]);
   if (rgbs.length) {
     fallos.push(
       `${relative(RAIZ, f)}: ${rgbs.length} color rgb() en codigo TS (${[...new Set(rgbs)].slice(0, 3).join(', ')}) — usa var(--token)`

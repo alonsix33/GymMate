@@ -67,12 +67,24 @@ function contenedor(): HTMLElement {
   return el;
 }
 
-/** El componente de datos: la barra de zonas de PR-01, con su misma escala. */
+/**
+ * El componente de datos: la barra de zonas de PR-01, con su misma escala.
+ *
+ * OJO con el rotulo. PR-01 estima el 1RM sobre la MEJOR serie del historial;
+ * aqui se estima sobre la serie actual (el mejor peso de las ultimas tres
+ * sesiones), que es de lo que el coach esta hablando. Con un usuario por
+ * debajo de su pico las dos cifras divergen mucho —231 kg alli, 173 aqui— y
+ * las dos tarjetas escriben el mismo "PICO 200 KG" al lado. Un rotulo
+ * identico para dos cuentas distintas es de las cosas que mas rapido tumban la
+ * confianza en TODAS las cifras, asi que cuando difieren se dice ACTUAL.
+ */
 function bloqueDeDatos(d: DatoDeEjercicio): string {
   return `
     <div class="f-coach__dato">
       <div class="f-coach__dato-fila">
-        <span class="f-coach__dato-label">${escapar(d.ejercicio.toUpperCase())} · 1RM EST.</span>
+        <span class="f-coach__dato-label">${escapar(d.ejercicio.toUpperCase())} · 1RM EST. ${
+          d.actual < d.pico ? 'ACTUAL' : ''
+        }</span>
         <span class="f-coach__dato-cifra">${cifra(d.unaRepMax)} <span class="f-coach__dato-unidad">kg</span></span>
       </div>
       <div class="f-zonas f-zonas--coach">
@@ -352,8 +364,13 @@ async function alTocar(el: HTMLElement): Promise<void> {
       turnoActivo++;
       if (parcial.trim()) {
         turnos.push({ id: `c_${Date.now()}`, autor: 'coach', texto: parcial, fecha: new Date().toISOString() });
-        guardarConversacion(turnos);
+      } else if (turnos[turnos.length - 1]?.autor === 'usuario') {
+        // Detener ANTES del primer token dejaba la pregunta en el hilo para
+        // siempre: sin respuesta, sin error y sin reintento, y sobrevivia a la
+        // recarga. Si no llego nada, la pregunta se retira con ella.
+        turnos.pop();
       }
+      guardarConversacion(turnos);
       estado = 'listo';
       parcial = '';
       render();

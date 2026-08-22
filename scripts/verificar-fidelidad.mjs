@@ -51,8 +51,12 @@ const MOCKUP = join(RAIZ, 'redesign/design_handoff_fierro/Pantallas Fierro.dc.ht
 const CHROME = process.env.FIERRO_CHROME ?? '/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
 
 let fallos = 0;
+/** Pantallas nombradas en el titulo de un chk suelto (p. ej. "HI-02 · …"). */
+const pantallasPorChk = new Set();
 const chk = (nombre, ok, detalle = '') => {
   if (!ok) fallos++;
+  const codigoEnElTitulo = /^([A-Z]{1,2}-\d{2})\b/.exec(nombre);
+  if (codigoEnElTitulo) pantallasPorChk.add(codigoEnElTitulo[1]);
   console.log(`${ok ? 'OK   ' : 'FALLA'} ${nombre}${detalle ? ' :: ' + detalle : ''}`);
 };
 
@@ -67,6 +71,14 @@ const mockup = await leer(MOCKUP, 'utf-8');
 const PANTALLAS_DEL_MOCKUP = [...new Set([...mockup.matchAll(/data-screen-label="([^"]+)"/g)].map((m) => m[1]))];
 /** Pantallas cuyos estilos se comparan contra el `style=` del mockup. */
 const pantallasMedidas = new Set();
+/**
+ * Comparaciones de estilo REALES. `pantallasMedidas` cuenta bloques leidos del
+ * .dc.html, no estilos comparados: vaciando `comparar()` y `compararCaja()` la
+ * puerta perdia 207 de sus 294 chequeos y seguia imprimiendo "13 de 32 · OK".
+ * Un trinquete que no mide lo que dice medir es el `HEX_LEGACY_PERMITIDOS` otra
+ * vez.
+ */
+let comparaciones = 0;
 /** Pantallas que solo se miden EN LA APP (que no desborden, que el bloque
  *  exista). Es una comprobacion mas debil y se cuenta aparte: mezclarlas seria
  *  inflar la cobertura. */
@@ -156,8 +168,12 @@ process.on('uncaughtException', (e) => {
   process.exit(1);
 });
 
+// La app se usa en Lima (UTC-5). El navegador hereda TZ del proceso, pero eso
+// es implicito y se pierde si alguien corre el script a mano — que es
+// exactamente lo que este archivo invita a hacer.
+const ZONA = { timezoneId: 'America/Lima', locale: 'es-PE' };
 const navegador = await chromium.launch({ executablePath: CHROME });
-const pagina = await navegador.newPage({ viewport: { width: 390, height: 844 } });
+const pagina = await navegador.newPage({ viewport: { width: 390, height: 844 }, ...ZONA });
 await pagina.goto(URL_APP, { waitUntil: 'networkidle', timeout: 60000 });
 await pagina.waitForTimeout(1000);
 
@@ -308,6 +324,7 @@ async function compararCaja(nombre, fragmento, htmlApp, selector, opciones = {})
     const esp = esperada.estilos?.[prop];
     if (esp === undefined) continue;
     comparadas++;
+    comparaciones++;
     const got = obtenida?.estilos?.[prop];
     chk(`${nombre} · ${prop}`, norm(esp) === norm(got ?? ''), `mockup ${norm(esp)} | app ${got}`);
   }
@@ -346,6 +363,7 @@ function comparar(nombre, esperado, obtenido, mapa) {
       continue;
     }
     const got = obtenido?.[propCss];
+    comparaciones++;
     chk(`${nombre} · ${propCss}`, norm(esp) === norm(got ?? ''), `mockup ${norm(esp)} | app ${got}`);
   }
 }
@@ -659,7 +677,7 @@ await compararCaja(
 console.log('\n--- H-01 en su pagina real ---');
 {
   const anchoPantalla = 390;
-  const paginaReal = await navegador.newPage({ viewport: { width: anchoPantalla, height: 900 } });
+  const paginaReal = await navegador.newPage({ viewport: { width: anchoPantalla, height: 900 }, ...ZONA });
   await paginaReal.addInitScript(() => {
     const dia = 86400000;
     const clave = (d) => {
@@ -831,7 +849,7 @@ await compararCaja(
 console.log('\n--- W-01 en su pagina real ---');
 {
   const anchoPantalla = 390;
-  const paginaW = await navegador.newPage({ viewport: { width: anchoPantalla, height: 900 } });
+  const paginaW = await navegador.newPage({ viewport: { width: anchoPantalla, height: 900 }, ...ZONA });
   await paginaW.goto(URL_APP, { waitUntil: 'networkidle', timeout: 60000 });
   await paginaW.waitForTimeout(1000);
   await paginaW.locator('[data-grupo]').first().click();
@@ -1158,7 +1176,7 @@ await compararCaja(
 console.log('\n--- Hueso en su pagina real ---');
 {
   const anchoPantalla = 390;
-  const paginaH = await navegador.newPage({ viewport: { width: anchoPantalla, height: 900 } });
+  const paginaH = await navegador.newPage({ viewport: { width: anchoPantalla, height: 900 }, ...ZONA });
   await paginaH.addInitScript(() => {
     const hoy = new Date();
     const mk = (atras, vol, peso) => {
@@ -1348,7 +1366,7 @@ await compararCaja(
 console.log('\n--- Cardio en su pagina real ---');
 {
   const anchoPantalla = 390;
-  const paginaC = await navegador.newPage({ viewport: { width: anchoPantalla, height: 900 } });
+  const paginaC = await navegador.newPage({ viewport: { width: anchoPantalla, height: 900 }, ...ZONA });
   await paginaC.addInitScript(() => {
     const hoy = new Date();
     const d = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate() - 1, 19, 0);
@@ -1452,7 +1470,7 @@ console.log('\n--- Cardio en su pagina real ---');
 // --------------------------------------------------------------------------
 console.log('\n--- Fases 7-9 en su pagina real ---');
 {
-  const paginaF = await navegador.newPage({ viewport: { width: 390, height: 900 } });
+  const paginaF = await navegador.newPage({ viewport: { width: 390, height: 900 }, ...ZONA });
   const erroresF = [];
   paginaF.on('pageerror', (e) => erroresF.push(String(e)));
   await paginaF.addInitScript(() => {
@@ -1500,7 +1518,6 @@ console.log('\n--- Fases 7-9 en su pagina real ---');
   /** Ninguna pantalla puede sacar scroll horizontal, ni en el documento ni
    *  dentro de una superposicion con overflow propio. */
   const medirPantalla = async (nombre, selector) => {
-    pantallasSoloApp.add(nombre);
     const m = await paginaF.evaluate((sel) => {
       const raiz = sel ? document.querySelector(sel) : document.documentElement;
       if (!raiz) return null;
@@ -1514,10 +1531,19 @@ console.log('\n--- Fases 7-9 en su pagina real ---');
       };
     }, selector);
     if (!m) return chk(`${nombre} · se encuentra en pantalla`, false, `sin ${selector}`);
+    // Un nodo presente pero OCULTO mide 0x0, y `0 <= 0` es verdad: los dos
+    // chequeos daban OK sobre una pantalla que no se estaba pintando. Para
+    // GM-02 eran sus dos unicas comprobaciones.
+    if (m.clientW === 0) {
+      return chk(`${nombre} · esta visible`, false, `${selector} mide 0px de ancho`);
+    }
     chk(`${nombre} · no desborda en horizontal`,
       m.scrollW <= m.clientW, `scrollWidth ${m.scrollW} | clientWidth ${m.clientW}`);
     chk(`${nombre} · nada se sale del ancho de la pantalla`,
       m.maxDerecha <= 390.5, `borde derecho maximo ${m.maxDerecha}px`);
+    // Al final, y solo si midio de verdad: apuntarlo antes inflaba la cuenta
+    // de cobertura con pantallas que habian FALLADO.
+    pantallasSoloApp.add(nombre);
   };
 
   // --- P-01 ---
@@ -1648,7 +1674,11 @@ servidor.close();
 const codigo = (label) => label.split(' ')[0];
 const codigosMockup = PANTALLAS_DEL_MOCKUP.map(codigo);
 const comparadas = new Set([...pantallasMedidas].map(codigo));
-const soloApp = new Set([...pantallasSoloApp].map(codigo));
+// Los `chk('HI-02 · …')` escritos a mano le eran invisibles al registro: el
+// log decia "OK HI-02 · la card ocupa el ancho del mockup" y treinta lineas
+// mas abajo listaba HI-02 como "sin tocar". La lista mentia en las dos
+// direcciones, asi que ahora cuenta las tres formas de comprobar.
+const soloApp = new Set([...pantallasSoloApp, ...pantallasPorChk].map(codigo));
 const sinNada = codigosMockup.filter((c) => !comparadas.has(c) && !soloApp.has(c));
 console.log(
   `\ncobertura de mockups     : ${comparadas.size} de ${codigosMockup.length} comparadas contra el style= del mockup`
@@ -1669,6 +1699,20 @@ if (comparadas.size < COMPARADAS_MINIMO) {
   console.log(
     `\nFALLA solo se compararon ${comparadas.size} pantallas contra el mockup (minimo ${COMPARADAS_MINIMO}): ` +
       'la extraccion se rompio o alguien retiro un bloque'
+  );
+}
+// Y el trinquete que de verdad importa: cuantas PROPIEDADES se compararon. El
+// de pantallas cuenta bloques leidos, asi que vaciando las dos funciones de
+// comparacion se perdian 207 chequeos y seguia diciendo "13 de 32 · OK".
+console.log(`comparaciones de estilo  : ${comparaciones}`);
+// 155 es lo que hay HOY. Como el de pantallas: si sube, se sube aqui; si baja,
+// la puerta se pone roja.
+const COMPARACIONES_MINIMO = 155;
+if (comparaciones < COMPARACIONES_MINIMO) {
+  fallos++;
+  console.log(
+    `\nFALLA solo ${comparaciones} comparaciones de estilo (minimo ${COMPARACIONES_MINIMO}): ` +
+      'la puerta esta dando verde sobre casi nada'
   );
 }
 console.log(fallos ? `\n${fallos} FALLO(S) DE FIDELIDAD` : '\nOK: la app coincide con el mockup en todo lo comprobado');

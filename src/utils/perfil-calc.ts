@@ -1,3 +1,4 @@
+import { SIN_FECHA, fechaLegible } from '@/utils/fecha';
 /**
  * Aritmetica de perfil y medidas — CA-01, CA-02, P-01, P-02, P-03.
  *
@@ -276,10 +277,9 @@ export function etiquetaDeExtremo(
   decimales = 1
 ): string {
   if (!fecha || valor === null) return '';
-  const mes = new Date(fecha)
-    .toLocaleDateString('es-ES', { month: 'short' })
-    .replace('.', '')
-    .toUpperCase();
+  const d = fechaLegible(fecha);
+  if (!d) return `${SIN_FECHA} · ${valor.toFixed(decimales)}`;
+  const mes = d.toLocaleDateString('es-ES', { month: 'short' }).replace('.', '').toUpperCase();
   return `${mes} · ${valor.toFixed(decimales)}`;
 }
 
@@ -287,9 +287,10 @@ export function etiquetaDeExtremo(
 export function resumenDeMediciones(medidas: BodyMeasurement[]): string {
   if (medidas.length === 0) return '';
   const orden = ordenadas(medidas);
-  const desde = new Date(orden[orden.length - 1].date)
-    .toLocaleDateString('es-ES', { month: 'short' })
-    .replace('.', '');
+  const primera = fechaLegible(orden[orden.length - 1].date);
+  const desde = primera
+    ? primera.toLocaleDateString('es-ES', { month: 'short' }).replace('.', '')
+    : SIN_FECHA;
   return `${medidas.length} ${medidas.length === 1 ? 'medición' : 'mediciones'} · desde ${desde}`;
 }
 

@@ -30,7 +30,9 @@ const DIST = join(RAIZ, 'dist');
 const CHROME = process.env.FIERRO_CHROME ?? '/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
 
 let fallos = 0;
+let ejecutados = 0;
 const chk = (n, ok, d = '') => {
+  ejecutados++;
   if (!ok) fallos++;
   console.log(`${ok ? 'OK   ' : 'FALLA'} ${n}${d ? ' :: ' + d : ''}`);
 };
@@ -94,6 +96,19 @@ const MOCKUP = await readFile(
   join(RAIZ, 'redesign', 'design_handoff_fierro', 'Pantallas Fierro.dc.html'),
   'utf8'
 );
+/**
+ * El dia de HOY en local, como lo calcula la app.
+ *
+ * La puerta corre con TZ=America/Lima y sembraba los borradores con
+ * `new Date().toISOString().slice(0,10)`: a partir de las 19:00 eso es el dia
+ * de MAÑANA, y el resultado de dos casos pasaba a depender de la hora del
+ * reloj de pared. Una puerta que se salta la regla que ella misma impone es la
+ * que menos derecho tiene a la excepcion.
+ */
+function diaLocal(d = new Date()) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 function datosDelMockup(nombre, ayudas = {}) {
   const i = MOCKUP.indexOf(`const ${nombre} = [`);
   if (i === -1) throw new Error(`El mockup no declara ${nombre}: la puerta no puede comparar contra nada`);
@@ -238,7 +253,7 @@ const CSV_DE_PRUEBA = [
 ].join('\n');
 
 const borradorDePrueba = {
-  date: new Date().toISOString().split('T')[0],
+  date: diaLocal(),
   grupo: 'GRUPO 1 - Piernas + Glúteos',
   ejercicios: [
     { nombre: 'Prensa de Piernas', sets: 4, reps: 12, peso: 120, volumen: 5760, completado: true },
@@ -1799,7 +1814,7 @@ const borradorDePrueba = {
 // --------------------------------------------------------------------------
 {
   const borrador = {
-    date: new Date().toISOString().slice(0, 10),
+    date: diaLocal(),
     grupo: 'GRUPO 1 - Piernas + Glúteos',
     startedAt: new Date(Date.now() - 600000).toISOString(),
     ejercicios: [
@@ -1979,6 +1994,9 @@ const borradorDePrueba = {
     gymmate_prs: {
       'Press Banca': { peso: 60, sets: 3, reps: 8, volumen: 1440, date: '2026-06-12T12:00:00.000Z' },
     },
+    // Y una sesion de CARDIO. Sin ella, borrar entera la seccion de cardio del
+    // exportador dejaba las cuatro puertas en verde, y el chequeo "el toast no
+    // anuncia cardio que no entro" no podia fallar: no habia cardio.
     gymmate_custom_workouts: [
       {
         id: 'propia_1',
@@ -1991,11 +2009,19 @@ const borradorDePrueba = {
     ],
   });
   // Un ejercicio registrado y NO completado (volumen 0): el exportador lo
-  // tiraba, y con el se iba su grupo del reparto por musculo.
+  // tiraba, y con el se iba su grupo del reparto por musculo. Y una sesion de
+  // cardio, que la semilla no tenia.
   await pagina.evaluate(() => {
     const h = JSON.parse(localStorage.getItem('gymmate_history'));
     h[0].ejercicios.push({ nombre: 'Peso Muerto', esMancuerna: false, grupoMuscular: 'Espalda',
       sets: 3, reps: 0, peso: 0, volumen: 0, completado: false });
+    const hoy = new Date();
+    const d = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate() - 7, 18, 0).toISOString();
+    h.push({
+      sessionId: 'cardio_1', date: d, savedAt: d, type: 'cardio', mode: 'tabata',
+      grupo: 'Cardio - TABATA', ejercicios: [], volumenTotal: 0, volumenPorGrupo: {},
+      stats: { totalTime: 240, workTime: 160, restTime: 80, roundsCompleted: 8, calories: 48 },
+    });
     localStorage.setItem('gymmate_history', JSON.stringify(h));
   });
 
@@ -2019,6 +2045,8 @@ const borradorDePrueba = {
   chk('el CSV incluye las RUTINAS PROPIAS', /=== RUTINAS PROPIAS ===/.test(csv), '');
   chk('el CSV no tira los ejercicios sin completar', /Peso Muerto/.test(csv),
     'un set registrado y no completado desaparecia del backup');
+  chk('el CSV incluye las SESIONES DE CARDIO', /=== SESIONES DE CARDIO ===/.test(csv) && /Tabata/.test(csv),
+    'media app son los seis modos de cardio');
 
   // 2) Importarlo de vuelta en una app vacia: tiene que entrar.
   await ctx.close();
@@ -2039,10 +2067,16 @@ const borradorDePrueba = {
       rutinas: JSON.parse(localStorage.getItem('gymmate_custom_workouts') || '[]'),
       medidas: JSON.parse(localStorage.getItem('gymmate_body_measurements') || '[]'),
       gam: JSON.parse(localStorage.getItem('gymmate_gamification') || '{}'),
-      grupos: (JSON.parse(localStorage.getItem('gymmate_history') || '[]')[0] || {}).volumenPorGrupo ?? {},
-      ejercicios: ((JSON.parse(localStorage.getItem('gymmate_history') || '[]')[0] || {}).ejercicios ?? []).map((e) => e.nombre),
+      cardio: JSON.parse(localStorage.getItem('gymmate_history') || '[]')
+        .filter((x) => x.type === 'cardio')
+        .map((x) => ({ modo: x.mode, rondas: x.stats?.roundsCompleted })),
+      grupos: (JSON.parse(localStorage.getItem('gymmate_history') || '[]').find((x) => x.type !== 'cardio') || {}).volumenPorGrupo ?? {},
+      ejercicios: ((JSON.parse(localStorage.getItem('gymmate_history') || '[]').find((x) => x.type !== 'cardio') || {}).ejercicios ?? []).map((e) => e.nombre),
     }));
-    chk('el CSV que exporta la app se puede volver a importar', r.n === 2, `${r.n} sesiones · ${r.toast}`);
+    chk('el CSV que exporta la app se puede volver a importar', r.n === 3, `${r.n} sesiones · ${r.toast}`);
+    chk('restaurar recupera el cardio, con sus rondas',
+      r.cardio.length === 1 && r.cardio[0].rondas === 8 && r.cardio[0].modo === 'tabata',
+      JSON.stringify(r.cardio));
 
     // "Se recupera TODO", una promesa a la vez.
     chk('restaurar recupera el PR de un ejercicio que no esta en el historial',
@@ -2074,14 +2108,27 @@ const borradorDePrueba = {
       `totalXP ${r.gam?.playerStats?.totalXP ?? 'sin estado'}`);
 
     // El toast cuenta lo que ENTRO, no lo que parseo.
-    chk('el toast no anuncia cardio que no entro', !/de cardio/.test(r.detalle), r.detalle);
+    chk('el toast cuenta el cardio que SI entro', /1 de cardio/.test(r.detalle), r.detalle);
   }
   await segunda.ctx.close();
 
   // Importar el MISMO backup encima no debe anunciar nada recuperado.
   // La accion de importar de la home solo existe en el estado vacio (O-01);
   // con historial vive en la cabecera de HISTORIAL.
-  const tercera = await abrir({ gymmate_history: historialDePrueba([1, 4]) });
+  // La MISMA semilla que genero el backup, cardio incluido: si falta, el cardio
+  // entra de verdad y el chequeo comprobaria lo contrario de lo que dice.
+  const hoyT = new Date();
+  const dT = new Date(hoyT.getFullYear(), hoyT.getMonth(), hoyT.getDate() - 7, 18, 0).toISOString();
+  const tercera = await abrir({
+    gymmate_history: [
+      ...historialDePrueba([1, 4]),
+      {
+        sessionId: 'cardio_1', date: dT, savedAt: dT, type: 'cardio', mode: 'tabata',
+        grupo: 'Cardio - TABATA', ejercicios: [], volumenTotal: 0, volumenPorGrupo: {},
+        stats: { totalTime: 240, workTime: 160, restTime: 80, roundsCompleted: 8, calories: 48 },
+      },
+    ],
+  });
   await tercera.pagina.evaluate(() => window.switchTab('history'));
   await tercera.pagina.waitForTimeout(600);
   const dlg3 = tercera.pagina.waitForEvent('filechooser', { timeout: 5000 }).catch(() => null);
@@ -2096,6 +2143,11 @@ const borradorDePrueba = {
     }));
     chk('reimportar el mismo backup dice 0 sesiones', /: 0 sesiones/.test(t.titulo), t.titulo);
     chk('y no se apunta un cardio que no entro', !/de cardio/.test(t.detalle), t.detalle);
+  } else {
+    // Los otros dos usos de filechooser del archivo si llevan este `else`;
+    // este no, y sin el la deduplicacion al reimportar dejaba de comprobarse
+    // en silencio.
+    chk('reimportar · llega el selector de archivo', false, 'no se abrio el filechooser');
   }
   await tercera.ctx.close();
 }
@@ -2791,6 +2843,75 @@ const borradorDePrueba = {
 }
 
 // --------------------------------------------------------------------------
+// 46b. Importar un CSV no puede BAJAR nada de lo que el usuario ya tenia.
+//      `reinitGamification()` rederivaba el estado desde cero: importar UNA
+//      sesion vieja —mas datos, no menos— le quitaba al usuario los bonos de
+//      hito de racha, el escalon real de sus PRs, los ascensos de rango y su
+//      mejor racha. Bajaba de nivel bajo un toast verde, sin vuelta atras.
+// --------------------------------------------------------------------------
+{
+  const { ctx, pagina } = await abrir({ gymmate_history: historialDePrueba([1, 2, 3, 4, 5, 6, 7]) });
+
+  // Estado "ganado en vivo": lo que la migracion NO sabe rederivar.
+  await pagina.evaluate(() => {
+    const g = JSON.parse(localStorage.getItem('gymmate_gamification'));
+    g.playerStats.totalXP += 3000;
+    g.streakData.bestStreak = 31;
+    g.streakData.streakMilestones = [3, 7, 14, 30];
+    const logro = g.achievements.find((a) => !a.unlockedAt);
+    if (logro) logro.unlockedAt = '2026-01-15T12:00:00.000Z';
+    localStorage.setItem('gymmate_gamification', JSON.stringify(g));
+  });
+  const antes = await pagina.evaluate(() => {
+    const g = JSON.parse(localStorage.getItem('gymmate_gamification'));
+    return {
+      xp: g.playerStats.totalXP,
+      nivel: g.playerStats.level,
+      mejor: g.streakData.bestStreak,
+      hitos: g.streakData.streakMilestones,
+      logros: g.achievements.filter((a) => a.unlockedAt).length,
+    };
+  });
+
+  // Y ahora se importa UNA sesion vieja, de un dia que no esta en el historial.
+  const dialogoX = pagina.waitForEvent('filechooser', { timeout: 5000 }).catch(() => null);
+  await pagina.evaluate(() => window.switchTab('history'));
+  await pagina.waitForTimeout(500);
+  await pagina.locator('[data-hueso="importar"]').first().click();
+  const chX = await dialogoX;
+  if (!chX) {
+    chk('importar · llega el selector de archivo', false, 'no se abrio el filechooser');
+  } else {
+    const csvViejo =
+      '=== ENTRENAMIENTOS DE PESAS ===\n' +
+      'Fecha,Grupo,Ejercicio,Sets,Reps,Peso (kg),Es Mancuerna,Grupo Muscular,Volumen,Completado,Volumen Total Sesión\n' +
+      '01/02/2026,GRUPO 1 - Piernas + Glúteos,Prensa de Piernas,4,12,90,No,Piernas,4320,Sí,4320\n';
+    await chX.setFiles({ name: 'viejo.csv', mimeType: 'text/csv', buffer: Buffer.from(csvViejo, 'utf-8') });
+    await pagina.waitForTimeout(1500);
+    const despues = await pagina.evaluate(() => {
+      const g = JSON.parse(localStorage.getItem('gymmate_gamification'));
+      return {
+        xp: g.playerStats.totalXP,
+        nivel: g.playerStats.level,
+        mejor: g.streakData.bestStreak,
+        hitos: g.streakData.streakMilestones,
+        logros: g.achievements.filter((a) => a.unlockedAt).length,
+        sesiones: JSON.parse(localStorage.getItem('gymmate_history')).length,
+      };
+    });
+    chk('importar · la sesion vieja entra de verdad', despues.sesiones === 8, String(despues.sesiones));
+    chk('importar NO baja el XP', despues.xp >= antes.xp, `${antes.xp} -> ${despues.xp}`);
+    chk('importar NO baja el nivel', despues.nivel >= antes.nivel, `${antes.nivel} -> ${despues.nivel}`);
+    chk('importar NO borra la mejor racha', despues.mejor >= antes.mejor, `${antes.mejor} -> ${despues.mejor}`);
+    chk('importar NO borra los hitos de racha cobrados',
+      antes.hitos.every((h) => despues.hitos.includes(h)),
+      `${JSON.stringify(antes.hitos)} -> ${JSON.stringify(despues.hitos)}`);
+    chk('importar NO desconsigue logros', despues.logros >= antes.logros, `${antes.logros} -> ${despues.logros}`);
+  }
+  await ctx.close();
+}
+
+// --------------------------------------------------------------------------
 // 47. Una fecha ilegible en localStorage no puede pintar "Invalid Date" ni
 //     "hace NaN días". Entraban por un CSV editado a mano; el importador ya
 //     las filtra, pero un historial viejo puede traerlas y el rotulo miente.
@@ -2888,6 +3009,19 @@ const borradorDePrueba = {
 clearTimeout(abortar);
 await navegador.close();
 servidor.close();
+// Trinquete de cuenta. tokens tiene el suyo (`rederivados < 40`) y fidelidad
+// dos; esta imprimia "OK" con los chequeos que fuera. Si un boton deja de
+// abrir un selector de archivo o una pantalla deja de pintarse, media docena
+// de casos dejan de ejecutarse y el verde no cambia de color.
+console.log(`\n${ejecutados} chequeos ejecutados`);
+const CHEQUEOS_MINIMO = 300;
+if (ejecutados < CHEQUEOS_MINIMO) {
+  fallos++;
+  console.log(
+    `\nFALLA solo se ejecutaron ${ejecutados} chequeos (minimo ${CHEQUEOS_MINIMO}): ` +
+      'algun caso se salto entero'
+  );
+}
 const costo = Math.round((Date.now() - ARRANQUE) / 1000);
 console.log(`\ncosto ${costo}s de un tope de ${PRESUPUESTO_MS / 1000}s (${Math.round((costo * 100000) / PRESUPUESTO_MS)}% del presupuesto)`);
 console.log(fallos ? `\n${fallos} FALLO(S) DE COMPORTAMIENTO` : '\nOK: sin fallos de comportamiento');

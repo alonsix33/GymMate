@@ -716,12 +716,16 @@ export function renderHistorialDeMedidas(contenedor: HTMLElement): void {
     typeof nuevo.weight === 'number' && typeof viejo.weight === 'number'
       ? Math.round((nuevo.weight - viejo.weight) * 10) / 10
       : null;
-  const meses = Math.max(
-    1,
-    Math.round(
-      (new Date(nuevo.date).getTime() - new Date(viejo.date).getTime()) / (1000 * 60 * 60 * 24 * 30.44)
-    )
-  );
+  // Con una fecha ilegible esto daba NaN, y `Math.max(1, NaN)` sigue siendo
+  // NaN: la pantalla escribia "−1.0 EN NaN MESES" y "PERÍMETROS · CAMBIO NaN
+  // MESES" al lado de las filas que ya decian "—".
+  const desde = fechaLegible(viejo.date);
+  const hasta = fechaLegible(nuevo.date);
+  const meses =
+    desde && hasta
+      ? Math.max(1, Math.round((hasta.getTime() - desde.getTime()) / (1000 * 60 * 60 * 24 * 30.44)))
+      : null;
+  const periodo = meses === null ? SIN_FECHA : `${meses} ${meses === 1 ? 'MES' : 'MESES'}`;
 
   contenedor.innerHTML = `
     <div class="f-hueso f-root">
@@ -737,9 +741,7 @@ export function renderHistorialDeMedidas(contenedor: HTMLElement): void {
                 deltaPeso !== null && deltaPeso !== 0
                   ? ` <span class="f-medidas__delta f-medidas__delta--${
                       deltaPeso < 0 ? 'verde' : 'neutro'
-                    }">${deltaPeso < 0 ? '−' : '+'}${Math.abs(deltaPeso).toFixed(1)} EN ${meses} ${
-                      meses === 1 ? 'MES' : 'MESES'
-                    }</span>`
+                    }">${deltaPeso < 0 ? '−' : '+'}${Math.abs(deltaPeso).toFixed(1)} EN ${periodo}</span>`
                   : ''
               }</span>
           </div>
@@ -785,7 +787,7 @@ export function renderHistorialDeMedidas(contenedor: HTMLElement): void {
           cambios.length > 0
             ? `
         <section class="f-hueso__card">
-          <span class="f-hueso__mes">PERÍMETROS · CAMBIO ${meses} ${meses === 1 ? 'MES' : 'MESES'}</span>
+          <span class="f-hueso__mes">PERÍMETROS · CAMBIO ${periodo}</span>
           ${cambios
             .map(
               (c) => `

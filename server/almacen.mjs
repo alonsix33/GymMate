@@ -3,8 +3,9 @@
  *
  * Dos modos, y el servidor elige solo:
  *
- *   1. Postgres, si Railway inyecta `DATABASE_URL`. Es lo que pasa en cuanto
- *      añades el plugin de Postgres al proyecto: cero configuracion tuya.
+ *   1. Postgres, si hay `DATABASE_URL`. OJO: Railway NO la inyecta sola por
+ *      añadir el plugin. Hay que crear la variable en ESTE servicio con una
+ *      referencia: `DATABASE_URL=${{Postgres.DATABASE_URL}}`.
  *   2. Un fichero JSON en `DATOS_DIR` (por defecto `/data`), si no hay
  *      Postgres. Sirve con un volumen de Railway montado ahi.
  *
@@ -21,13 +22,56 @@ const FICHERO = join(DIR, 'gymmate.json');
 let pg = null;
 let modo = 'efimero';
 
+/**
+ * Si esta conexion necesita TLS o no.
+ *
+ * Forzar SSL contra la red PRIVADA de Railway es un fallo de arranque: el
+ * Postgres interno no negocia TLS y `pg` responde "The server does not
+ * support SSL connections". El servicio no levanta y el healthcheck lo
+ * reinicia en bucle.
+ *
+ * Y tampoco hace falta: `*.railway.internal` no sale del proyecto. TLS es
+ * para lo que cruza internet, que es el caso de `DATABASE_PUBLIC_URL`.
+ */
+export function necesitaTls(url) {
+  let host = '';
+  try {
+    host = new URL(url).hostname;
+  } catch {
+    // Una URL que ni se puede parsear no va a conectar de todos modos; que
+    // falle con el error de conexion de verdad y no con uno de TLS.
+    return false;
+  }
+  if (/(^|\.)railway\.internal$/i.test(host)) return false;
+  if (host === 'localhost' || host === '127.0.0.1' || host === '::1') return false;
+  if (/[?&]sslmode=disable(&|$)/i.test(url)) return false;
+  return true;
+}
+
+/** Un fallo de TLS y no otra cosa: solo entonces vale reintentar sin el. */
+function esFalloDeTls(e) {
+  return /does not support SSL|SSL.*not enabled|no pg_hba.*SSL/i.test(String(e?.message ?? ''));
+}
+
 export async function iniciarAlmacen() {
   if (process.env.DATABASE_URL) {
     const { default: Pg } = await import('pg');
-    pg = new Pg.Pool({
-      connectionString: process.env.DATABASE_URL,
-      ssl: process.env.DATABASE_URL.includes('localhost') ? false : { rejectUnauthorized: false },
-    });
+    const url = process.env.DATABASE_URL;
+    const abrir = (tls) =>
+      new Pg.Pool({ connectionString: url, ssl: tls ? { rejectUnauthorized: false } : false });
+
+    pg = abrir(necesitaTls(url));
+    try {
+      await pg.query('SELECT 1');
+    } catch (e) {
+      // Cinturon y tirantes: si el host no se reconocio pero el servidor
+      // tampoco habla TLS, se reintenta sin el en vez de morir. Solo ante un
+      // fallo de TLS: cualquier otro error tiene que salir a la luz.
+      if (!esFalloDeTls(e)) throw e;
+      console.warn('Postgres no acepta TLS; se reintenta sin él.');
+      await pg.end().catch(() => {});
+      pg = abrir(false);
+    }
     await pg.query(`
       CREATE TABLE IF NOT EXISTS respaldo (
         id          TEXT PRIMARY KEY,

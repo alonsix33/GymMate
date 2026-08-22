@@ -97,15 +97,43 @@ cifra vieja.)*
 Elige una. Si no eliges ninguna, el servicio arranca igual y **lo que guardes se
 borra entero en el siguiente despliegue**.
 
-Ojo con cómo lo compruebas: el servidor **no distingue** un volumen montado en
-`/data` de una carpeta cualquiera. En los dos casos dice
-`"almacenamiento": "fichero"` y avisa de que lo mires. La comprobación fiable es
-verlo en Railway. Con Postgres sí lo sabe: dice `"persistente": true`.
+### Postgres (recomendado)
 
-- **Postgres (recomendado).** Railway → **+ New** → **Database** → **Add
-  PostgreSQL**. Nada más: el plugin inyecta `DATABASE_URL` y el servidor crea
-  su tabla al arrancar.
-- **Volumen.** Railway → tu servicio → **Volumes** → montar en `/data`.
+Dos pasos, y el segundo es el que casi todo el mundo se salta:
+
+1. Railway → **+ New** → **Database** → **Add PostgreSQL**.
+2. Railway → **tu servicio de GymMate** → **Variables** → añade:
+
+```
+DATABASE_URL=${{Postgres.DATABASE_URL}}
+```
+
+**Ese segundo paso hace falta de verdad.** Añadir la base de datos al proyecto
+**no** le da la variable a tu servicio: Railway no comparte variables entre
+servicios solos, hay que referenciarlas. Si el nombre de tu servicio de base de
+datos no es exactamente `Postgres`, usa el que tenga.
+
+Con eso, el servidor crea su tabla al arrancar y no tienes que hacer nada más.
+Ninguna otra variable: ni usuario, ni contraseña, ni host — todo va dentro de
+esa cadena.
+
+Sabes que funcionó porque los logs de arranque dicen:
+
+```
+almacenamiento : postgres
+```
+
+### Volumen (la alternativa)
+
+Railway → tu servicio → **Volumes** → montar en `/data`.
+
+Elige **uno de los dos**, no los dos: si hay `DATABASE_URL`, el servidor ni
+mira el volumen — sería pagar por un disco que nadie toca.
+
+Y prefiere Postgres por una razón concreta: con volumen, `/api/salud` dice
+`"almacenamiento": "fichero"` esté el volumen montado o no, porque crear
+`/data` funciona igual sin él. Con Postgres el servidor sí lo sabe con
+certeza.
 
 ## 4. Conectar la app
 
@@ -179,6 +207,13 @@ nueva. No hay ninguna ventaja que lo justifique hoy.
 
 Todo `/api/*` menos `/api/salud` y ese permiso previo exige
 `Authorization: Bearer <GYMMATE_TOKEN>`.
+
+**Sobre el TLS de Postgres.** Con la URL privada
+(`postgres.railway.internal`) el servidor conecta **sin** TLS a propósito: esa
+red no sale del proyecto y el Postgres interno de Railway no negocia TLS —
+forzarlo daba `The server does not support SSL connections` y el servicio no
+levantaba. Con una URL pública o un proveedor de fuera sí lo usa. No tienes que
+configurar nada; se decide por el host.
 
 **El proveedor es DeepSeek.** `https://api.deepseek.com/chat/completions`, con
 formato de OpenAI. Cambiarlo de proveedor es tocar tres cosas en

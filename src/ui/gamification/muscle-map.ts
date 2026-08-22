@@ -212,23 +212,32 @@ export interface OpcionesMapa {
   alto?: number;
   /** O-01 pinta el cuerpo entero apagado, sin manos ni pies. */
   vacio?: boolean;
+  /** GM-01 dibuja los dos: frente y espalda. */
+  vista?: 'anterior' | 'posterior';
 }
 
 export function renderMapaFierro(
   muscleRanks: MuscleRanks,
   opciones: OpcionesMapa = {}
 ): string {
-  const { ancho = 86, alto = 172, vacio = false } = opciones;
+  const { ancho = 86, alto = 172, vacio = false, vista = 'anterior' } = opciones;
   const grupos: GamificationMuscleGroup[] = [
     'pecho', 'espalda', 'hombros', 'biceps', 'triceps', 'core', 'gluteos', 'piernas',
   ];
+
+  // GM-01 rotula "MAPA MUSCULAR · FRENTE / ESPALDA" y pintaba DOS VECES el
+  // mismo cuerpo frontal: `POSTERIOR_POLYGONS` estaba definido y no lo
+  // renderizaba nadie. Consecuencia: `espalda` y `gluteos` —cuyo `anterior`
+  // esta vacio— no recibian color en NINGUNA pantalla de la app.
+  const deLaVista = vista === 'posterior' ? POSTERIOR_POLYGONS : ANTERIOR_POLYGONS;
 
   const poligonos = grupos
     .map((grupo) => {
       const color = colorDeRango(muscleRanks[grupo]?.rank ?? 'Hierro');
       const mapeo = MUSCLE_GROUP_MAPPING[grupo];
-      return mapeo.anterior
-        .flatMap((clave) => ANTERIOR_POLYGONS[clave] ?? [])
+      const claves = vista === 'posterior' ? mapeo.posterior : mapeo.anterior;
+      return (claves as string[])
+        .flatMap((clave) => (deLaVista as Record<string, string[]>)[clave] ?? [])
         .map((puntos) => `<polygon points="${puntos}" fill="${color}"></polygon>`)
         .join('');
     })
@@ -244,10 +253,10 @@ export function renderMapaFierro(
 
   const neutras =
     (['head', 'neck', 'forearm'] as const)
-      .flatMap((clave) => ANTERIOR_POLYGONS[clave] ?? [])
+      .flatMap((clave) => (deLaVista as Record<string, string[]>)[clave] ?? [])
       .map((puntos) => `<polygon points="${puntos}" fill="${base}"></polygon>`)
       .join('') +
-    (ANTERIOR_POLYGONS.knees ?? [])
+    ((deLaVista as Record<string, string[]>).knees ?? [])
       .map((puntos) => `<polygon points="${puntos}" fill="${articulacion}"></polygon>`)
       .join('');
 

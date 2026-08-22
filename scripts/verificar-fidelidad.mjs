@@ -1396,6 +1396,204 @@ console.log('\n--- Cardio en su pagina real ---');
   await paginaC.close();
 }
 
+// --------------------------------------------------------------------------
+// Fases 7-9 en sus paginas reales: CA, P, GM, B y CO.
+//
+// Esta puerta terminaba en cardio: sus 265 aserciones no tocaban NINGUNA de las
+// doce pantallas de las fases 7-9, que iban a mergearse sin puerta de
+// fidelidad. Las cuatro clases con `width:100%` en content-box —que sacaban
+// scroll horizontal— y las dos con nombre de clase equivocado —CSS que no
+// casaba con nada— no las veia nadie.
+// --------------------------------------------------------------------------
+console.log('\n--- Fases 7-9 en su pagina real ---');
+{
+  const paginaF = await navegador.newPage({ viewport: { width: 390, height: 900 } });
+  const erroresF = [];
+  paginaF.on('pageerror', (e) => erroresF.push(String(e)));
+  await paginaF.addInitScript(() => {
+    const hoy = new Date();
+    const dia = (n) => {
+      const d = new Date(hoy);
+      d.setDate(d.getDate() - n);
+      d.setHours(12, 0, 0, 0);
+      return d.toISOString();
+    };
+    localStorage.setItem(
+      'gymmate_history',
+      JSON.stringify(
+        [0, 3, 6, 9, 12].map((n, i) => ({
+          sessionId: `w${i}`, date: dia(n), savedAt: dia(n), grupo: 'Piernas', type: 'weights',
+          volumenTotal: 8640, volumenPorGrupo: { Piernas: 8640 },
+          ejercicios: [
+            { nombre: 'Prensa de Piernas', sets: 4, reps: 10, peso: 120 + i * 5, volumen: 4800,
+              completado: true, esMancuerna: false, grupoMuscular: 'Piernas' },
+            { nombre: 'Press Banca', sets: 4, reps: 8, peso: 60, volumen: 1920,
+              completado: true, esMancuerna: false, grupoMuscular: 'Pecho' },
+          ],
+        }))
+      )
+    );
+    localStorage.setItem('gymmate_profile', JSON.stringify({
+      name: 'Alonso', birthdate: '1998-03-10', gender: 'male', weight: 75, height: 176, activity: 1.55,
+    }));
+    localStorage.setItem('gymmate_prs', JSON.stringify({
+      'Prensa de Piernas': { peso: 140, sets: 4, reps: 10, volumen: 5600, date: dia(0) },
+      'Press Banca': { peso: 60, sets: 4, reps: 8, volumen: 1920, date: dia(3) },
+    }));
+    localStorage.setItem('gymmate_body_measurements', JSON.stringify(
+      [0, 90, 180].map((n) => {
+        const d = new Date(hoy);
+        d.setDate(d.getDate() - n);
+        return { date: d.toISOString(), weight: 75 + n / 90, neck: 38, chest: 98 - n / 90,
+          waist: 82 + n / 60, hips: 96, armRight: 36 - n / 180, thighRight: 58 - n / 90 };
+      })
+    ));
+  });
+  await paginaF.goto(URL_APP, { waitUntil: 'networkidle', timeout: 60000 });
+  await paginaF.waitForTimeout(1200);
+
+  /** Ninguna pantalla puede sacar scroll horizontal, ni en el documento ni
+   *  dentro de una superposicion con overflow propio. */
+  const medirPantalla = async (nombre, selector) => {
+    const m = await paginaF.evaluate((sel) => {
+      const raiz = sel ? document.querySelector(sel) : document.documentElement;
+      if (!raiz) return null;
+      const anchos = [...document.querySelectorAll(`${sel || 'body'} *`)]
+        .filter((e) => e.getBoundingClientRect().width > 0)
+        .map((e) => +e.getBoundingClientRect().right.toFixed(1));
+      return {
+        scrollW: raiz.scrollWidth,
+        clientW: raiz.clientWidth,
+        maxDerecha: anchos.length ? Math.max(...anchos) : 0,
+      };
+    }, selector);
+    if (!m) return chk(`${nombre} · se encuentra en pantalla`, false, `sin ${selector}`);
+    chk(`${nombre} · no desborda en horizontal`,
+      m.scrollW <= m.clientW, `scrollWidth ${m.scrollW} | clientWidth ${m.clientW}`);
+    chk(`${nombre} · nada se sale del ancho de la pantalla`,
+      m.maxDerecha <= 390.5, `borde derecho maximo ${m.maxDerecha}px`);
+  };
+
+  // --- P-01 ---
+  await paginaF.locator('[data-nav="profile"]').click();
+  await paginaF.waitForTimeout(500);
+  await medirPantalla('P-01', '#profileTab');
+
+  // --- CA-01 y CA-02 ---
+  await paginaF.locator('[data-accion="calculators"], [data-perfil="calculadoras"]').first().click();
+  await paginaF.waitForTimeout(500);
+  await medirPantalla('CA-01', '#calculatorsTab');
+  const ca = await paginaF.evaluate(() => {
+    const cifra = document.querySelector('.f-calc-card__cifra');
+    const unidad = document.querySelector('.f-cifra__unidad');
+    const cs = cifra ? getComputedStyle(cifra) : null;
+    const cu = unidad ? getComputedStyle(unidad) : null;
+    return {
+      peso: cs?.fontWeight, stretch: cs?.fontStretch,
+      unidadPx: cu ? Math.round(parseFloat(cu.fontSize)) : null,
+      unidadColor: cu?.color,
+      fila: document.querySelector('.f-selector-fila')?.getBoundingClientRect().width.toFixed(1),
+    };
+  });
+  // El mockup declara 900/115% en la cifra heroe y 18px/#7E8694 en la unidad.
+  chk('CA-01 · la cifra heroe va a 900', ca.peso === '900', String(ca.peso));
+  chk('CA-01 · y con el stretch del mockup', ca.stretch === '115%', String(ca.stretch));
+  chk('CA-01 · la unidad NO compite con la cifra', ca.unidadPx === 18, `${ca.unidadPx}px | mockup 18`);
+  chk('CA-01 · y va en texto secundario', ca.unidadColor === 'rgb(126, 134, 148)', String(ca.unidadColor));
+  chk('CA-01 · la fila de ejercicio mide lo que el mockup',
+    Math.abs(Number(ca.fila) - 350) < 0.5, `${ca.fila}px | mockup 350`);
+
+  // --- GM-01, GM-02, GM-03 ---
+  await paginaF.evaluate(() => window.showGamificationModal?.());
+  await paginaF.waitForTimeout(600);
+  await medirPantalla('GM-01', '#fierroProgreso');
+  const gm = await paginaF.evaluate(() => {
+    const svgs = [...document.querySelectorAll('#fierroProgreso .f-prog__cuerpos svg')];
+    const poly = svgs.map((s) => s.querySelectorAll('polygon').length);
+    const firmas = svgs.map((s) => [...s.querySelectorAll('polygon')].map((p) => p.getAttribute('points')).join('|'));
+    return {
+      cuerpos: svgs.length,
+      poligonos: poly,
+      sonDistintos: firmas.length === 2 && firmas[0] !== firmas[1],
+      puntosHito: document.querySelectorAll('.f-punto-hito').length,
+    };
+  });
+  chk('GM-01 · dibuja DOS cuerpos', gm.cuerpos === 2, String(gm.cuerpos));
+  // El rotulo dice "FRENTE / ESPALDA": pintar el mismo cuerpo dos veces deja a
+  // espalda y gluteos sin color en toda la app.
+  chk('GM-01 · y el de espalda NO es el mismo que el de frente', gm.sonDistintos,
+    `poligonos ${gm.poligonos.join(' vs ')}`);
+  chk('GM-01 · el hito de racha son puntos, no una cifra', gm.puntosHito > 0, String(gm.puntosHito));
+
+  await paginaF.locator('[data-prog="rango"]').first().click();
+  await paginaF.waitForTimeout(400);
+  await medirPantalla('GM-02', '#fierroProgreso');
+  await paginaF.locator('[data-prog="volver"]').click();
+  await paginaF.waitForTimeout(300);
+  await paginaF.locator('[data-prog="logros"]').click();
+  await paginaF.waitForTimeout(400);
+  await medirPantalla('GM-03', '#fierroProgreso');
+  const gm3 = await paginaF.evaluate(() => {
+    const activo = document.querySelector('.f-filtro--activo');
+    return { fondo: activo ? getComputedStyle(activo).backgroundColor : null };
+  });
+  // Hueso-50, no Fragua: en FIERRO el naranja es el acento, no "seleccionado".
+  chk('GM-03 · el filtro activo no va en Fragua',
+    gm3.fondo === 'rgb(235, 237, 240)', String(gm3.fondo));
+  await paginaF.locator('[data-prog="volver"]').click();
+  await paginaF.waitForTimeout(300);
+  await paginaF.locator('[data-prog="cerrar"]').click();
+  await paginaF.waitForTimeout(300);
+
+  // --- B-01 ---
+  await paginaF.evaluate(() => window.openWorkoutBuilder?.());
+  await paginaF.waitForTimeout(600);
+  await medirPantalla('B-01', '#fierroBuilder');
+  const b01 = await paginaF.evaluate(() => ({
+    fila: document.querySelector('.f-fila-ej')?.getBoundingClientRect().width.toFixed(1),
+    crear: document.querySelector('.f-builder__crear-abrir')?.getBoundingClientRect().width.toFixed(1),
+  }));
+  chk('B-01 · la fila de ejercicio mide lo que el mockup',
+    Math.abs(Number(b01.fila) - 350) < 0.5, `${b01.fila}px | mockup 350`);
+  chk('B-01 · y el boton de crear ejercicio propio tambien',
+    Math.abs(Number(b01.crear) - 350) < 0.5, `${b01.crear}px | mockup 350`);
+  await paginaF.locator('[data-builder="cerrar"]').click();
+  await paginaF.waitForTimeout(300);
+
+  // --- CO-01 ---
+  await paginaF.locator('[data-nav="home"]').click();
+  await paginaF.waitForTimeout(400);
+  await paginaF.locator('[data-accion="coach"]').click();
+  await paginaF.waitForTimeout(500);
+  await paginaF.fill('#coachEntrada', '¿Por qué no progreso en Press Banca?');
+  await paginaF.locator('[data-coach="enviar"]').click();
+  await paginaF.waitForTimeout(5000);
+  await medirPantalla('CO-01', '#fierroCoach');
+  const co = await paginaF.evaluate(() => {
+    const pista = document.querySelector('#fierroCoach .f-zonas__pista');
+    const tramos = [...document.querySelectorAll('#fierroCoach .f-zonas__pista > div:not(.f-zonas__marcador)')];
+    const marca = document.querySelector('#fierroCoach .f-zonas__marcador');
+    return {
+      hayPista: !!pista,
+      altoTramos: tramos.map((t) => +t.getBoundingClientRect().height.toFixed(1)),
+      anchoMarca: marca ? +marca.getBoundingClientRect().width.toFixed(1) : 0,
+      colorMarca: marca ? getComputedStyle(marca).backgroundColor : null,
+    };
+  });
+  // La barra de zonas del coach tenia clases que NO existian en el CSS: los
+  // tres tramos median 0px de alto y el marcador 0x0.
+  chk('CO-01 · el componente de datos dibuja su barra de zonas', co.hayPista);
+  chk('CO-01 · y los tres tramos tienen alto', co.altoTramos.length === 3 && co.altoTramos.every((h) => h > 0),
+    co.altoTramos.join(','));
+  chk('CO-01 · el marcador es visible y claro sobre Carbon',
+    co.anchoMarca > 1 && co.colorMarca === 'rgb(235, 237, 240)',
+    `${co.anchoMarca}px ${co.colorMarca}`);
+
+  chk('fases 7-9 · ninguna pantalla deja errores en consola', erroresF.length === 0,
+    erroresF.slice(0, 2).join(' | '));
+  await paginaF.close();
+}
+
 await navegador.close();
 servidor.close();
 console.log(fallos ? `\n${fallos} FALLO(S) DE FIDELIDAD` : '\nOK: la app coincide con el mockup en todo lo comprobado');

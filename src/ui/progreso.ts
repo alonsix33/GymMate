@@ -167,8 +167,8 @@ function vistaProgreso(): string {
     <section class="f-prog__mapa">
       <span class="f-prog__label">MAPA MUSCULAR · FRENTE / ESPALDA</span>
       <div class="f-prog__cuerpos">
-        ${renderMapaFierro(ranks, { ancho: 86, alto: 172 })}
-        ${renderMapaFierro(ranks, { ancho: 86, alto: 172 })}
+        ${renderMapaFierro(ranks, { ancho: 120, alto: 240, vista: 'anterior' })}
+        ${renderMapaFierro(ranks, { ancho: 120, alto: 240, vista: 'posterior' })}
       </div>
       <div class="f-prog__rangos">
         ${ordenados(ranks)
@@ -227,7 +227,12 @@ function vistaProgreso(): string {
             : `te faltan ${siguienteHito - racha.current} días`
         }</span>
       </span>
-      <span class="f-prog__hito-cifra">${racha.current}</span>
+      <span class="f-prog__hito-puntos" aria-label="${racha.current} de ${siguienteHito} días">
+        ${Array.from(
+          { length: siguienteHito },
+          (_, i) => `<span class="f-punto-hito${i < racha.current ? ' f-punto-hito--hecho' : ''}"></span>`
+        ).join('')}
+      </span>
     </div>`
     }
   `;

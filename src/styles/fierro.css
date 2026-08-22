@@ -159,7 +159,8 @@ table {
 }
 
 /* La unidad (kg, reps) nunca compite con la cifra. */
-.f-unidad {
+.f-unidad,
+.f-cifra__unidad {
   font-stretch: var(--stretch-100);
   font-weight: var(--cifra-unit-weight);
   font-size: var(--f-unidad, var(--cifra-unit-size-m));
@@ -1196,6 +1197,14 @@ table {
 .f-hueso__header,
 .f-hueso__nota,
 .f-graf,
+/* Fases 7-9: `width:100%` en content-box suma el padding y el borde POR FUERA,
+   asi que estas tres salian a 380-384px donde el mockup dice 350 y sacaban
+   scroll horizontal. En GM-02 el desborde quedaba DENTRO de `.f-prog`
+   (overflow-y:auto), invisible para cualquier chequeo que mire solo el
+   documento. */
+.f-selector-fila,
+.f-fila-ej,
+.f-builder__crear-abrir,
 .f-segmentado,
 .f-vacio-hueso,
 .f-sesion,
@@ -2478,6 +2487,12 @@ body:has(#chartsTab:not(.hidden)) {
   background: var(--zona-verde-fill);
   border-bottom-color: var(--zona-verde);
   border-radius: var(--r-2) var(--r-5) var(--r-5) var(--r-2);
+}
+/* README §5: el marcador va "claro en fondo oscuro, #16181C en Hueso". La
+   barra nacio en PR-01 (Hueso) y el coach la reusa sobre Carbon, donde el
+   marcador oscuro desaparecia contra el fondo. */
+.f-zonas--coach .f-zonas__marcador {
+  background: var(--text-primary);
 }
 .f-zonas__marcador {
   position: absolute;
@@ -3784,7 +3799,11 @@ body:has(#chartsTab:not(.hidden)) {
   letter-spacing: var(--label-tracking);
   color: var(--text-secondary);
 }
+/* Las cifras heroe de CA-01 y CA-02: el mockup las declara 900/115%, no el
+   800/110% del token generico. Los tokens ya existian y no los usaba nadie. */
 .f-calc-card__cifra {
+  font-weight: var(--cifra-weight-hero);
+  font-stretch: var(--stretch-cifra-alt);
   --f-cifra: var(--fs-44);
   --f-unidad: var(--fs-18);
 }
@@ -4548,12 +4567,23 @@ body:has(#medidasTab:not(.hidden)) {
   font-size: var(--fs-11_5);
   color: var(--text-disabled);
 }
-.f-prog__hito-cifra {
-  font-family: var(--font-display);
-  font-stretch: var(--stretch-112);
-  font-weight: var(--w-900);
-  font-size: var(--fs-24);
-  color: var(--accent);
+/* El mockup no pinta la cifra de racha: pinta un punto por dia del hito, los
+   cumplidos en Fragua y los pendientes con borde. [REF Pantallas:1116-1120] */
+.f-prog__hito-puntos {
+  display: flex;
+  gap: 4px;
+  flex: none;
+}
+.f-punto-hito {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 1.5px solid var(--border-secondary-btn);
+  box-sizing: border-box;
+}
+.f-punto-hito--hecho {
+  background: var(--accent);
+  border-color: var(--accent);
 }
 
 /* GM-02 · escalera */
@@ -4651,11 +4681,12 @@ body:has(#medidasTab:not(.hidden)) {
 .f-logro-barra {
   display: flex;
   gap: 2px;
+  height: 8px;
+  border-radius: var(--r-4);
+  overflow: hidden;
 }
 .f-logro-seg {
   flex: 1;
-  height: 6px;
-  border-radius: var(--r-2);
   background: var(--border-subtle);
 }
 .f-logro-seg--hecho {
@@ -4678,10 +4709,12 @@ body:has(#medidasTab:not(.hidden)) {
   color: var(--text-secondary);
   cursor: pointer;
 }
+/* Hueso-50, no Fragua: el mockup usa el mismo tratamiento que el segmentado de
+   CA-01, y en FIERRO el naranja es el acento, no el "seleccionado". */
 .f-filtro--activo {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: var(--on-fragua);
+  background: var(--text-primary);
+  border-color: var(--text-primary);
+  color: var(--bg-app);
 }
 .f-logro-bloque {
   display: flex;
@@ -4739,11 +4772,13 @@ body:has(#medidasTab:not(.hidden)) {
 .f-logro--hecho .f-logro__nombre {
   flex: 1;
 }
+/* Fragua, no `--zona-verde`: las Zonas son semanticas (rojo/ambar/verde miden
+   distancia al pico) y el README prohibe usarlas de decoracion. */
 .f-logro__check {
-  width: 18px;
-  height: 18px;
+  width: 22px;
+  height: 22px;
   border-radius: 50%;
-  background: var(--zona-verde);
+  background: var(--accent);
   color: var(--on-fragua);
   font-size: var(--fs-11);
   font-weight: var(--w-800);
@@ -4758,7 +4793,8 @@ body:has(#medidasTab:not(.hidden)) {
   color: var(--text-disabled);
 }
 .f-logro--bloqueado {
-  opacity: 0.72;
+  border-style: dashed;
+  border-color: var(--border-card-active);
 }
 .f-logro__textos {
   flex: 1;
@@ -5197,6 +5233,32 @@ body:has(#medidasTab:not(.hidden)) {
 .f-descanso-op__label {
   font-size: var(--fs-10_5);
   color: var(--text-secondary);
+}
+
+/* Controles nativos. El reset de la seccion 00 no los tocaba, y al irse el
+   preflight de Tailwind volvieron los spinners de `input[type=number]`, el
+   icono de calendario de `input[type=date]` y el chevron de `select` — que
+   ademas los deja 2px mas altos que sus hermanos. El handoff dibuja el chevron
+   como texto (`▾`), no como control del sistema. */
+.f-campo__caja,
+.f-graf__selector {
+  appearance: none;
+  -webkit-appearance: none;
+}
+.f-campo__caja[type='date'] {
+  -webkit-appearance: none;
+}
+.f-campo__caja::-webkit-outer-spin-button,
+.f-campo__caja::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.f-campo__caja[type='number'] {
+  -moz-appearance: textfield;
+}
+.f-campo__caja::-webkit-calendar-picker-indicator {
+  filter: invert(1) opacity(0.45);
+  cursor: pointer;
 }
 
 /* --------------------------------------------------------------------------

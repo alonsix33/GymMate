@@ -80,11 +80,13 @@ function bloqueDeDatos(d: DatoDeEjercicio): string {
         <span class="f-coach__dato-label">${escapar(d.ejercicio.toUpperCase())} · 1RM EST.</span>
         <span class="f-coach__dato-cifra">${cifra(d.unaRepMax)} <span class="f-coach__dato-unidad">kg</span></span>
       </div>
-      <div class="f-zonas">
-        <div class="f-zonas__tramo f-zonas__tramo--roja"></div>
-        <div class="f-zonas__tramo f-zonas__tramo--ambar"></div>
-        <div class="f-zonas__tramo f-zonas__tramo--verde"></div>
-        <div class="f-zonas__marcador" data-zona="${(d.posicion / 100).toFixed(4)}"></div>
+      <div class="f-zonas f-zonas--coach">
+        <div class="f-zonas__pista">
+          <div class="f-zonas__roja"></div>
+          <div class="f-zonas__ambar"></div>
+          <div class="f-zonas__verde"></div>
+          <div class="f-zonas__marcador" data-zona="${(d.posicion / 100).toFixed(4)}"></div>
+        </div>
       </div>
       <div class="f-coach__dato-pie">
         <span>${

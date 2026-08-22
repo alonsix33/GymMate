@@ -23,7 +23,7 @@ import { readFile, stat } from 'node:fs/promises';
 import { join, extname, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { iniciarAlmacen, modoAlmacen, leer, guardar } from './almacen.mjs';
-import { responderCoach } from './coach.mjs';
+import { responderCoach, claveDelModelo } from './coach.mjs';
 
 const RAIZ = join(fileURLToPath(new URL('.', import.meta.url)), '..');
 const DIST = join(RAIZ, 'dist');
@@ -246,7 +246,7 @@ const servidor = createServer(async (req, res) => {
       // `fichero` NO garantiza persistencia: puede ser un volumen o puede ser
       // el disco efimero del contenedor, y desde aqui no se distinguen.
       persistente: modoAlmacen() === 'postgres',
-      coach: Boolean(process.env.ANTHROPIC_API_KEY),
+      coach: Boolean(claveDelModelo()),
       protegido: Boolean(TOKEN),
       // Se dice en voz alta lo que falta, en vez de fingir que todo esta bien.
       avisos: [
@@ -266,7 +266,8 @@ const servidor = createServer(async (req, res) => {
         modoAlmacen() === 'fichero' &&
           'Copia en fichero: comprueba en Railway que haya un volumen montado en /data. ' +
             'Sin volumen ni Postgres, se borra en el próximo despliegue.',
-        !process.env.ANTHROPIC_API_KEY && 'Falta ANTHROPIC_API_KEY: el coach responde en local.',
+        !claveDelModelo() &&
+          'Falta la clave del modelo (ANTHROPIC_API_KEY o COACH_API_KEY): el coach responde en local.',
       ].filter(Boolean),
     });
   }
@@ -329,7 +330,9 @@ const modo = await iniciarAlmacen();
 servidor.listen(PUERTO, '0.0.0.0', () => {
   console.log(`GymMate escuchando en :${PUERTO}`);
   console.log(`  almacenamiento : ${modo}${modo === 'efimero' ? '  ← SE BORRA en cada despliegue' : ''}`);
-  console.log(`  coach          : ${process.env.ANTHROPIC_API_KEY ? 'con modelo' : 'sin clave (responde en local)'}`);
+  console.log(
+    `  coach          : ${claveDelModelo() ? `con modelo (${process.env.COACH_MODELO || 'deepseek-v4-flash'})` : 'sin clave (responde en local)'}`
+  );
   console.log(`  API protegida  : ${TOKEN ? 'sí' : 'NO — falta GYMMATE_TOKEN'}`);
   console.log(`  origenes CORS  : ${ORIGENES.length ? ORIGENES.join(', ') : 'ninguno (solo mismo origen)'}`);
 });

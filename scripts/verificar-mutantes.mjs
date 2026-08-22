@@ -106,6 +106,46 @@ const MUTANTES = [
     minimo: 1,
   },
   {
+    nombre: 'el parser lee el formato de Anthropic',
+    porque: 'DeepSeek manda `choices[0].delta.content`. Con el parser viejo el coach responderia SIEMPRE en blanco, sin ningun error.',
+    archivo: 'server/coach.mjs',
+    de: '          const trozo = ev.choices?.[0]?.delta?.content;',
+    a: '          const trozo = ev.delta?.text;',
+    minimo: 1,
+  },
+  {
+    nombre: 'vuelve el `cache_control` de Anthropic',
+    porque: 'DeepSeek no conoce ese campo. En el mejor caso lo ignora; en el peor devuelve 400 y el coach no contesta.',
+    archivo: 'server/coach.mjs',
+    de: "      { role: 'user', content: textoDeContexto(contexto) },",
+    a: "      { role: 'user', content: textoDeContexto(contexto), cache_control: { type: 'ephemeral' } },",
+    minimo: 1,
+  },
+  {
+    nombre: 'el modo pensante se queda encendido',
+    porque: 'En DeepSeek viene encendido por defecto. Para tres frases sobre numeros ya calculados es pagar y esperar por nada.',
+    archivo: 'server/coach.mjs',
+    de: "        thinking: { type: 'disabled' },",
+    a: "        thinking: { type: 'enabled' },",
+    minimo: 1,
+  },
+  {
+    nombre: 'el prompt de sistema deja de ir primero',
+    porque: 'La cache de prefijo de DeepSeek cuenta desde el primer byte: moverlo la invalida entera y no hay ninguna señal.',
+    archivo: 'server/coach.mjs',
+    de: "  return [{ role: 'system', content: SISTEMA }, ...mensajes];",
+    a: "  return [...mensajes, { role: 'system', content: SISTEMA }];",
+    minimo: 1,
+  },
+  {
+    nombre: 'el razonamiento se pinta como si fuera la respuesta',
+    porque: 'Es el borrador del modelo, no lo que le contesta a Alonso.',
+    archivo: 'server/coach.mjs',
+    de: '          const trozo = ev.choices?.[0]?.delta?.content;',
+    a: '          const trozo = ev.choices?.[0]?.delta?.content ?? ev.choices?.[0]?.delta?.reasoning_content;',
+    minimo: 1,
+  },
+  {
     nombre: 'el aviso de /api/salud vuelve a decir lo contrario',
     porque: 'Un rotulo que miente sobre el riesgo hace tomar la decision al reves.',
     archivo: 'server/index.mjs',
@@ -150,7 +190,7 @@ for (const m of MUTANTES) {
 }
 
 // Que la lista no se vacie por el mismo camino que este script vino a cerrar.
-const MUTANTES_MINIMO = 10;
+const MUTANTES_MINIMO = 15;
 if (MUTANTES.length < MUTANTES_MINIMO) {
   fallos++;
   console.log(`\nFALLA solo hay ${MUTANTES.length} mutantes (minimo ${MUTANTES_MINIMO}).`);

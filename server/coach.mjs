@@ -1,7 +1,7 @@
 /**
- * El coach, del lado del servidor.
+ * El coach, del lado del servidor. Habla con DeepSeek.
  *
- * Aqui esta la clave de Anthropic y aqui se queda: si el navegador hablara
+ * Aqui esta la clave del modelo y aqui se queda: si el navegador hablara
  * directo con la API, la clave viajaria en el bundle y cualquiera con las
  * herramientas de desarrollo se la lleva.
  *
@@ -10,12 +10,31 @@
  * en tu telefono y llegan aqui ya hechos, dentro de `datos`. El modelo solo
  * los EXPLICA. Si se inventa una cifra, la tarjeta de datos que se pinta al
  * lado sigue diciendo la verdad.
+ *
+ * Sobre la cache: DeepSeek NO tiene un campo como `cache_control`. Su cache de
+ * prefijo esta encendida siempre y funciona sola, con dos condiciones que este
+ * codigo ya cumple: lo estable va PRIMERO —el panorama y la bitacora— y lo que
+ * cambia en cada pregunta va al final. Un solo byte distinto al principio y no
+ * hay acierto. Confirmado en su documentacion: acierto $0,007-0,014 por millon
+ * contra $0,22-0,44 de fallo, y dura horas o dias en vez de una hora.
  */
-const MODELO = process.env.COACH_MODELO || 'claude-sonnet-5';
+const MODELO = process.env.COACH_MODELO || 'deepseek-v4-flash';
 const MAX_TOKENS = Number(process.env.COACH_MAX_TOKENS) || 700;
 
 /**
- * A donde se pregunta. Solo se cambia para PROBAR el camino de streaming.
+ * La clave del modelo.
+ *
+ * Se sigue leyendo `ANTHROPIC_API_KEY` porque es la variable que ya esta
+ * configurada en Railway y cambiarla obligaria a tocar el servicio. El nombre
+ * miente sobre el proveedor, asi que tambien se acepta `COACH_API_KEY`, que
+ * es el que deberia usarse de aqui en adelante. La que este puesta vale.
+ */
+export function claveDelModelo() {
+  return process.env.COACH_API_KEY || process.env.ANTHROPIC_API_KEY || '';
+}
+
+/**
+ * A donde se pregunta. Se cambia para PROBAR el camino de streaming.
  *
  * La puerta comprobaba que la respuesta del coach conservara las cabeceras
  * CORS, pero sin clave el servidor responde 503 y sale antes de llegar al
@@ -23,7 +42,7 @@ const MAX_TOKENS = Number(process.env.COACH_MAX_TOKENS) || 700;
  * camino que decia cubrir. Con esto la puerta levanta un upstream de mentira
  * y lo recorre de verdad.
  */
-const UPSTREAM = process.env.COACH_URL || 'https://api.anthropic.com/v1/messages';
+const UPSTREAM = process.env.COACH_URL || 'https://api.deepseek.com/chat/completions';
 
 export const SISTEMA = `Eres el coach de GymMate, una app de gimnasio de una sola persona.
 
@@ -127,6 +146,9 @@ function textoDeContexto(c) {
  */
 export function armarMensajes(cuerpo) {
   const pregunta = String(cuerpo?.pregunta ?? '').slice(0, 2000);
+  // El prompt de sistema va como PRIMER mensaje, no en un campo aparte: es el
+  // formato de OpenAI, que es el que habla DeepSeek. Y va delante de todo
+  // porque la cache de prefijo empieza a contar desde el primer byte.
   const historial = Array.isArray(cuerpo?.historial) ? cuerpo.historial.slice(-12) : [];
   const datos = cuerpo?.datos ?? null;
   const contexto = cuerpo?.contexto ?? null;
@@ -136,21 +158,13 @@ export function armarMensajes(cuerpo) {
     .map((t) => ({ role: t.autor === 'usuario' ? 'user' : 'assistant', content: t.texto.slice(0, 4000) }));
 
   if (contexto) {
+    // Texto plano, no una lista de bloques: DeepSeek habla el formato de
+    // OpenAI, donde `content` es una cadena. Y sin `cache_control`, que es un
+    // campo de Anthropic: aqui la cache de prefijo va sola y lo unico que
+    // pide es que esto siga siendo el PRIMER mensaje y no cambie entre
+    // preguntas.
     mensajes.unshift(
-      {
-        role: 'user',
-        content: [
-          {
-            type: 'text',
-            text: textoDeContexto(contexto),
-            // Una hora, no los 5 minutos por defecto: una sesion de gimnasio
-            // dura mas que eso y las preguntas se reparten por el medio. La
-            // escritura cuesta 2x en vez de 1,25x, pero con una sola pregunta
-            // extra fuera de los 5 minutos ya sale a cuenta.
-            cache_control: { type: 'ephemeral', ttl: '1h' },
-          },
-        ],
-      },
+      { role: 'user', content: textoDeContexto(contexto) },
       { role: 'assistant', content: 'Tengo tu historial. Dime qué quieres saber.' }
     );
   }
@@ -159,15 +173,15 @@ export function armarMensajes(cuerpo) {
     ? `\n\nDATOS DE ESTE EJERCICIO (los mismos que la tarjeta que se pinta al lado):\n${JSON.stringify(datos)}`
     : '';
   mensajes.push({ role: 'user', content: pregunta + bloqueDatos });
-  return mensajes;
+  return [{ role: 'system', content: SISTEMA }, ...mensajes];
 }
 
 export async function responderCoach(req, res, cuerpo) {
-  const clave = process.env.ANTHROPIC_API_KEY;
+  const clave = claveDelModelo();
   if (!clave) {
     res.writeHead(503, { 'Content-Type': 'application/json' });
     return res.end(
-      JSON.stringify({ error: 'Falta ANTHROPIC_API_KEY en las variables del servicio' })
+      JSON.stringify({ error: 'Falta la clave del modelo (ANTHROPIC_API_KEY o COACH_API_KEY)' })
     );
   }
 
@@ -185,14 +199,17 @@ export async function responderCoach(req, res, cuerpo) {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
-        'x-api-key': clave,
-        'anthropic-version': '2023-06-01',
+        authorization: `Bearer ${clave}`,
       },
       body: JSON.stringify({
         model: MODELO,
         max_tokens: MAX_TOKENS,
-        system: SISTEMA,
         messages: mensajes,
+        // Sin razonamiento: el coach da respuestas de tres frases sobre
+        // numeros que ya vienen calculados. Pensar aqui es pagar y esperar
+        // por nada. En DeepSeek el modo pensante viene ENCENDIDO por defecto,
+        // asi que hay que apagarlo a mano.
+        thinking: { type: 'disabled' },
         stream: true,
       }),
     });
@@ -227,11 +244,17 @@ export async function responderCoach(req, res, cuerpo) {
       resto = lineas.pop() ?? '';
       for (const linea of lineas) {
         if (!linea.startsWith('data:')) continue;
+        const carga = linea.slice(5).trim();
+        // DeepSeek cierra con `data: [DONE]`, que no es JSON.
+        if (carga === '[DONE]') continue;
         try {
-          const ev = JSON.parse(linea.slice(5).trim());
-          if (ev.type === 'content_block_delta' && ev.delta?.type === 'text_delta') {
-            res.write(ev.delta.text);
-          }
+          const ev = JSON.parse(carga);
+          // Formato de OpenAI: el texto va en `choices[0].delta.content`.
+          // `reasoning_content` se ignora a proposito: con el modo pensante
+          // apagado no deberia venir, y si viniera es el borrador del modelo,
+          // no su respuesta.
+          const trozo = ev.choices?.[0]?.delta?.content;
+          if (typeof trozo === 'string' && trozo) res.write(trozo);
         } catch {
           // Un evento partido a la mitad se recompone en la vuelta siguiente.
         }

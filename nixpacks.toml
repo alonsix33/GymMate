@@ -1,0 +1,30 @@
+# Como se construye en Railway.
+#
+# Existe por un fallo concreto del primer despliegue: el comando de build
+# corria `npm ci` una SEGUNDA vez, despues del `npm ci` que Nixpacks ya hace en
+# su fase de instalacion. El segundo intenta borrar `node_modules` entero y
+# choca con la capa de cache de Docker:
+#
+#   npm error code EBUSY
+#   npm error syscall rmdir
+#   npm error path /app/node_modules/.cache
+#
+# La solucion no es reintentar: es instalar UNA vez. Aqui se sobreescribe la
+# fase de instalacion —para que incluya las devDependencies— y el build se
+# queda con lo suyo.
+
+[phases.install]
+# `--include=dev` a proposito: `vite` y `tsc` son devDependencies. Si el
+# entorno trae NODE_ENV=production, un `npm ci` normal las omite y el build
+# muere buscando `vite`.
+cmds = ['npm ci --include=dev']
+
+[phases.build]
+cmds = ['npm run build']
+
+[variables]
+# Redundante con `--include=dev`, pero npm mira las dos y cuesta cero.
+NPM_CONFIG_PRODUCTION = 'false'
+# `playwright` es devDependency y su postinstall se baja un navegador de unos
+# 150 MB que aqui no usa nadie: las pruebas no corren en el despliegue.
+PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD = '1'

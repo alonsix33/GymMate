@@ -44,24 +44,39 @@ const CHARLA = [
 ];
 afterEach(() => vi.useRealTimers());
 
+/** El prefijo que la cache de DeepSeek tiene que reconocer: todo menos la
+ *  pregunta, que cambia siempre y va al final a proposito. */
+const prefijo = (m) => JSON.stringify(m.slice(0, -1));
+
 const pedir = (extra = {}) =>
   armarMensajes({ pregunta: '¿como voy?', contexto: CONTEXTO, historial: CHARLA, ...extra });
 
 describe('armarMensajes — donde cae el punto de cache', () => {
-  it('pone el contexto en el PRIMER mensaje, no detras de la pregunta', () => {
+  it('el prompt de sistema abre la lista: la cache cuenta desde el primer byte', () => {
     const m = pedir();
-    expect(m[0].role).toBe('user');
-    expect(Array.isArray(m[0].content)).toBe(true);
-    expect(m[0].content[0].text).toContain('PANORAMA');
+    expect(m[0].role).toBe('system');
+    expect(m[0].content).toBe(SISTEMA);
   });
 
-  it('marca ese bloque como cacheable, y con una hora de vida', () => {
-    // Los 5 minutos por defecto no cubren una sesion de gimnasio: la segunda
-    // pregunta caeria fuera y se pagaria el año entero otra vez.
-    expect(pedir()[0].content[0].cache_control).toEqual({ type: 'ephemeral', ttl: '1h' });
+  it('el contexto va justo detras, no detras de la pregunta', () => {
+    const m = pedir();
+    expect(m[1].role).toBe('user');
+    expect(m[1].content).toContain('PANORAMA');
   });
 
-  it('deja la pregunta al FINAL, detras del corte', () => {
+  it('el contenido es una CADENA, no una lista de bloques', () => {
+    // DeepSeek habla el formato de OpenAI. Mandarle la lista de bloques de
+    // Anthropic —o un `cache_control`— es un 400 o un campo que se ignora.
+    for (const t of pedir()) expect(typeof t.content).toBe('string');
+  });
+
+  it('no queda ni rastro de `cache_control`, que es de Anthropic', () => {
+    // En DeepSeek la cache de prefijo va sola: lo unico que la enciende es
+    // que lo estable vaya delante y no cambie. No hay campo que poner.
+    expect(JSON.stringify(pedir())).not.toContain('cache_control');
+  });
+
+  it('deja la pregunta al FINAL, detras del prefijo estable', () => {
     const m = pedir();
     expect(m[m.length - 1].role).toBe('user');
     expect(m[m.length - 1].content).toContain('¿como voy?');
@@ -72,7 +87,7 @@ describe('armarMensajes — donde cae el punto de cache', () => {
     // entera en cada pregunta y el ahorro seria cero, sin ninguna señal.
     const a = armarMensajes({ pregunta: 'primera', contexto: CONTEXTO });
     const b = armarMensajes({ pregunta: 'otra distinta', contexto: CONTEXTO });
-    expect(a[0].content[0].text).toBe(b[0].content[0].text);
+    expect(prefijo(a)).toBe(prefijo(b));
   });
 
   it('y sigue identico media hora despues, que es cuando de verdad importa', () => {
@@ -86,24 +101,26 @@ describe('armarMensajes — donde cae el punto de cache', () => {
     const a = armarMensajes({ pregunta: 'primera', contexto: CONTEXTO });
     vi.advanceTimersByTime(30 * 60 * 1000);
     const b = armarMensajes({ pregunta: 'segunda', contexto: CONTEXTO });
-    expect(a[0].content[0].text).toBe(b[0].content[0].text);
+    expect(prefijo(a)).toBe(prefijo(b));
   });
 
   it('la conversacion previa va entre el contexto y la pregunta', () => {
     const m = pedir();
-    const textos = m.map((t) => (typeof t.content === 'string' ? t.content : t.content[0].text));
-    expect(textos.findIndex((t) => t.includes('PANORAMA'))).toBe(0);
+    const textos = m.map((t) => t.content);
+    // Se busca una frase que SOLO esta en el bloque de contexto: el prompt de
+    // sistema tambien nombra PANORAMA, y el indice encontraba ese primero.
+    expect(textos.findIndex((t) => t.includes('Este es el historial completo'))).toBe(1);
     expect(textos.indexOf('hola')).toBeGreaterThan(0);
     expect(textos.findIndex((t) => t.includes('¿como voy?'))).toBe(m.length - 1);
   });
 
   it('no deja dos turnos de usuario pegados al inicio', () => {
-    expect(pedir()[1].role).toBe('assistant');
+    expect(pedir()[2].role).toBe('assistant');
   });
 });
 
 describe('armarMensajes — que ve el modelo', () => {
-  const texto = () => pedir()[0].content[0].text;
+  const texto = () => pedir()[1].content;
 
   it('la fila del panorama viaja ENTERA, con todos sus campos', () => {
     // Antes se afirmaba solo el prefijo, asi que se podian borrar zona,
@@ -136,8 +153,8 @@ describe('armarMensajes — que ve el modelo', () => {
         panorama: [{ ...CONTEXTO.panorama[0], ejercicio: 'Gemelos', estimable: false, unaRepMax: 33 }],
       },
     });
-    expect(m[0].content[0].text).toContain('1RM no estimable');
-    expect(m[0].content[0].text).not.toContain('33');
+    expect(m[1].content).toContain('1RM no estimable');
+    expect(m[1].content).not.toContain('33');
   });
 
   it('el resumen lleva racha, volumen y peso corporal', () => {
@@ -218,8 +235,9 @@ describe('armarMensajes — forma inesperada del contexto', () => {
 describe('armarMensajes — casos vacios', () => {
   it('sin contexto no inventa un bloque vacio', () => {
     const m = armarMensajes({ pregunta: 'hola' });
-    expect(m).toHaveLength(1);
-    expect(m[0].content).toBe('hola');
+    expect(m).toHaveLength(2);
+    expect(m[0].role).toBe('system');
+    expect(m[1].content).toBe('hola');
   });
 
   it('un panorama vacio lo dice, en vez de dejar una lista en blanco', () => {
@@ -227,12 +245,12 @@ describe('armarMensajes — casos vacios', () => {
       pregunta: 'hola',
       contexto: { ...CONTEXTO, panorama: [] },
     });
-    expect(m[0].content[0].text).toContain('ningun ejercicio');
+    expect(m[1].content).toContain('ningun ejercicio');
   });
 
   it('una bitacora vacia tambien', () => {
     const m = armarMensajes({ pregunta: 'hola', contexto: { ...CONTEXTO, bitacora: '' } });
-    expect(m[0].content[0].text).toContain('(vacia)');
+    expect(m[1].content).toContain('(vacia)');
   });
 
   it('sin peso corporal no escribe "null"', () => {
@@ -240,8 +258,8 @@ describe('armarMensajes — casos vacios', () => {
       pregunta: 'hola',
       contexto: { ...CONTEXTO, resumen: { ...CONTEXTO.resumen, pesoCorporal: null, grasaCorporal: null } },
     });
-    expect(m[0].content[0].text).toContain('peso corporal: sin registrar');
-    expect(m[0].content[0].text).not.toContain('null');
+    expect(m[1].content).toContain('peso corporal: sin registrar');
+    expect(m[1].content).not.toContain('null');
   });
 
   it('descarta turnos con forma rara en vez de mandarlos', () => {
@@ -249,7 +267,7 @@ describe('armarMensajes — casos vacios', () => {
       pregunta: 'hola',
       historial: [{ autor: 'usuario', texto: 'bien' }, null, { autor: 'otro', texto: 'x' }, { autor: 'coach' }],
     });
-    expect(m).toHaveLength(2);
-    expect(m[0].content).toBe('bien');
+    expect(m).toHaveLength(3);
+    expect(m[1].content).toBe('bien');
   });
 });

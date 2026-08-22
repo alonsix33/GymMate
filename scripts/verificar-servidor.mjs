@@ -250,24 +250,55 @@ const cab = (r, n) => r.headers.get(n);
 // Aqui se levanta un falso api.anthropic.com que responde SSE de verdad.
 // ==========================================================================
 {
+  // Habla el formato de OpenAI, que es el que usa DeepSeek: el texto va en
+  // `choices[0].delta.content` y el stream cierra con `data: [DONE]`.
+  let vistoPorElModelo = null;
   const falso = createServer((req, res) => {
-    res.writeHead(200, { 'Content-Type': 'text/event-stream' });
-    res.write('data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"cin"}}\n');
-    res.write('data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"cuenta"}}\n');
-    res.end();
+    let cuerpo = '';
+    req.on('data', (t) => (cuerpo += t));
+    req.on('end', () => {
+      try {
+        vistoPorElModelo = JSON.parse(cuerpo);
+      } catch {
+        vistoPorElModelo = null;
+      }
+      res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+      res.write('data: {"choices":[{"delta":{"content":"cin"}}]}\n');
+      res.write('data: {"choices":[{"delta":{"reasoning_content":"NO DEBE SALIR"}}]}\n');
+      res.write('data: {"choices":[{"delta":{"content":"cuenta"}}]}\n');
+      res.write('data: [DONE]\n');
+      res.end();
+    });
   });
   await new Promise((ok) => falso.listen(4734, '127.0.0.1', ok));
 
   const s = await levantar(4735, {
     ORIGEN_PERMITIDO: BUENO,
-    ANTHROPIC_API_KEY: 'clave-de-mentira',
+    COACH_API_KEY: 'clave-de-mentira',
     COACH_URL: 'http://127.0.0.1:4734/v1/messages',
   });
   try {
     const r = await fetch(`${s.base}/api/coach`, {
       method: 'POST',
       headers: { Origin: BUENO, Authorization: `Bearer ${TOKEN}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pregunta: '¿como voy?', contexto: null }),
+      // Con contexto de verdad: mandando `contexto: null` la rama que arma el
+      // bloque no se ejecutaba, y el chequeo de "no se manda cache_control"
+      // pasaba sin haber recorrido el unico sitio donde podria aparecer.
+      body: JSON.stringify({
+        pregunta: '¿como voy?',
+        contexto: {
+          panorama: [{
+            ejercicio: 'Press Banca', unaRepMax: 137, unaRepMaxHistorico: 127, estimable: true,
+            pico: 120, actual: 100, posicion: 62, zona: 'ambar',
+            sesionesEstancado: 3, sesiones: 41, ultimaVez: '2026-08-18',
+          }],
+          resumen: {
+            sesiones: 208, desde: '2025-08-22', hasta: '2026-08-20', racha: 5, mejorRacha: 21,
+            volumenPorGrupo: { Pecho: 90000 }, pesoCorporal: 78.4, grasaCorporal: 14.4,
+          },
+          bitacora: '2026-08-18 Pecho · Press Banca 4x8@100',
+        },
+      }),
     });
     chk('streaming · el coach responde 200, no 503', r.status === 200, `codigo ${r.status}`);
     chk('streaming · y la respuesta del stream lleva allow-origin',
@@ -276,6 +307,34 @@ const cab = (r, n) => r.headers.get(n);
       /no-store/.test(cab(r, 'cache-control') ?? ''), String(cab(r, 'cache-control')));
     const texto = await r.text();
     chk('streaming · el texto del modelo llega recompuesto', texto === 'cincuenta', JSON.stringify(texto));
+    // `[DONE]` no es JSON: si se intentara parsear se tragaria en el catch,
+    // pero si se reenviara como texto saldria en pantalla.
+    chk('streaming · el cierre [DONE] no se cuela en la respuesta',
+      !texto.includes('DONE'), JSON.stringify(texto));
+    // El borrador del modelo no es su respuesta.
+    chk('streaming · el razonamiento no se pinta como si fuera la respuesta',
+      !texto.includes('NO DEBE SALIR'), JSON.stringify(texto));
+
+    // Lo que se le manda al modelo. Es la unica forma de comprobar sin gastar
+    // una llamada de verdad que la peticion tiene la forma que DeepSeek pide.
+    chk('modelo · se pide el modelo configurado',
+      vistoPorElModelo?.model === 'deepseek-v4-flash', String(vistoPorElModelo?.model));
+    chk('modelo · el modo pensante va APAGADO, que aqui solo cuesta',
+      vistoPorElModelo?.thinking?.type === 'disabled', JSON.stringify(vistoPorElModelo?.thinking));
+    chk('modelo · el prompt de sistema es el primer mensaje',
+      vistoPorElModelo?.messages?.[0]?.role === 'system', String(vistoPorElModelo?.messages?.[0]?.role));
+    chk('modelo · todos los contenidos son cadenas, no bloques de Anthropic',
+      (vistoPorElModelo?.messages ?? []).every((m) => typeof m.content === 'string'),
+      JSON.stringify((vistoPorElModelo?.messages ?? []).map((m) => typeof m.content)));
+    chk('modelo · no se manda `cache_control`, que DeepSeek no conoce',
+      !JSON.stringify(vistoPorElModelo ?? {}).includes('cache_control'));
+    chk('modelo · se pide en streaming', vistoPorElModelo?.stream === true, String(vistoPorElModelo?.stream));
+    // Y que el contexto de verdad haya llegado: si no, los chequeos de arriba
+    // estarian mirando una peticion sin el bloque que importa.
+    const conPanorama = (vistoPorElModelo?.messages ?? []).some(
+      (m) => typeof m.content === 'string' && m.content.includes('PANORAMA')
+    );
+    chk('modelo · el bloque de contexto llego al modelo', conPanorama);
   } finally {
     await s.cerrar();
     await new Promise((ok) => falso.close(ok));
@@ -339,7 +398,7 @@ const cab = (r, n) => r.headers.get(n);
 }
 
 console.log(`\n${ejecutados} chequeos de servidor ejecutados`);
-const CHEQUEOS_MINIMO = 36;
+const CHEQUEOS_MINIMO = 45;
 if (ejecutados < CHEQUEOS_MINIMO) {
   fallos++;
   console.log(

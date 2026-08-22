@@ -54,7 +54,7 @@ Railway → tu servicio → **Variables**:
 | Variable | Para qué | Cómo se saca |
 |---|---|---|
 | `GYMMATE_TOKEN` | Abre la API para ti. Sin ella todo responde 401 menos `/api/salud`, que queda para diagnosticar; con ella, es lo único que separa tu historial de cualquiera que dé con la URL pública. | `openssl rand -hex 32` |
-| `ANTHROPIC_API_KEY` | Enciende el coach con modelo | [console.anthropic.com/settings/keys](https://console.anthropic.com/settings/keys) |
+| `ANTHROPIC_API_KEY` | Enciende el coach con modelo. **El nombre miente: dentro va tu clave de DeepSeek.** Se dejó así para no tocar lo que ya está configurado en Railway; si prefieres el nombre honesto, `COACH_API_KEY` sirve igual y tiene prioridad. | [platform.deepseek.com](https://platform.deepseek.com/api_keys) |
 | `ORIGEN_PERMITIDO` | Deja que la PWA de Netlify hable con esta API. **Sin ella el navegador bloquea cada petición** y la app dice "no responde" con el servidor vivo. | Tu dominio de Netlify, tal cual: `https://tu-app.netlify.app` |
 
 `ORIGEN_PERMITIDO` admite varios separados por coma, por si tienes también un
@@ -69,8 +69,28 @@ servidor la quita de los dos lados. Nunca `*`: con el comodín, cualquier págin
 que visites podría pedirle tu historial a este servidor — y el servidor se
 niega a arrancar si lo pones, en vez de fingir que funciona.
 
-Opcionales: `COACH_MODELO` (por defecto `claude-sonnet-5`) y `COACH_MAX_TOKENS`
+Opcionales: `COACH_MODELO` (por defecto `deepseek-v4-flash`) y `COACH_MAX_TOKENS`
 (por defecto 700). `PORT` la pone Railway; no la toques.
+
+### Qué modelo corre
+
+`deepseek-v4-flash`, no el Pro. Se elige con `COACH_MODELO`; si no la pones,
+sale Flash. El servidor imprime cuál está usando en la primera línea de sus
+logs de arranque, así que no hay que adivinarlo.
+
+Flash cuesta la tercera parte que Pro y para este trabajo sobra: el coach
+explica números que ya vienen calculados, no los deduce. Por lo mismo el modo
+pensante va **apagado** — en DeepSeek viene encendido por defecto, y aquí
+pensar es pagar y esperar por nada.
+
+| Modelo | Entrada (acierto de caché) | Entrada (fallo) | Salida |
+|---|---|---|---|
+| `deepseek-v4-flash` | $0,007–0,014 | $0,22–0,44 | $0,66–1,32 |
+| `deepseek-v4-pro` | $0,022–0,044 | $0,66–1,32 | $1,98–3,96 |
+
+Por millón de tokens. El primer precio es fuera de hora punta. *(Consultado el
+22-08-2026 en la documentación de DeepSeek; verifica antes de fiarte de una
+cifra vieja.)*
 
 ## 3. Dónde vive tu copia
 
@@ -101,7 +121,7 @@ Estados que puedes ver:
 
 - `conectado · coach con modelo` — el servidor tiene la clave, el token es
   correcto y el coach ya está enganchado. Listo.
-- `conectado · coach en local` — falta `ANTHROPIC_API_KEY`. La copia funciona;
+- `conectado · coach en local` — falta la clave del modelo. La copia funciona;
   el coach sigue siendo el del teléfono, con los datos que él calcula, y lo dice.
 - `token inválido` — el servidor responde pero no acepta ese token. Cópialo de
   Railway → Variables → `GYMMATE_TOKEN`.
@@ -160,6 +180,11 @@ nueva. No hay ninguna ventaja que lo justifique hoy.
 Todo `/api/*` menos `/api/salud` y ese permiso previo exige
 `Authorization: Bearer <GYMMATE_TOKEN>`.
 
+**El proveedor es DeepSeek.** `https://api.deepseek.com/chat/completions`, con
+formato de OpenAI. Cambiarlo de proveedor es tocar tres cosas en
+`server/coach.mjs`: la URL, la cabecera de autorización y el trozo del stream
+que se lee. La puerta de mutantes tiene un caso para cada una.
+
 **La aritmética no la genera el modelo.** El 1RM, el estancamiento, la racha y
 el volumen los calcula tu teléfono y llegan al servidor ya hechos, en el bloque
 `PANORAMA`. El modelo solo los explica; tiene prohibido calcular sobre el
@@ -170,12 +195,18 @@ del handoff y no cambia por tener backend.
 panorama ya calculado de todos los ejercicios más la bitácora en texto. No se
 elige qué mandar.
 
-El bloque va marcado como cacheable con **una hora** de vida: si preguntas
-varias veces dentro de esa hora —una sesión de gimnasio entera— de la segunda
-en adelante ese bloque se cobra a una décima parte. Al día siguiente la caché
-ya expiró y la primera pregunta lo paga completo otra vez. Medido con un año de
-208 sesiones: unos 8.100 tokens, tres centavos la primera y dos milésimas las
-siguientes.
+La caché de DeepSeek funciona **sola**: no hay campo que activar. Lo único que
+pide es que lo estable vaya primero —el panorama y la bitácora— y que lo que
+cambia vaya al final, que es exactamente como está montado. Un solo byte
+distinto al principio y no hay acierto.
+
+A cambio es mucho mejor que pagarla: un acierto cuesta unos **30 veces menos**
+que un fallo ($0,007–0,014 contra $0,22–0,44 por millón) y dura horas o días,
+no una hora. Medido con un año de 208 sesiones: unos 8.100 tokens de bloque, o
+sea del orden de dos décimas de centavo por pregunta cuando la caché acierta.
+
+Es "best-effort": DeepSeek no garantiza el acierto, y tarda unos segundos en
+construirse tras la primera pregunta.
 
 **La app no depende del servidor.** Sin token, sin red o sin clave, GymMate es
 lo que era: offline-first, todo en el teléfono. El servidor solo añade la copia
@@ -185,7 +216,7 @@ fuera del dispositivo y el coach con modelo.
 
 ```bash
 npm ci
-GYMMATE_TOKEN=loquesea ANTHROPIC_API_KEY=sk-ant-... DATOS_DIR=./.datos npm run servidor
+GYMMATE_TOKEN=loquesea COACH_API_KEY=sk-... DATOS_DIR=./.datos npm run servidor
 # `.datos/` está en .gitignore: no se te va a colar el historial en un commit.
 ```
 

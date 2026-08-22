@@ -9,6 +9,11 @@ function barraFierro(): HTMLElement | null {
   return document.getElementById('fierroDescanso');
 }
 
+/** Vuelve a dibujar la barra tras un repintado de W-01. */
+export function repintarDescanso(): void {
+  pintarBarraFierro();
+}
+
 function pintarBarraFierro(): void {
   const hueco = barraFierro();
   if (!hueco) return;
@@ -75,6 +80,9 @@ export function initializeTimer(seconds: number): void {
   pintarBarraFierro();
   updateTimerDisplay();
   updatePauseButtonText();
+  // Con la barra FIERRO en pantalla, el banner flotante legacy sobra: se
+  // pintaba encima de la cabecera de la sesion, con su azul y sus iconos.
+  if (barraFierro()) banner?.classList.remove('active');
 
   // Limpiar timer anterior
   if (restTimer) {

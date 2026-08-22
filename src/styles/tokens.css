@@ -361,7 +361,9 @@
   --touch-min: 44px;
   --stepper-h: 56px; /* rango README 46–56px */
   --stepper-h-s: 46px;
-  --btn-pad-y: 15px; /* rango README 15–16px */
+  --btn-pad-y: 15px; /* rango README 15–16px · secundario de pantalla */
+  --btn-pad-y-primario: 16px; /* [REF Pantallas:240] primario de pantalla */
+  --btn-pad-x: 22px; /* horizontal del boton en linea [REF Sistema:142] */
   --fab-size: 50px; /* [REF Pantallas:123] */
 
   --safe-area-inset-bottom: env(safe-area-inset-bottom, 0px);

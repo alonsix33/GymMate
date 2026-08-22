@@ -220,6 +220,21 @@ export const trainingGroups: Record<string, TrainingGroup> = {
 // HELPER PARA OBTENER GRUPO
 // ==========================================
 
+/**
+ * Busca un grupo por su NOMBRE ("GRUPO 1 - Piernas + Glúteos"), que es lo
+ * unico que guarda el borrador: ahi no se persiste el id. Sin esto,
+ * reanudar una sesion no encontraba el grupo y todos los opcionales pasaban a
+ * obligatorios.
+ */
+export function getTrainingGroupPorNombre(nombre: string): TrainingGroup | null {
+  if (!nombre) return null;
+  for (const grupo of Object.values(trainingGroups)) {
+    if (grupo.nombre === nombre) return grupo;
+  }
+  const propia = getCustomWorkouts().find((w) => w.nombre === nombre);
+  return propia ?? null;
+}
+
 export function getTrainingGroup(grupoId: string): TrainingGroup | null {
   // First check predefined groups
   if (trainingGroups[grupoId]) {

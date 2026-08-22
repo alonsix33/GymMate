@@ -9,12 +9,13 @@
  *   W-04  Guia de ejercicio: bottom sheet al tocar el nombre o la "i". Si el
  *         ejercicio no tiene foto se omite el bloque — nunca un hueco vacio.
  */
+import { atraparFoco } from '@/ui/feedback';
 import { getHistory, getPR } from '@/utils/storage';
 import { getExerciseInfo } from '@/data/exercises';
 import { getMuscleRank, RANK_DISPLAY_NAMES } from '@/features/gamification';
 import { colorDeRango } from '@/ui/gamification/muscle-map';
 import { cifra } from '@/utils/formato';
-import { ultimaVezDe, intensidadDe, reloj, partirNombreDeGrupo } from '@/ui/workout-view';
+import { ultimaVezDe, reloj, partirNombreDeGrupo } from '@/ui/workout-view';
 import type { SessionXPSummary, GamificationMuscleGroup } from '@/types/gamification';
 
 function escapar(texto: string): string {
@@ -25,6 +26,8 @@ function escapar(texto: string): string {
 
 /** Una sola hoja viva a la vez, igual que en feedback.ts. */
 let hojaViva: HTMLElement | null = null;
+/** Lo que hay que deshacer al cerrarla: el resto de la pagina esta inerte. */
+let liberarFoco: (() => void) | null = null;
 
 function abrirHoja(contenido: string, alCerrar?: () => void): HTMLElement | null {
   if (hojaViva) return null;
@@ -35,6 +38,8 @@ function abrirHoja(contenido: string, alCerrar?: () => void): HTMLElement | null
     document.removeEventListener('keydown', alTeclear);
     velo.remove();
     hojaViva = null;
+    liberarFoco?.();
+    liberarFoco = null;
     alCerrar?.();
   };
   const alTeclear = (e: KeyboardEvent) => {
@@ -47,6 +52,7 @@ function abrirHoja(contenido: string, alCerrar?: () => void): HTMLElement | null
   document.addEventListener('keydown', alTeclear);
   document.body.appendChild(velo);
   hojaViva = velo;
+  liberarFoco = atraparFoco(velo);
   const sheet = velo.querySelector<HTMLElement>('.f-sheet');
   if (sheet) {
     sheet.tabIndex = -1;
@@ -58,6 +64,9 @@ function abrirHoja(contenido: string, alCerrar?: () => void): HTMLElement | null
 function cerrarHojaViva(): void {
   hojaViva?.remove();
   hojaViva = null;
+  // Sin esto, el resto de la pagina se quedaba inerte para siempre.
+  liberarFoco?.();
+  liberarFoco = null;
 }
 
 // --------------------------------------------------------------------------
@@ -76,12 +85,9 @@ export function mostrarGuiaEjercicio(nombre: string): void {
   const info = getExerciseInfo(nombre);
   const pr = getPR(nombre);
   const ultima = ultimaVezDe(nombre, getHistory());
-  const nivel = intensidadDe(ultima?.peso ?? 0, pr?.peso ?? null);
-  const etiquetas = { suave: 'SUAVE', moderada: 'MODERADA', intensa: 'INTENSA' } as const;
-
-  const badge = nivel
-    ? `<span class="f-badge f-badge--sesion f-badge--${nivel}">${etiquetas[nivel]}</span>`
-    : '';
+  // Sin badge de intensidad: ver la nota en workout-view.ts. La regla derivada
+  // contradice el ejemplo del propio mockup, asi que no se pinta ninguna.
+  const badge = '';
   // Sin foto no hay bloque. La carga es perezosa y nunca bloquea: si la red
   // no esta, el resto de la guia se lee igual.
   const foto = info?.imageUrl
@@ -122,7 +128,7 @@ export function mostrarGuiaEjercicio(nombre: string): void {
       ${foto}
       ${descripcion}
       ${datos}
-      <button type="button" class="f-btn f-btn--secundario f-btn--bloque" data-cerrar>Cerrar</button>
+      <button type="button" class="f-btn f-btn--secundario f-btn--bloque f-btn--hoja" data-cerrar>Cerrar</button>
     </div>
   `);
 }
@@ -136,14 +142,20 @@ export const RPE_MAX = 10;
 
 /**
  * Color del numero. El mockup dice "del color de la zona" y dibuja la pista
- * con tres paradas: verde en t=0, ambar en t=.55 y rojo en t=1. Se toma la
- * parada mas cercana, que es lo que el ojo lee sobre esa misma pista — sin
- * inventar colores intermedios que no existen en los tokens.
+ * con tres paradas: verde en t=0, ambar en t=.55 y rojo en t=1.
+ *
+ * El unico valor trabajado que da el diseño es RPE 8, y lo pinta en AMBAR
+ * (#DFA23A). Tomar "la parada mas cercana" dejaba el 8 en rojo por un margen
+ * de 0.006, contradiciendo el unico ejemplo que hay. Las fronteras se fijan
+ * por tanto en los valores, no en el punto medio entre paradas: 1-3 verde,
+ * 4-8 ambar, 9-10 rojo — con el 8 ambar, como el mockup.
  */
+export const RPE_VERDE_HASTA = 3;
+export const RPE_AMBAR_HASTA = 8;
+
 export function zonaDeRPE(valor: number): 'verde' | 'ambar' | 'roja' {
-  const t = (valor - RPE_MIN) / (RPE_MAX - RPE_MIN);
-  if (t < 0.275) return 'verde';
-  if (t < 0.775) return 'ambar';
+  if (valor <= RPE_VERDE_HASTA) return 'verde';
+  if (valor <= RPE_AMBAR_HASTA) return 'ambar';
   return 'roja';
 }
 

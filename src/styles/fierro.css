@@ -132,11 +132,18 @@
      autoriza pulse/blink, la barra de zonas y las fases de los timers. */
 }
 
+/* Geometria de PANTALLA, no de galeria. Los 13px/15px/r10 salian del botón de
+   muestra de `Sistema Fierro.dc.html`, que ya se habia descartado como
+   referencia para otras medidas; las ocho pantallas que dibujan un primario
+   coinciden en 15.5px/700/R12/padding 16, y el README fija el vertical en
+   15–16px. [REF Pantallas:240,295,338,382,477,566,616] */
 .f-btn--primario {
   background: var(--accent);
   color: var(--on-fragua);
   font-weight: var(--w-700);
-  padding: 13px 22px;
+  font-size: var(--fs-15_5);
+  border-radius: var(--r-btn-l);
+  padding: var(--btn-pad-y-primario) var(--btn-pad-x);
 }
 .f-btn--primario:hover:not(:disabled) {
   background: var(--accent-hover);
@@ -147,7 +154,8 @@
   color: var(--text-primary);
   border: 1px solid var(--border-secondary-btn);
   font-weight: var(--w-600);
-  padding: 12px 22px;
+  border-radius: var(--r-btn-l);
+  padding: var(--btn-pad-y) var(--btn-pad-x);
 }
 .f-btn--secundario:hover:not(:disabled) {
   border-color: var(--carbon-400);
@@ -184,13 +192,11 @@
 
 /* Foco de teclado. NO viene del handoff: los mockups son estaticos y no
    definen estados de foco. Se anade porque el anillo por defecto del
-   navegador es azul, y en FIERRO no existe el azul. */
-.f-btn:focus-visible,
-.f-tabbar__item:focus-visible,
-.f-fab:focus-visible,
-.f-stepper__btn:focus-visible,
-.f-toast__accion:focus-visible,
-.f-toast__deshacer:focus-visible {
+   navegador es azul, y en FIERRO no existe el azul.
+   Va por descendencia y no por lista de clases: la lista se quedaba corta en
+   cuanto aparecia una pantalla nueva, y el azul legacy volvia a ganar. */
+.f-root :focus-visible,
+.f-root:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
@@ -286,6 +292,19 @@
   border-radius: var(--r-chip);
   border: none;
   display: inline-block;
+}
+
+/* `display: inline-block` ganaba a la hoja del navegador y un badge con
+   [hidden] seguia ocupando 16x10 — 26px de aire muerto en cada card sin
+   intensidad. */
+.f-badge[hidden] {
+  display: none;
+}
+
+/* OPCIONAL no lleva tracking en el mockup, a diferencia del resto de badges.
+   [REF Pantallas:232] */
+.f-badge--opcional {
+  letter-spacing: normal;
 }
 
 .f-badge--contorno {
@@ -451,6 +470,14 @@
   border-radius: var(--r-11);
   padding: 14px;
   font-size: var(--fs-14_5);
+}
+
+/* El boton suelto de una hoja (el "Cerrar" de W-04) es mas pequeño que el de
+   pantalla: 14.5px, R11 y 13 de padding. [REF Pantallas:270] */
+.f-btn--hoja {
+  font-size: var(--fs-14_5);
+  border-radius: var(--r-11);
+  padding: 13px var(--btn-pad-x);
 }
 
 /* --------------------------------------------------------------------------
@@ -1220,7 +1247,7 @@ body.f-sin-tabbar {
 .f-sesion__volver {
   color: var(--text-secondary);
   font-size: var(--fs-20);
-  line-height: var(--lh-1);
+  /* Sin line-height: el mockup lo deja en normal y la caja mide 24, no 20. */
   background: none;
   border: none;
   padding: 0;
@@ -1411,8 +1438,9 @@ body.f-sin-tabbar {
   gap: var(--gap-card-s);
 }
 .f-stepper-campo {
-  flex: 1;
-  min-width: 0;
+  /* Sin `min-width: 0`: el campo no puede encogerse por debajo de su
+     contenido, o el numero se recorta y el boton "+" se sale de la card. */
+  flex: 1 1 0;
   display: flex;
   flex-direction: column;
   gap: 5px;
@@ -1441,13 +1469,25 @@ body.f-sin-tabbar {
   font-size: var(--fs-18);
   height: var(--stepper-h-s);
   border-radius: var(--r-btn-s);
-  /* Es un <input>: el navegador le pone su propio aspecto y sus flechas. */
+  /* Es un <input>: el navegador le pone su propio aspecto y sus flechas.
+     El hueco del numero crece con el numero. Con `min-width: 0` los tres
+     campos se repartian el ancho a partes iguales y el hueco quedaba en 28px:
+     "120" necesita 37 y se leia "12(". El `min-width` en ch lo pone el
+     renderizador segun los digitos que hay dentro, que es lo que hace el
+     mockup con su <div> de min-width:auto (en un input de tipo number,
+     min-width:auto no mira el contenido: Chrome resuelve 225px y desborda). */
   width: 100%;
-  min-width: 0;
   text-align: center;
   padding: 0;
   -moz-appearance: textfield;
   appearance: textfield;
+}
+
+/* Si con numeros largos los tres campos no caben en una fila, se apilan.
+   Un numero recortado es peor que dos filas; a 390 con valores normales no
+   llega a activarse. */
+.f-steppers {
+  flex-wrap: wrap;
 }
 .f-stepper--sesion .f-stepper__btn {
   border-radius: var(--r-btn-s);
@@ -1773,7 +1813,6 @@ body.f-sin-tabbar {
 .f-guia__fila {
   display: flex;
   justify-content: space-between;
-  gap: var(--gap-card-l);
 }
 .f-guia__label {
   color: var(--text-secondary);

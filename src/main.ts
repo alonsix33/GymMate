@@ -14,6 +14,13 @@ import {
 } from '@/ui/feedback';
 import { initializeNavigation, showHome, switchTab, resumeDraft, dismissDraft, renderizarHome } from '@/ui/navigation';
 import { initializeModals } from '@/ui/modals';
+import {
+  initCoachSession,
+  updateCoachOnSessionLoad,
+  updateCoachOnExerciseUpdate,
+  updateCoachOnExerciseComplete,
+} from '@/features/coach';
+import { mostrarGuiaEjercicio } from '@/ui/session-screens';
 import { initializeTimerListeners, openRestTimerModal } from '@/features/timer';
 import { initializeProfile, openMeasurementsModal, closeMeasurementsModal, showMeasurementsHistory, closeMeasurementsHistoryModal, deleteMeasurementEntry, updateMeasurementPreview } from '@/features/profile';
 import { loadHistory, loadPRs, exportToExcel, deleteHistoryItem, triggerCSVImport } from '@/features/history';
@@ -805,10 +812,30 @@ function manejarAccionDeSesion(el: HTMLElement): void {
 // INICIALIZACIÓN
 // ==========================================
 
+/**
+ * Ganchos SOLO para las puertas de verificacion.
+ *
+ * No cuelgan de ningun boton ni cambian nada de la app: existen para que la
+ * puerta pueda disparar los nueve mensajes del coach y abrir la guia de un
+ * ejercicio que no esta en la base. Sin ellos, la puerta miraba el `innerText`
+ * en un instante y se le escapaban ocho de los nueve textos.
+ */
+function exponerGanchosDeVerificacion(): void {
+  const w = window as unknown as Record<string, unknown>;
+  w.__coachDePrueba = {
+    initCoachSession,
+    updateCoachOnSessionLoad,
+    updateCoachOnExerciseUpdate,
+    updateCoachOnExerciseComplete,
+  };
+  w.__guiaDePrueba = { mostrarGuiaEjercicio };
+}
+
 function init(): void {
   // FIERRO: toasts y confirmaciones. Va primero para que cualquier fallo
   // posterior tenga como reportarse sin recurrir a alert().
   inicializarFeedback();
+  exponerGanchosDeVerificacion();
 
   // Inicializar iconos Lucide
   initializeIcons();

@@ -117,13 +117,22 @@ export function updateCoachOnSessionLoad(groupName: string, ejercicios: Exercise
   });
 }
 
+/**
+ * @param picoPrevio  El PR que habia ANTES de esta sesion. El estado se
+ *   actualiza en cuanto se teclea un peso mayor, asi que leer `getPR` aqui
+ *   devolvia el peso recien tecleado: "PR nuevo" no se disparaba nunca y el
+ *   coach presentaba lo que acabas de levantar como tu marca anterior.
+ */
 export function updateCoachOnExerciseUpdate(
   ejercicio: ExerciseData,
   _index: number,
-  _allExercises: ExerciseData[]
+  _allExercises: ExerciseData[],
+  picoPrevio?: number | null
 ): void {
-  // Check for PR proximity
-  const pr = getPR(ejercicio.nombre);
+  const guardado = getPR(ejercicio.nombre);
+  const pr = picoPrevio != null && picoPrevio > 0
+    ? { ...(guardado ?? { sets: 0, reps: 0, volumen: 0, date: '' }), peso: picoPrevio }
+    : guardado;
 
   if (pr && ejercicio.peso > 0) {
     const prWeight = pr.peso;
@@ -193,7 +202,10 @@ export function updateCoachOnExerciseComplete(
     });
   } else if (remaining <= 2) {
     showCoachMessage({
-      ...getMessageConfig('motivation'),
+      // 'success', no 'motivation': con menos prioridad que el mensaje
+      // anterior se quedaba sin salir, y la nota volvia a la linea de
+      // apertura como si el usuario no hubiera hecho nada.
+      ...getMessageConfig('success'),
       message: remaining === 1 ? 'Queda 1 ejercicio.' : `Quedan ${remaining} ejercicios.`,
     });
   } else {

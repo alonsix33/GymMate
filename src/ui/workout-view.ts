@@ -74,7 +74,8 @@ export function intensidadDe(peso: number, pico: number | null): 'suave' | 'mode
   return 'suave';
 }
 
-const ETIQUETA_INTENSIDAD: Record<'suave' | 'moderada' | 'intensa', string> = {
+/** Etiquetas del badge, listas para cuando se defina la regla. */
+export const ETIQUETA_INTENSIDAD: Record<'suave' | 'moderada' | 'intensa', string> = {
   suave: 'SUAVE',
   moderada: 'MODERADA',
   intensa: 'INTENSA',
@@ -109,6 +110,11 @@ export function ultimoVolumenDelGrupo(grupo: string, historial: HistorySession[]
 /**
  * El cronometro es tambien la entrada al temporizador de descanso.
  *
+ * El tiempo va en su propio <span>, no en un aria-label: un aria-label
+ * sustituye al contenido, asi que "42:10" no llegaba a un lector de pantalla.
+ * Ahora el nombre accesible es "Tiempo de sesión, abrir temporizador de
+ * descanso: 42:10".
+ *
  * PROVISIONAL, y hay que preguntarlo: FEATURES describe un "boton rapido en
  * cada ejercicio" para el descanso, y W-01 dibuja la barra DESCANSO pero
  * ningun disparador. Sin esto la funcion se quedaba sin ningun camino, que el
@@ -125,13 +131,9 @@ function bloqueCabecera(ahora: Date): string {
         <span class="f-sesion__titulo">${escapar(titulo).toUpperCase()}</span>
         <span class="f-sesion__sub">${sub}</span>
       </div>
-      <button
-        type="button"
-        class="f-sesion__crono"
-        id="fierroCrono"
-        data-sesion="descanso"
-        aria-label="Tiempo de sesión — abrir temporizador de descanso"
-      >${reloj(segundosDeSesion(ahora))}</button>
+      <button type="button" class="f-sesion__crono" data-sesion="descanso"><span class="sr-only">Tiempo de sesión, abrir temporizador de descanso: </span><span id="fierroCrono">${reloj(
+        segundosDeSesion(ahora)
+      )}</span></button>
     </div>
   `;
 }
@@ -186,10 +188,18 @@ function bloqueMetricas(): string {
   `;
 }
 
+/** Digitos que hay que poder leer sin recortar; el placeholder "0" cuenta 1. */
+export function anchoDelCampo(valor: number): number {
+  return Math.max(1, String(valor || '').length);
+}
+
 function stepper(campo: 'sets' | 'reps' | 'peso', etiqueta: string, indice: number, valor: number): string {
   const id = `${campo}-${indice}`;
   const paso = campo === 'peso' ? '0.5' : '1';
   const modo = campo === 'peso' ? 'decimal' : 'numeric';
+  // El hueco del numero se dimensiona con los digitos que tiene dentro: en
+  // `ch`, que en una fuente tabular es exactamente el ancho de un digito.
+  const ancho = anchoDelCampo(valor);
   return `
     <div class="f-stepper-campo">
       <label class="f-stepper-campo__label" for="${id}">${etiqueta}</label>
@@ -203,6 +213,7 @@ function stepper(campo: 'sets' | 'reps' | 'peso', etiqueta: string, indice: numb
           step="${paso}"
           min="0"
           value="${valor || ''}"
+          style="min-width:${ancho}ch"
           placeholder="0"
           data-sesion="valor"
           data-campo="${campo}"
@@ -219,23 +230,26 @@ export function nivelDeIntensidad(ejercicio: ExerciseData): 'suave' | 'moderada'
   return intensidadDe(ejercicio.peso, pr?.peso ?? null);
 }
 
-function badgeIntensidad(ejercicio: ExerciseData, indice: number): string {
-  const nivel = nivelDeIntensidad(ejercicio);
-  const clase = nivel ? `f-badge f-badge--sesion f-badge--${nivel}` : 'f-badge f-badge--sesion';
-  const texto = nivel ? ETIQUETA_INTENSIDAD[nivel] : '';
-  // El nodo existe siempre: la intensidad cambia con cada peso que se teclea y
-  // se parchea en sitio, sin repintar la card en la que se esta escribiendo.
-  return `<span class="${clase}" id="intensidad-${indice}" ${nivel ? '' : 'hidden'}>${texto}</span>`;
+/**
+ * El badge de intensidad NO se pinta.
+ *
+ * El mockup lo dibuja (W-01 y W-04) y el repo no tiene ningun campo que lo
+ * decida. La regla que se derivo de las zonas del README —% del pico— resulta
+ * FALSA contra el unico ejemplo trabajado que da el propio diseño: en W-04,
+ * con PR 180 kg y ultima vez 120 kg, el mockup pinta INTENSA y la regla dice
+ * SUAVE (66.7% del pico). Enseñar una intensidad que se puede demostrar
+ * equivocada es peor que no enseñarla, asi que el hueco se deja vacio hasta
+ * que el dueño del diseño diga cual es el dato o la regla.
+ * La logica y sus pruebas se conservan para engancharla en cuanto se sepa.
+ */
+function badgeIntensidad(_ejercicio: ExerciseData, indice: number): string {
+  return `<span class="f-badge f-badge--sesion" id="intensidad-${indice}" hidden></span>`;
 }
 
-/** Parche en sitio del badge tras cambiar el peso. */
-export function refrescarIntensidad(indice: number, ejercicio: ExerciseData): void {
+/** Parche en sitio del badge tras cambiar el peso. Ver badgeIntensidad. */
+export function refrescarIntensidad(indice: number, _ejercicio: ExerciseData): void {
   const el = document.getElementById(`intensidad-${indice}`);
-  if (!el) return;
-  const nivel = nivelDeIntensidad(ejercicio);
-  el.className = nivel ? `f-badge f-badge--sesion f-badge--${nivel}` : 'f-badge f-badge--sesion';
-  el.textContent = nivel ? ETIQUETA_INTENSIDAD[nivel] : '';
-  el.hidden = !nivel;
+  if (el) el.hidden = true;
 }
 
 function cardActiva(ejercicio: ExerciseData, indice: number, historial: HistorySession[]): string {
@@ -245,7 +259,9 @@ function cardActiva(ejercicio: ExerciseData, indice: number, historial: HistoryS
         ultima.peso
       )} kg`
     : escapar(ejercicio.grupoMuscular).toUpperCase();
-  const etiquetaPeso = ejercicio.esMancuerna ? 'KG ×1' : 'KG';
+  // "KG" a secas: el "×1" que llevaba antes no aparece en ningun mockup. Que
+  // el peso sea de UNA mancuerna se explica en la guia del ejercicio.
+  const etiquetaPeso = 'KG';
   return `
     <div class="f-ejercicio" id="ejercicio-${indice}">
       <div class="f-ejercicio__cuerpo">
@@ -338,7 +354,7 @@ function cardOpcional(ejercicio: ExerciseData, indice: number): string {
       <button type="button" class="f-opcional__nombre" data-sesion="guia" data-indice="${indice}">${escapar(
         ejercicio.nombre
       )}</button>
-      <span class="f-badge f-badge--sesion f-badge--contorno">OPCIONAL</span>
+      <span class="f-badge f-badge--sesion f-badge--contorno f-badge--opcional">OPCIONAL</span>
     </div>
   `;
 }
@@ -349,10 +365,13 @@ function bloqueVolumenPorMusculo(): string {
     .filter(([, kg]) => kg > 0)
     .sort((a, b) => b[1] - a[1]);
   if (filas.length === 0) return '';
-  const mayor = filas[0][1];
+  // El ancho es la PARTE DEL TOTAL, no la parte del mayor: dividiendo por el
+  // mayor la primera barra estaba siempre llena y las demas inflaban su
+  // proporcion. El mockup reparte sobre el total (5,760/7,920 = 72%).
+  const total = filas.reduce((t, [, kg]) => t + kg, 0);
   const cuerpo = filas
     .map(([musculo, kg], i) => {
-      const ancho = Math.round((kg / mayor) * 100);
+      const ancho = Math.floor((kg / total) * 100);
       const clase = i === 0 ? 'f-volumen__relleno f-volumen__relleno--mayor' : 'f-volumen__relleno';
       return `
         <div class="f-volumen__fila">

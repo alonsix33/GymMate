@@ -1,7 +1,7 @@
 import { confirmarDestructivo, preguntar, mostrarToast } from '@/ui/feedback';
 import { cifra } from '@/utils/formato';
 import type { ExerciseData, Exercise, RPEData, PRData, HistorySession } from '@/types';
-import { getTrainingGroup } from '@/data/training-groups';
+import { getTrainingGroup, getTrainingGroupPorNombre } from '@/data/training-groups';
 import {
   sessionData,
   setSessionGroup,
@@ -138,6 +138,10 @@ export function pintarSesion(): void {
   if (sessionData.ejercicios.length > 0) arrancarCrono();
   else pararCrono();
   actualizarAutosave();
+  // El hueco de DESCANSO se reimprime vacio en cada repintado; si hay un
+  // descanso corriendo hay que volver a dibujarlo, o el reloj sigue sonando
+  // sin nada en pantalla.
+  void import('@/features/timer').then(({ repintarDescanso }) => repintarDescanso());
 }
 
 function renderWorkoutUI(
@@ -158,11 +162,19 @@ function renderWorkoutUI(
 export function renderFromDraft(): void {
   if (sessionData.ejercicios.length === 0) return;
   // El borrador guarda la lista ya fusionada y no marca cuales eran
-  // opcionales. Se recupera del grupo original cuando existe; si es una rutina
-  // propia (sin opcionales) el limite es la lista entera.
-  const grupo = getTrainingGroup(sessionData.grupo);
+  // opcionales. Se recupera del grupo original por su NOMBRE, que es lo unico
+  // que el borrador conserva: buscandolo por id la busqueda fallaba siempre y
+  // los opcionales aparecian como obligatorios al reanudar.
+  const grupo = getTrainingGroupPorNombre(sessionData.grupo);
   fijarObligatorios(grupo ? grupo.ejercicios.length : sessionData.ejercicios.length);
   reiniciarOpcionales();
+  // Los opcionales que el borrador YA trae con datos siguen en juego.
+  sessionData.ejercicios.forEach((ejercicio, i) => {
+    if (ejercicio.volumen > 0 || ejercicio.completado) activarOpcional(i);
+  });
+  // Sin esto, `sessionStartPRs` queda vacio y TODO record historico cuenta
+  // como PR nuevo: reanudar un borrador regalaba cientos de XP falsos.
+  captureSessionStartPRs();
   pintarSesion();
   updateCoachOnSessionLoad(sessionData.grupo, sessionData.ejercicios);
 }
@@ -194,6 +206,10 @@ export function updateEjercicio(index: number): void {
     volumenEl.textContent = ejercicio.volumen > 0 ? `${cifra(ejercicio.volumen)} kg` : '—';
   }
   if (ejercicio) refrescarIntensidad(index, ejercicio);
+  // El ancho minimo del campo sigue al numero que tiene dentro.
+  for (const input of [setsInput, repsInput, pesoInput]) {
+    input.style.minWidth = `${Math.max(1, input.value.length)}ch`;
+  }
 
   updateVolumeDisplay();
   updateQuickStats();
@@ -201,7 +217,14 @@ export function updateEjercicio(index: number): void {
   updateUnsavedIndicator();
 
   if (ejercicio && ejercicio.peso > 0) {
-    updateCoachOnExerciseUpdate(ejercicio, index, sessionData.ejercicios);
+    // El pico de ANTES de la sesion: el estado ya subio el PR con lo que se
+    // acaba de teclear.
+    updateCoachOnExerciseUpdate(
+      ejercicio,
+      index,
+      sessionData.ejercicios,
+      sessionStartPRs[ejercicio.nombre]?.peso ?? null
+    );
   }
 }
 
@@ -242,6 +265,17 @@ export function toggleCompletado(index: number): void {
   if (!ejercicio) return;
 
   const nuevoEstado = !ejercicio.completado;
+  // Marcar ✓ sin datos dejaba la fila en "0×0 · 0 kg · 0 kg" y sumaba en
+  // COMPLETADOS: un ejercicio que no se hizo contado como hecho. El peso SI
+  // puede ser 0 (peso corporal); sets y reps no.
+  if (nuevoEstado && (!ejercicio.sets || !ejercicio.reps)) {
+    mostrarToast({
+      tipo: 'aviso',
+      titulo: 'Faltan sets y reps',
+      detalle: `Registra las series de ${ejercicio.nombre} antes de marcarlo.`,
+    });
+    return;
+  }
   toggleExerciseCompleted(index, nuevoEstado);
   // Al desmarcar, el RPE que se contesto deja de tener sujeto.
   if (!nuevoEstado && ejercicio.rpe !== undefined) setExerciseRPE(index, null);
@@ -302,7 +336,9 @@ export function updateVolumeDisplay(): void {
   }
   if (!bloque || filas.length === 0) return;
 
-  const mayor = filas[0][1];
+  // Parte del TOTAL, igual que al pintar: si aqui se dividiera por el mayor,
+  // el parche y el render inicial dibujarian barras distintas.
+  const total = filas.reduce((t, [, kg]) => t + kg, 0);
   const nombres = bloque.querySelectorAll<HTMLElement>('.f-volumen__musculo');
   const cifras = bloque.querySelectorAll<HTMLElement>('.f-volumen__kg');
   const rellenos = bloque.querySelectorAll<HTMLElement>('.f-volumen__relleno');
@@ -310,7 +346,7 @@ export function updateVolumeDisplay(): void {
     if (nombres[i]) nombres[i].textContent = musculo;
     if (cifras[i]) cifras[i].textContent = `${cifra(kg)} kg`;
     if (rellenos[i]) {
-      rellenos[i].style.width = `${Math.round((kg / mayor) * 100)}%`;
+      rellenos[i].style.width = `${Math.floor((kg / total) * 100)}%`;
       rellenos[i].classList.toggle('f-volumen__relleno--mayor', i === 0);
     }
   });
@@ -432,7 +468,7 @@ const RPE_LABELS: Record<number, string> = {
   5: 'Moderado',
   6: 'Algo difícil',
   7: 'Difícil',
-  8: 'Muy difícil',
+  8: 'Muy exigente', // literal del mockup [REF Pantallas:286]
   9: 'Máximo',
   10: 'Máximo absoluto',
 };

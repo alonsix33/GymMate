@@ -148,16 +148,18 @@ describe('slider de RPE (W-02)', () => {
     expect(posicionDeRPE(5)).toBeCloseTo(4 / 9, 5);
   });
 
-  it('toma la parada del gradiente mas cercana (verde 0, ambar .55, roja 1)', () => {
-    // t < .275 -> verde: valores 1, 2, 3 (t = 0, .111, .222)
-    expect(zonaDeRPE(1)).toBe('verde');
-    expect(zonaDeRPE(3)).toBe('verde');
-    // .275 <= t < .775 -> ambar: 4..7 (t = .333 .. .667)
-    expect(zonaDeRPE(4)).toBe('ambar');
-    expect(zonaDeRPE(7)).toBe('ambar');
-    // t >= .775 -> roja: 8, 9, 10 (t = .778, .889, 1)
-    expect(zonaDeRPE(8)).toBe('roja');
-    expect(zonaDeRPE(10)).toBe('roja');
+  it('RPE 8 va en AMBAR, que es el unico valor que el mockup fija', () => {
+    // El mockup dibuja el 8 con #DFA23A y la etiqueta "Muy exigente". La
+    // regla de "la parada del gradiente mas cercana" lo dejaba en rojo por un
+    // margen de 0.006, contradiciendo el unico ejemplo trabajado del diseño;
+    // el test anterior consagraba esa divergencia en vez de detectarla.
+    expect(zonaDeRPE(8)).toBe('ambar');
+  });
+
+  it('1-3 verde, 4-8 ambar, 9-10 rojo', () => {
+    expect([1, 2, 3].map(zonaDeRPE)).toEqual(['verde', 'verde', 'verde']);
+    expect([4, 5, 6, 7, 8].map(zonaDeRPE)).toEqual(['ambar', 'ambar', 'ambar', 'ambar', 'ambar']);
+    expect([9, 10].map(zonaDeRPE)).toEqual(['roja', 'roja']);
   });
 });
 

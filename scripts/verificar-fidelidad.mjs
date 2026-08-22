@@ -433,18 +433,39 @@ await compararCaja(
 );
 
 const sistema = await leer(join(RAIZ, 'redesign/design_handoff_fierro/Sistema Fierro.dc.html'), 'utf-8');
+
+// Los botones se miden contra las PANTALLAS, no contra la galeria del sistema.
+// La galeria dibuja un boton de muestra de 15px/R10/13-22, mientras que las
+// ocho pantallas que llevan un primario coinciden en 15.5px/R12/16 — y el
+// README fija el padding vertical del primario en 15-16px, fuera del cual
+// queda el 13 de la galeria. El mismo criterio que ya se aplico al titulo de
+// las hojas: la galeria ilustra, las pantallas mandan.
+const w01Botones = bloquePantalla('W-01 Sesión activa');
 await compararCaja(
   'boton primario',
-  fragmentoDe(sistema, (f) => f.startsWith('<button') && estiloAbertura(f).includes('background:#FF6317')),
-  '<button class="f-btn f-btn--primario">Guardar entrenamiento</button>',
-  '.f-btn'
+  fragmentoDe(w01Botones, (f) => f.startsWith('<button') && estiloAbertura(f).includes('background:#FF6317')),
+  '<button class="f-btn f-btn--primario f-btn--bloque">Guardar entrenamiento</button>',
+  '.f-btn',
+  { contenedor: 'display:flex;flex-direction:column;width:350px' }
 );
 await compararCaja(
   'boton secundario',
-  fragmentoDe(sistema, (f) => f.startsWith('<button') && estiloAbertura(f).includes('border:1px solid #3E4552')),
-  '<button class="f-btn f-btn--secundario">Terminar sesión</button>',
-  '.f-btn'
+  fragmentoDe(w01Botones, (f) => f.startsWith('<button') && estiloAbertura(f).includes('border:1px solid #3E4552')),
+  '<button class="f-btn f-btn--secundario f-btn--bloque">Terminar sesión</button>',
+  '.f-btn',
+  { contenedor: 'display:flex;flex-direction:column;width:350px' }
 );
+{
+  const w04 = bloquePantalla('W-04 Guía de ejercicio');
+  await compararCaja(
+    'boton de hoja (W-04 Cerrar)',
+    fragmentoDe(w04, (f) => f.startsWith('<button') && estiloAbertura(f).includes('border-radius:11px')),
+    '<button class="f-btn f-btn--secundario f-btn--bloque f-btn--hoja">Cerrar</button>',
+    '.f-btn',
+    // 390 de pantalla menos los 22 de padding de la hoja a cada lado.
+    { contenedor: 'display:flex;flex-direction:column;width:346px' }
+  );
+}
 await compararCaja(
   'badge INTENSA',
   fragmentoDe(sistema, (f) => f.startsWith('<span') && estiloAbertura(f).includes('background:#FF6317') && f.includes('>INTENSA<')),
@@ -750,6 +771,139 @@ console.log('\n--- W-01 en su pagina real ---');
   chk('la sesion no desborda en horizontal', !m.desbordaX);
   chk('el volumen del ejercicio se calcula y se pinta', m.volumen === '5,760 kg', String(m.volumen));
   chk('la metrica de volumen total cuadra', m.metrica === '5,760 kg', String(m.metrica));
+}
+
+// --------------------------------------------------------------------------
+// W-02, W-03 y W-04 — la puerta solo miraba W-01, y cinco roturas groseras
+// de las otras tres pasaban en verde.
+// --------------------------------------------------------------------------
+const w02 = bloquePantalla('W-02 RPE');
+const w03 = bloquePantalla('W-03 Resumen XP');
+const w04f = bloquePantalla('W-04 Guía de ejercicio');
+
+console.log('\n--- W-02 · slider ---');
+await compararCaja(
+  'pista del slider',
+  fragmentoDe(w02, (f) => estiloAbertura(f).includes('height:10px;border-radius:5px')),
+  `<div class="f-rpe-bloque"><div class="f-rpe-pista"><span class="f-rpe-bola" style="--t:0.78"></span></div></div>`,
+  '.f-rpe-pista',
+  { contenedor: 'width:346px' }
+);
+await compararCaja(
+  'bola del slider',
+  fragmentoDe(w02, (f) => estiloAbertura(f).includes('width:24px;height:24px;border-radius:50%')),
+  `<div class="f-rpe-pista" style="width:300px"><span class="f-rpe-bola" style="--t:0.5"></span></div>`,
+  '.f-rpe-bola'
+);
+{
+  const declCifra = [...w02.matchAll(/style="([^"]*)"[^>]*>8</g)].map((m) => m[1])[0];
+  if (declCifra) {
+    const esperado = Object.fromEntries(
+      declCifra.split(';').filter(Boolean).map((d) => {
+        const c = d.indexOf(':');
+        return [d.slice(0, c).trim(), d.slice(c + 1).trim()];
+      })
+    );
+    comparar(
+      'cifra de RPE',
+      esperado,
+      await computar(
+        '<span class="f-rpe-bloque__cifra" style="color:var(--zona-ambar)">8</span>',
+        '.f-rpe-bloque__cifra',
+        ['font-size', 'font-weight', 'color', 'font-stretch']
+      ),
+      { 'font-size': 'font-size', 'font-weight': 'font-weight', color: 'color', 'font-stretch': 'font-stretch' }
+    );
+  } else {
+    chk('cifra de RPE · se localiza en el mockup', false);
+  }
+}
+
+console.log('\n--- W-03 · resumen de XP ---');
+{
+  const declXP = [...w03.matchAll(/style="([^"]*)"[^>]*>\+189 XP</g)].map((m) => m[1])[0];
+  if (declXP) {
+    const esperado = Object.fromEntries(
+      declXP.split(';').filter(Boolean).map((d) => {
+        const c = d.indexOf(':');
+        return [d.slice(0, c).trim(), d.slice(c + 1).trim()];
+      })
+    );
+    comparar(
+      'cifra heroe de XP',
+      esperado,
+      await computar('<span class="f-xp__cifra">+189 XP</span>', '.f-xp__cifra', [
+        'font-size', 'font-weight', 'color', 'font-stretch', 'line-height',
+      ]),
+      {
+        'font-size': 'font-size', 'font-weight': 'font-weight', color: 'color',
+        'font-stretch': 'font-stretch',
+      }
+    );
+  } else {
+    chk('cifra heroe de XP · se localiza en el mockup', false);
+  }
+}
+await compararCaja(
+  'fila del desglose de XP',
+  fragmentoDe(w03, (f) => estiloAbertura(f).includes('padding:13px 16px') && f.includes('{{ x.n }}')),
+  // Suelta, igual que el fragmento del mockup: dentro del contenedor el borde
+  // de 1px se lleva 2px y la comparacion mediria dos cosas distintas.
+  `<div class="f-xp__fila"><span class="f-xp__concepto">Sesión completada</span><span class="f-xp__valor">+50</span></div>`,
+  '.f-xp__fila',
+  { contenedor: 'width:346px' }
+);
+await compararCaja(
+  'card de ascenso de rango',
+  fragmentoDe(w03, (f) => estiloAbertura(f).includes('border:1px solid #E3B341')),
+  `<div class="f-xp__ascenso" style="--rango:var(--rango-oro)"><span class="f-xp__ascenso-cuadro"></span>
+   <div class="f-xp__ascenso-textos"><span class="f-xp__ascenso-titulo">Glúteos subió a <span class="f-xp__ascenso-rango">Oro</span></span>
+   <span class="f-xp__ascenso-detalle">Plata → Oro · ratio 0.74x · +100 XP</span></div></div>`,
+  '.f-xp__ascenso',
+  { contenedor: 'width:346px' }
+);
+
+console.log('\n--- W-04 · guia ---');
+await compararCaja(
+  'bloque de datos de la guia',
+  fragmentoDe(w04f, (f) => estiloAbertura(f).includes('border-top:1px solid #20242D') && f.includes('Tu PR')),
+  `<div class="f-guia__datos">
+     <div class="f-guia__fila"><span class="f-guia__label">Tu PR</span><span class="f-guia__valor f-guia__valor--pr">180 kg · 17 abr</span></div>
+     <div class="f-guia__fila"><span class="f-guia__label">Última vez</span><span class="f-guia__valor">4×12 · 120 kg</span></div>
+   </div>`,
+  '.f-guia__datos',
+  { contenedor: 'display:flex;flex-direction:column;width:346px' }
+);
+{
+  const declFoto = [...w04f.matchAll(/style="([^"]*)"/g)]
+    .map((m) => m[1])
+    .find((d) => d.includes('height:150px') && d.includes('border-radius:12px'));
+  if (declFoto) {
+    comparar(
+      'foto de la guia',
+      { height: '150px', 'border-radius': '12px' },
+      await computar('<img class="f-guia__foto" alt="">', '.f-guia__foto', ['height', 'border-radius']),
+      { height: 'height', 'border-radius': 'border-radius' }
+    );
+  } else {
+    chk('foto de la guia · se localiza en el mockup', false);
+  }
+}
+
+// --------------------------------------------------------------------------
+// W-01 · barras de volumen por musculo: la proporcion es sobre el TOTAL.
+// --------------------------------------------------------------------------
+{
+  const w01v = bloquePantalla('W-01 Sesión activa');
+  const rellenos = [...w01v.matchAll(/width:(\d+)%;height:100%;background:(#[0-9A-F]{6})/g)];
+  chk('el mockup declara dos barras de musculo', rellenos.length === 2, String(rellenos.length));
+  if (rellenos.length === 2) {
+    // 5,760 y 2,160 -> 72% y 27% del TOTAL (7,920), no del mayor.
+    chk('la primera barra es el 72% del total', rellenos[0][1] === '72', rellenos[0][1]);
+    chk('la segunda es el 27%', rellenos[1][1] === '27', rellenos[1][1]);
+    chk('la mayor va en Fragua y la otra no', rellenos[0][2] === '#FF6317' && rellenos[1][2] !== '#FF6317',
+      `${rellenos[0][2]} / ${rellenos[1][2]}`);
+  }
 }
 
 // --------------------------------------------------------------------------

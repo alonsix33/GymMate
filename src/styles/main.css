@@ -13,9 +13,11 @@
   --color-dark-surface: #1e293b;
   --color-dark-border: rgba(255, 255, 255, 0.05);
 
-  /* Acento - UN solo color, sin gradientes */
-  --color-accent: #3b82f6;
-  --color-accent-hover: #2563eb;
+  /* Acento - UN solo color, sin gradientes.
+     FIERRO: sale de tokens.css. El azul de antes seguia ganando en el anillo
+     de foco de media app, y en FIERRO no existe el azul. */
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
 
   /* Texto */
   --color-text-primary: #f1f5f9;

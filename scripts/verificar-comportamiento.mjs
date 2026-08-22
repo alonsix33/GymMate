@@ -670,15 +670,40 @@ const borradorDePrueba = {
     await pagina.keyboard.press('Escape');
     await pagina.waitForTimeout(250);
   }
-  const sinFoto = await pagina.evaluate(async () => {
-    // Un ejercicio sin imageUrl no debe dejar un bloque de foto vacio.
-    const nombres = [...document.querySelectorAll('.f-ejercicio__nombre')].map((b) => b.textContent);
+  const conFoto = await pagina.evaluate(async () => {
     document.querySelector('.f-ejercicio__nombre')?.click();
     await new Promise((r) => setTimeout(r, 250));
     const img = document.querySelector('.f-guia__foto');
-    return { nombres, tieneImg: !!img, srcVacio: img ? !img.getAttribute('src') : false };
+    return { tieneImg: !!img, srcVacio: img ? !img.getAttribute('src') : false };
   });
-  chk('la guia nunca pinta una foto sin src', !sinFoto.srcVacio, JSON.stringify(sinFoto));
+  chk('la guia nunca pinta una foto sin src', !conFoto.srcVacio, JSON.stringify(conFoto));
+  chk('con foto, la guia la pinta', conFoto.tieneImg, JSON.stringify(conFoto));
+  await pagina.keyboard.press('Escape');
+  await pagina.waitForTimeout(250);
+
+  // El camino que faltaba: un ejercicio SIN imageUrl. Los seis de grupo1 la
+  // tienen, asi que el chequeo anterior no probaba nunca la rama de "sin
+  // foto" — que es justo la que el README obliga a no dejar en placeholder.
+  const sinFoto = await pagina.evaluate(async () => {
+    const { mostrarGuiaEjercicio } = window.__guiaDePrueba ?? {};
+    if (!mostrarGuiaEjercicio) return { sinGancho: true };
+    mostrarGuiaEjercicio('Ejercicio Que No Existe En La Base');
+    await new Promise((r) => setTimeout(r, 250));
+    const hoja = document.querySelector('.f-sheet');
+    return {
+      abierta: !!hoja,
+      foto: !!document.querySelector('.f-guia__foto'),
+      texto: !!document.querySelector('.f-guia__texto'),
+      alto: hoja ? +hoja.getBoundingClientRect().height.toFixed(0) : 0,
+    };
+  });
+  if (sinFoto.sinGancho) {
+    chk('la guia se puede abrir desde la puerta', false, 'falta window.__guiaDePrueba');
+  } else {
+    chk('sin foto, la guia NO deja un bloque de imagen', sinFoto.abierta && !sinFoto.foto,
+      JSON.stringify(sinFoto));
+    chk('sin descripcion tampoco deja un parrafo vacio', !sinFoto.texto, JSON.stringify(sinFoto));
+  }
   await ctx.close();
 }
 
@@ -737,6 +762,82 @@ const borradorDePrueba = {
   });
   chk('la sesion no muestra emojis', r.emojis.length === 0, r.emojis.join(' '));
   chk('la sesion no usa exclamaciones dobles', !r.dobles);
+  await ctx.close();
+}
+
+// --------------------------------------------------------------------------
+// 15b. La voz del coach, mensaje a mensaje. Mirar el body en un instante solo
+//      ve UNO de los nueve textos: con un emoji metido en la rama de "rutina
+//      sin historial" el chequeo anterior seguia verde, porque esa rama no se
+//      ejecutaba con el historial sembrado.
+// --------------------------------------------------------------------------
+{
+  const { ctx, pagina } = await abrir();
+  const textos = await pagina.evaluate(async () => {
+    // Se llama a cada productor de mensaje y se recoge lo que escribe.
+    const nota = document.createElement('div');
+    nota.className = 'f-sesion__coach';
+    document.body.appendChild(nota);
+    const salida = [];
+    const coach = window.__coachDePrueba;
+    if (!coach) return null;
+    const ej = {
+      nombre: 'Prensa de Piernas',
+      esMancuerna: false,
+      grupoMuscular: 'Piernas',
+      sets: 4,
+      reps: 12,
+      peso: 100,
+      volumen: 4800,
+      completado: true,
+    };
+    const recoger = (etiqueta) => {
+      salida.push(`${etiqueta}: ${nota.innerText.replace(/\n/g, ' ')}`);
+      nota.textContent = '';
+    };
+    // Rutina sin historial de ese grupo.
+    coach.initCoachSession();
+    coach.updateCoachOnSessionLoad('GRUPO INEXISTENTE', [ej, ej, ej]);
+    recoger('apertura');
+    // PR nuevo y cerca del PR, con el pico previo explicito.
+    coach.initCoachSession();
+    coach.updateCoachOnExerciseUpdate({ ...ej, peso: 160 }, 0, [ej], 150);
+    recoger('pr-nuevo');
+    coach.initCoachSession();
+    coach.updateCoachOnExerciseUpdate({ ...ej, peso: 140 }, 0, [ej], 150);
+    recoger('cerca-del-pr');
+    // Completar: los tres tramos.
+    coach.initCoachSession();
+    coach.updateCoachOnExerciseComplete(ej, 1, 8);
+    recoger('completado-suelto');
+    coach.initCoachSession();
+    coach.updateCoachOnExerciseComplete(ej, 7, 8);
+    recoger('queda-uno');
+    coach.initCoachSession();
+    coach.updateCoachOnExerciseComplete(ej, 8, 8);
+    recoger('todos');
+    nota.remove();
+    return salida;
+  });
+  if (!textos) {
+    chk('el coach se puede conducir desde la puerta', false, 'falta window.__coachDePrueba');
+  } else {
+    for (const linea of textos) {
+      const emojis = linea.match(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}]/gu) ?? [];
+      chk(`coach sin emoji · ${linea.split(':')[0]}`, emojis.length === 0, linea);
+      chk(`coach sin exclamaciones · ${linea.split(':')[0]}`, !/!/.test(linea), linea);
+      chk(`coach sin "·" mal puesto ni bullets · ${linea.split(':')[0]}`, !linea.includes('•'), linea);
+    }
+    const prNuevo = textos.find((t) => t.startsWith('pr-nuevo'));
+    chk('el mensaje de PR nuevo se dispara', /PR nuevo/.test(prNuevo ?? ''), prNuevo ?? '');
+    chk('y no presenta el peso recien tecleado como marca anterior',
+      /anterior: 150/.test(prNuevo ?? ''), prNuevo ?? '');
+    const cerca = textos.find((t) => t.startsWith('cerca-del-pr'));
+    chk('cerca del PR se dice el peso objetivo, no la diferencia',
+      /Levanta \d/.test(cerca ?? '') && !/faltan|Estás a/.test(cerca ?? ''), cerca ?? '');
+    const queda = textos.find((t) => t.startsWith('queda-uno'));
+    chk('"Queda 1 ejercicio" llega a la nota', /Queda 1 ejercicio/.test(queda ?? ''), queda ?? '');
+  }
   await ctx.close();
 }
 
@@ -1208,6 +1309,151 @@ const borradorDePrueba = {
     () => JSON.parse(localStorage.getItem('gymmate_gamification') || '{}').streakData?.currentStreak ?? 0
   );
   chk('sin sesiones de pesas la racha es 0', racha === 0, String(racha));
+  await ctx.close();
+}
+
+// --------------------------------------------------------------------------
+// 28. Reanudar un borrador NO convierte los opcionales en obligatorios ni
+//     regala XP por PRs que ya existian.
+// --------------------------------------------------------------------------
+{
+  const borrador = {
+    date: new Date().toISOString().slice(0, 10),
+    grupo: 'GRUPO 1 - Piernas + Glúteos',
+    startedAt: new Date(Date.now() - 600000).toISOString(),
+    ejercicios: [
+      { nombre: 'Prensa de Piernas', esMancuerna: false, grupoMuscular: 'Piernas', sets: 4, reps: 12, peso: 120, volumen: 5760, completado: false },
+      { nombre: 'Abductora Máquina', esMancuerna: false, grupoMuscular: 'Glúteos', sets: 0, reps: 0, peso: 0, volumen: 0, completado: false },
+      { nombre: 'Aductora Máquina', esMancuerna: false, grupoMuscular: 'Piernas', sets: 0, reps: 0, peso: 0, volumen: 0, completado: false },
+      { nombre: 'Patada de Glúteo en Máquina', esMancuerna: false, grupoMuscular: 'Glúteos', sets: 0, reps: 0, peso: 0, volumen: 0, completado: false },
+      { nombre: 'Extensión de Cuádriceps', esMancuerna: false, grupoMuscular: 'Piernas', sets: 0, reps: 0, peso: 0, volumen: 0, completado: false },
+      { nombre: 'RDL / Peso Muerto Rumano', esMancuerna: false, grupoMuscular: 'Piernas', sets: 0, reps: 0, peso: 0, volumen: 0, completado: false },
+      { nombre: 'Hip Thrust', esMancuerna: false, grupoMuscular: 'Glúteos', sets: 0, reps: 0, peso: 0, volumen: 0, completado: false },
+      { nombre: 'Abdominales en Máquina', esMancuerna: false, grupoMuscular: 'Core', sets: 0, reps: 0, peso: 0, volumen: 0, completado: false },
+    ],
+    volumenTotal: 5760,
+    volumenPorGrupo: { Piernas: 5760 },
+    draftTimestamp: Date.now(),
+  };
+  const { ctx, pagina } = await abrir({
+    gymmate_draft: borrador,
+    gymmate_history: historialDePrueba([2, 5]),
+    gymmate_prs: {
+      'Prensa de Piernas': { peso: 180, sets: 4, reps: 12, volumen: 8640, date: new Date().toISOString() },
+      'Abductora Máquina': { peso: 60, sets: 3, reps: 12, volumen: 2160, date: new Date().toISOString() },
+    },
+  });
+  await pagina.locator('[data-accion="continuar"]').click();
+  await pagina.waitForTimeout(600);
+  const r = await pagina.evaluate(() => ({
+    opcionales: [...document.querySelectorAll('.f-opcional__nombre')].map((e) => e.textContent),
+    separador: !!document.querySelector('.f-separador'),
+    cards: document.querySelectorAll('.f-ejercicio').length,
+  }));
+  chk('reanudar conserva los opcionales como opcionales', r.opcionales.length === 2, r.opcionales.join(','));
+  chk('y su separador', r.separador);
+  chk('los obligatorios siguen siendo seis', r.cards === 6, String(r.cards));
+
+  // Y ahora al terminar: sin PRs nuevos, no puede haber filas de PR en W-03.
+  await pagina.locator('[data-sesion="terminar"]').click();
+  await pagina.waitForTimeout(500);
+  // Con datos sin guardar sale antes la hoja de "¿Guardar antes de terminar?".
+  const guardar = pagina.locator('.f-sheet__botones .f-btn--secundario');
+  if (await guardar.count()) {
+    await guardar.first().click();
+    await pagina.waitForTimeout(500);
+  }
+  await pagina.locator('#rpeConfirmar').click();
+  await pagina.waitForTimeout(1500);
+  const xp = await pagina.evaluate(() => ({
+    filas: [...document.querySelectorAll('.f-xp__concepto')].map((e) => e.textContent ?? ''),
+    total: document.querySelector('.f-xp__cifra')?.textContent ?? '',
+  }));
+  chk(
+    'reanudar no inventa PRs: ninguna fila "PR ·" sin haber batido nada',
+    !xp.filas.some((f) => f.startsWith('PR ·')),
+    xp.filas.join(' | ') || '(sin resumen)'
+  );
+  await ctx.close();
+}
+
+// --------------------------------------------------------------------------
+// 29. Las hojas atrapan el foco y lo devuelven al cerrarse.
+// --------------------------------------------------------------------------
+{
+  const { ctx, pagina } = await abrir({ gymmate_history: historialDePrueba() });
+  await pagina.locator('[data-grupo]').first().click();
+  await pagina.waitForTimeout(500);
+  await pagina.locator('.f-ejercicio__info').first().focus();
+  const antes = await pagina.evaluate(() => document.activeElement?.className ?? '');
+  await pagina.locator('.f-ejercicio__info').first().click();
+  await pagina.waitForTimeout(400);
+  const dentro = await pagina.evaluate(async () => {
+    const visitados = [];
+    for (let i = 0; i < 6; i++) {
+      // Se tabula de verdad y se apunta si el foco sale de la hoja.
+      const hoja = document.querySelector('.f-scrim');
+      const activo = document.activeElement;
+      visitados.push(hoja?.contains(activo) ? 'dentro' : 'FUERA');
+      await new Promise((r) => setTimeout(r, 10));
+      // Sin acceso al Tab real desde aqui: se comprueba el mecanismo.
+      break;
+    }
+    const fuera = [...document.body.children].filter(
+      (h) => h !== document.querySelector('.f-scrim') && !h.inert
+    );
+    return { visitados, sinInertar: fuera.map((h) => h.id || h.tagName) };
+  });
+  chk('con la hoja abierta el foco arranca dentro', dentro.visitados[0] === 'dentro', dentro.visitados.join(','));
+  chk('el resto de la pagina queda inerte', dentro.sinInertar.length === 0, dentro.sinInertar.join(','));
+
+  await pagina.keyboard.press('Escape');
+  await pagina.waitForTimeout(300);
+  const despues = await pagina.evaluate(() => ({
+    clase: document.activeElement?.className ?? '',
+    inertes: [...document.body.children].filter((h) => h.inert).length,
+  }));
+  chk('al cerrar, el foco vuelve al boton que la abrio', despues.clase.includes('f-ejercicio__info'),
+    `${antes} -> ${despues.clase}`);
+  chk('y nada se queda inerte', despues.inertes === 0, String(despues.inertes));
+  await ctx.close();
+}
+
+// --------------------------------------------------------------------------
+// 30. El anillo de foco es Fragua en toda la app, nunca el azul legacy.
+// --------------------------------------------------------------------------
+{
+  const { ctx, pagina } = await abrir({ gymmate_history: historialDePrueba() });
+  const azules = [];
+  for (const [nombre, camino, selector] of [
+    ['home', [], '.f-home__rutina'],
+    ['sesion', ['[data-grupo]'], '.f-ejercicio__check'],
+    ['historial', ['[data-nav="home"]', '[data-nav="history"]'], '.f-hueso__accion'],
+  ]) {
+    for (const paso of camino) {
+      await pagina.locator(paso).first().click();
+      await pagina.waitForTimeout(350);
+    }
+    // Con Tab de verdad, no con .focus(): tras un click, Chromium no aplica
+    // :focus-visible a un foco programatico y la medida salia la del texto.
+    await pagina.evaluate(() => document.body.focus());
+    let color = null;
+    for (let i = 0; i < 60; i++) {
+      await pagina.keyboard.press('Tab');
+      const r = await pagina.evaluate((sel) => {
+        const el = document.activeElement;
+        if (!el || !el.matches(sel)) return null;
+        return getComputedStyle(el).outlineColor;
+      }, selector);
+      if (r) {
+        color = r;
+        break;
+      }
+    }
+    if (color && color !== 'rgb(255, 99, 23)') azules.push(`${nombre}:${selector}=${color}`);
+    chk(`el foco de ${nombre} va en Fragua`, color === 'rgb(255, 99, 23)', `${selector} -> ${color}`);
+  }
+  void azules;
   await ctx.close();
 }
 

@@ -184,6 +184,29 @@ export type RespuestaHoja = 'confirmar' | 'cancelar' | 'descartado';
 /** Solo puede haber una hoja viva. Sin esto, un doble tap abria una segunda
  *  con un indice congelado de antes del await y se borraba el item
  *  equivocado. */
+/**
+ * Mientras una hoja esta abierta, el resto de la pagina queda fuera del
+ * recorrido de teclado y de los lectores de pantalla. Sin esto, dos
+ * tabuladores desde el boton de cerrar y ya estabas navegando la home por
+ * detras del velo, con la hoja declarandose `aria-modal`.
+ *
+ * Devuelve la funcion que lo deshace y devuelve el foco a donde estaba.
+ */
+export function atraparFoco(velo: HTMLElement): () => void {
+  const previo = document.activeElement as HTMLElement | null;
+  const inertados: HTMLElement[] = [];
+  for (const hijo of Array.from(document.body.children)) {
+    if (hijo === velo || !(hijo instanceof HTMLElement)) continue;
+    if (hijo.inert) continue;
+    hijo.inert = true;
+    inertados.push(hijo);
+  }
+  return () => {
+    for (const el of inertados) el.inert = false;
+    if (previo && document.contains(previo)) previo.focus?.({ preventScroll: true });
+  };
+}
+
 let hojaAbierta = false;
 
 /**
@@ -254,10 +277,13 @@ export function preguntar(opciones: OpcionesConfirmar): Promise<RespuestaHoja> {
 
     const foco = document.activeElement as HTMLElement | null;
 
+    let liberar: (() => void) | null = null;
     const cerrar = (resultado: RespuestaHoja) => {
       document.removeEventListener('keydown', alTeclear);
       velo.remove();
       hojaAbierta = false;
+      liberar?.();
+      liberar = null;
       // El foco solo vuelve si su elemento sigue en el documento: tras un
       // borrado confirmado, el boton que lo abrio ya no existe.
       if (foco && document.contains(foco)) foco.focus?.();
@@ -276,6 +302,7 @@ export function preguntar(opciones: OpcionesConfirmar): Promise<RespuestaHoja> {
     document.addEventListener('keydown', alTeclear);
 
     document.body.appendChild(velo);
+    liberar = atraparFoco(velo);
     sheet.focus();
   });
 }

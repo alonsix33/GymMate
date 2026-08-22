@@ -1,4 +1,4 @@
-import { configurarBackend, comprobarToken, tokenBackend, urlBackend, estadoBackend, subirCopia, bajarCopia } from '@/features/backend';
+import { configurarBackend, comprobarToken, hayBackend, tokenBackend, urlBackend, estadoBackend, subirCopia, bajarCopia } from '@/features/backend';
 import { SIN_FECHA, fechaLegible } from '@/utils/fecha';
 /**
  * FIERRO · Calculadoras, Perfil y Medidas — CA-01, CA-02, P-01, P-02, P-03.
@@ -513,6 +513,11 @@ export function renderPerfil(contenedor: HTMLElement): void {
   `;
   enganchar(contenedor, (el) => alTocarPerfil(el, contenedor));
   animarGrasa(contenedor);
+
+  // Si hay token y todavia no se sabe nada del servidor, se pregunta AHORA.
+  // Sin esto la tarjeta pintaba "comprobando…" y no comprobaba nada: una
+  // promesa que el render hacia y no cumplia.
+  if (estadoServidor === null && hayBackend()) void comprobarServidor();
 }
 
 /**
@@ -523,6 +528,60 @@ export function renderPerfil(contenedor: HTMLElement): void {
  * P-01, y sin backend configurado se lee como lo que es —algo apagado— en vez
  * de pedir atencion.
  */
+/**
+ * Lo ultimo que se supo del servidor.
+ *
+ * Existe porque la tarjeta pintaba "comprobando…" siempre que hubiera token, y
+ * NADA comprobaba al renderizar: era una promesa que el render hacia y no
+ * cumplia, asi que la marca se quedaba clavada ahi para siempre. Y encima
+ * `Conectar` escribia el estado bueno y despues llamaba a `renderPerfil`, que
+ * lo borraba. El toast decia "conectado · copia en postgres" al lado de una
+ * marca que decia "comprobando…".
+ *
+ * Ahora el estado vive fuera del DOM: sobrevive al re-render y se pinta solo.
+ */
+let estadoServidor: string | null = null;
+
+/**
+ * Pregunta de verdad y deja la marca en su sitio.
+ *
+ * En dos pasos porque `/api/salud` NO exige token: si solo se mirara eso, un
+ * token mal escrito pintaria "conectado" en verde. Y engancha el coach aqui,
+ * no solo al arrancar la app, porque si no la pantalla decia "coach con
+ * modelo" mientras contestaba el del telefono.
+ */
+async function comprobarServidor(): Promise<void> {
+  if (!hayBackend()) {
+    estadoServidor = 'sin conectar';
+    return pintarEstadoServidor();
+  }
+  estadoServidor = 'comprobando…';
+  pintarEstadoServidor();
+
+  const e = await estadoBackend();
+  if (!e) {
+    estadoServidor = 'no responde';
+    return pintarEstadoServidor();
+  }
+  if ((await comprobarToken()) === 'token') {
+    estadoServidor = 'token inválido';
+    return pintarEstadoServidor();
+  }
+  if (e.coach) {
+    const { CoachRemoto, usarAdaptador } = await import('@/features/coach-ia');
+    usarAdaptador(new CoachRemoto(urlBackend(), tokenBackend()));
+    estadoServidor = 'conectado · coach con modelo';
+  } else {
+    estadoServidor = 'conectado · coach en local';
+  }
+  pintarEstadoServidor();
+}
+
+function pintarEstadoServidor(): void {
+  const marca = document.getElementById('perfilServidorEstado');
+  if (marca) marca.textContent = estadoServidor ?? '';
+}
+
 function tarjetaDeServidor(): string {
   const token = tokenBackend();
   const url = urlBackend();
@@ -530,9 +589,9 @@ function tarjetaDeServidor(): string {
     <section class="f-card-perfil">
       <div class="f-card-perfil__cabecera">
         <span class="f-card-perfil__titulo">Servidor</span>
-        <span class="f-card-perfil__meta" id="perfilServidorEstado">${
-          token ? 'comprobando…' : 'sin conectar'
-        }</span>
+        <span class="f-card-perfil__meta" id="perfilServidorEstado">${escapar(
+          estadoServidor ?? (token ? 'comprobando…' : 'sin conectar')
+        )}</span>
       </div>
       <span class="f-card-perfil__cuerpo">Guarda una copia fuera del teléfono y enciende el coach con modelo. Sin esto la app funciona igual, entera y sin red.</span>
       <div class="f-campo">
@@ -964,16 +1023,11 @@ function alTocarPerfil(el: HTMLElement, contenedor: HTMLElement): void {
         });
         break;
       }
-      const marca = document.getElementById('perfilServidorEstado');
-      if (marca) marca.textContent = token ? 'comprobando…' : 'sin conectar';
       void (async () => {
-        const e = await estadoBackend();
-        if (!e) {
-          if (marca) marca.textContent = 'no responde';
-          // Antes decia "Revisa la URL", y luego "revisa ORIGEN_PERMITIDO":
-          // las dos mandaban a Railway. Pero `estadoBackend()` devuelve null
-          // por CUALQUIER fetch fallido, y el estado mas comun de un telefono
-          // es no tener datos. Primero lo que Alonso puede mirar ahi mismo.
+        await comprobarServidor();
+        // El toast dice lo mismo que la marca, no otra cosa: antes uno decia
+        // "conectado" y la otra seguia en "comprobando…".
+        if (estadoServidor === 'no responde') {
           mostrarToast({
             tipo: 'aviso',
             titulo: 'El servidor no responde',
@@ -981,12 +1035,7 @@ function alTocarPerfil(el: HTMLElement, contenedor: HTMLElement): void {
           });
           return;
         }
-        // `/api/salud` NO exige token, asi que hasta aqui solo sabemos que el
-        // servidor esta vivo. Con el token mal, esto pintaba "conectado" en
-        // verde y el fallo aparecia semanas despues, al querer restaurar.
-        const auth = await comprobarToken();
-        if (auth === 'token') {
-          if (marca) marca.textContent = 'token inválido';
+        if (estadoServidor === 'token inválido') {
           mostrarToast({
             tipo: 'aviso',
             titulo: 'El token no coincide',
@@ -994,25 +1043,12 @@ function alTocarPerfil(el: HTMLElement, contenedor: HTMLElement): void {
           });
           return;
         }
-
-        // Enganchar el coach AQUI, no solo al arrancar la app. Antes solo se
-        // instalaba en `main.ts`, asi que la pantalla decia "coach con
-        // modelo" y el coach seguia siendo el del telefono hasta reabrir.
-        let conModelo = false;
-        if (e.coach) {
-          const { CoachRemoto, usarAdaptador } = await import('@/features/coach-ia');
-          const { urlBackend, tokenBackend } = await import('@/features/backend');
-          usarAdaptador(new CoachRemoto(urlBackend(), tokenBackend()));
-          conModelo = true;
-        }
-
-        if (marca) marca.textContent = conModelo ? 'conectado · coach con modelo' : 'conectado · coach en local';
+        const e = await estadoBackend();
         mostrarToast({
-          tipo: (e.avisos?.length ?? 0) > 0 ? 'aviso' : 'exito',
+          tipo: (e?.avisos?.length ?? 0) > 0 ? 'aviso' : 'exito',
           titulo: 'Servidor conectado',
-          detalle: e.avisos?.length ? e.avisos.join(' · ') : `Copia en ${e.almacenamiento}.`,
+          detalle: e?.avisos?.length ? e.avisos.join(' · ') : `Copia en ${e?.almacenamiento}.`,
         });
-        renderPerfil(contenedor);
       })();
       break;
     }

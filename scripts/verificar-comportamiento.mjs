@@ -3156,6 +3156,96 @@ const borradorDePrueba = {
 }
 
 // --------------------------------------------------------------------------
+// CASO 50 — la marca del servidor dice la verdad, o no dice nada
+//
+// La tarjeta pintaba "comprobando…" cada vez que habia token guardado, y NADA
+// comprobaba al renderizar: era una promesa que el render hacia y no cumplia,
+// asi que la marca se quedaba clavada ahi. En la captura del usuario el toast
+// decia "Servidor conectado · Copia en postgres" justo al lado de una marca
+// que seguia diciendo "comprobando…".
+//
+// Y encima el manejador de Conectar escribia el estado bueno y DESPUES llamaba
+// a `renderPerfil`, que lo borraba.
+//
+// Se prueba contra un servidor de mentira dentro del navegador: lo que importa
+// es que la marca acabe en un estado final, no que haya red.
+{
+  const ctx = await navegador.newContext({ viewport: { width: 390, height: 844 }, ...ZONA });
+  const pagina = await ctx.newPage();
+  pagina.setDefaultTimeout(6000);
+
+  // Un `fetch` interceptado ANTES de que cargue la app: /api/salud responde
+  // como un servidor con Postgres y coach, y /api/datos acepta el token.
+  await pagina.addInitScript(() => {
+    localStorage.setItem('gymmate_backend_token', 'token-de-prueba-largo-0123456789');
+    localStorage.setItem('gymmate_backend_url', 'https://servidor.example');
+    const real = window.fetch.bind(window);
+    window.fetch = async (u, init) => {
+      const url = String(typeof u === 'string' ? u : u.url);
+      if (url.includes('/api/salud')) {
+        return new Response(
+          JSON.stringify({ ok: true, almacenamiento: 'postgres', persistente: true,
+            coach: true, protegido: true, avisos: [] }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } }
+        );
+      }
+      if (url.includes('/api/datos')) {
+        return new Response(JSON.stringify({ datos: null, actualizado: null }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      return real(u, init);
+    };
+  });
+
+  await pagina.goto(URL_APP, { waitUntil: 'networkidle', timeout: 60000 });
+  await pagina.evaluate(() => window.switchTab('profile'));
+  await pagina.waitForTimeout(300);
+
+  const marca = () => pagina.locator('#perfilServidorEstado');
+  chk('servidor · la marca existe al abrir PERFIL', (await marca().count()) === 1);
+
+  // Con token guardado, la marca NO puede quedarse en "comprobando…": eso es
+  // justo el defecto. Se le da tiempo de sobra y se mira el estado final.
+  await pagina.waitForFunction(
+    () => {
+      const t = document.getElementById('perfilServidorEstado')?.textContent ?? '';
+      return t !== '' && t !== 'comprobando…';
+    },
+    null,
+    { timeout: 5000 }
+  ).catch(() => {});
+  const final = (await marca().textContent())?.trim() ?? '';
+  chk('servidor · no se queda clavada en "comprobando…"', final !== 'comprobando…', `dice "${final}"`);
+  chk('servidor · acaba en un estado que existe',
+    ['conectado · coach con modelo', 'conectado · coach en local', 'token inválido', 'no responde', 'sin conectar']
+      .includes(final), `dice "${final}"`);
+  chk('servidor · con clave del modelo dice que el coach es el del modelo',
+    final === 'conectado · coach con modelo', `dice "${final}"`);
+
+  // Y sobrevive a un re-render: el estado vive fuera del DOM justo por esto.
+  await pagina.evaluate(() => window.switchTab('home'));
+  await pagina.waitForTimeout(200);
+  await pagina.evaluate(() => window.switchTab('profile'));
+  await pagina.waitForTimeout(300);
+  chk('servidor · el estado sobrevive a salir y volver a PERFIL',
+    (await marca().textContent())?.trim() === 'conectado · coach con modelo',
+    `dice "${(await marca().textContent())?.trim()}"`);
+
+  // Sin token guardado, "sin conectar" y nunca "comprobando…".
+  const ctx2 = await navegador.newContext({ viewport: { width: 390, height: 844 }, ...ZONA });
+  const p2 = await ctx2.newPage();
+  p2.setDefaultTimeout(6000);
+  await p2.goto(URL_APP, { waitUntil: 'networkidle', timeout: 60000 });
+  await p2.evaluate(() => window.switchTab('profile'));
+  await p2.waitForTimeout(400);
+  const sinToken = (await p2.locator('#perfilServidorEstado').textContent())?.trim() ?? '';
+  chk('servidor · sin token guardado dice "sin conectar", no "comprobando…"',
+    sinToken === 'sin conectar', `dice "${sinToken}"`);
+  await ctx2.close();
+  await ctx.close();
+}
+
+// --------------------------------------------------------------------------
 clearTimeout(abortar);
 await navegador.close();
 servidor.close();
@@ -3164,7 +3254,7 @@ servidor.close();
 // abrir un selector de archivo o una pantalla deja de pintarse, media docena
 // de casos dejan de ejecutarse y el verde no cambia de color.
 console.log(`\n${ejecutados} chequeos ejecutados`);
-const CHEQUEOS_MINIMO = 300;
+const CHEQUEOS_MINIMO = 335;
 if (ejecutados < CHEQUEOS_MINIMO) {
   fallos++;
   console.log(

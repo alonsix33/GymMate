@@ -45,6 +45,25 @@ function sesion(
   } as unknown as HistorySession;
 }
 
+/** Una sesion en una fecha EXACTA, sin contar dias hacia atras. */
+function sesionEn(fecha: Date): HistorySession {
+  return {
+    sessionId: `s_${fecha.getTime()}`,
+    date: fecha.toISOString(),
+    savedAt: fecha.toISOString(),
+    grupo: 'Pecho',
+    type: 'weights',
+    volumenTotal: 2400,
+    volumenPorGrupo: { Pecho: 2400 },
+    ejercicios: [
+      {
+        nombre: 'Press Banca', sets: 3, reps: 8, peso: 100, volumen: 2400,
+        completado: true, esMancuerna: false, grupoMuscular: 'Pecho',
+      },
+    ],
+  } as unknown as HistorySession;
+}
+
 beforeEach(() => localStorage.clear());
 
 describe('contextoCompleto · la ventana de 12 meses', () => {
@@ -72,13 +91,23 @@ describe('contextoCompleto · la ventana de 12 meses', () => {
 
   it('la del limite justo por dentro entra y la de justo fuera no', () => {
     // Antes usaba 360 y 372, o sea toleraba SEIS dias de corrimiento del
-    // corte sin protestar. El corte real cae en 365 o 366; se prueba a un dia
-    // de cada lado del corte calculado, no "por ahi cerca".
+    // corte sin protestar.
+    //
+    // Y contar dias con `Math.round((hoy - corte) / 86400000)` era inestable:
+    // da 365 por la mañana y 366 por la tarde, asi que el test pasaba o
+    // fallaba segun la hora a la que se corriera la puerta. Aqui las fechas se
+    // construyen desde el corte, sin contar dias.
     const hoy = new Date();
     const corte = new Date(hoy.getFullYear(), hoy.getMonth() - 12, hoy.getDate());
-    const dias = Math.round((hoy.getTime() - corte.getTime()) / 86400000);
-    expect(contextoCompleto([sesion('Press Banca', 100, 8, dias)])?.resumen.sesiones).toBe(1);
-    expect(contextoCompleto([sesion('Press Banca', 100, 8, dias + 1)])).toBeNull();
+    const enFecha = (d: Date) => sesionEn(new Date(d));
+
+    const dentro = new Date(corte);
+    dentro.setHours(0, 1, 0, 0);
+    expect(contextoCompleto([enFecha(dentro)])?.resumen.sesiones).toBe(1);
+
+    const fuera = new Date(corte);
+    fuera.setHours(-1, 0, 0, 0); // las 23:00 del dia anterior al corte
+    expect(contextoCompleto([enFecha(fuera)])).toBeNull();
   });
 
   it('el dia del limite entra ENTERO, tambien lo entrenado por la mañana', () => {
@@ -89,13 +118,7 @@ describe('contextoCompleto · la ventana de 12 meses', () => {
     const hoy = new Date();
     const corte = new Date(hoy.getFullYear(), hoy.getMonth() - 12, hoy.getDate());
     const manana = new Date(corte.getFullYear(), corte.getMonth(), corte.getDate(), 9, 0);
-    const s = {
-      sessionId: 'lim', date: manana.toISOString(), savedAt: manana.toISOString(),
-      grupo: 'Pecho', type: 'weights', volumenTotal: 1, volumenPorGrupo: { Pecho: 1 },
-      ejercicios: [{ nombre: 'Press Banca', sets: 3, reps: 8, peso: 100, volumen: 2400,
-        completado: true, esMancuerna: false, grupoMuscular: 'Pecho' }],
-    } as unknown as HistorySession;
-    expect(contextoCompleto([s])?.resumen.sesiones).toBe(1);
+    expect(contextoCompleto([sesionEn(manana)])?.resumen.sesiones).toBe(1);
   });
 
   it('la ventana es la declarada, no otra', () => {

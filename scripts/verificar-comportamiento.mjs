@@ -6,6 +6,17 @@
  * que la verificacion adversarial encontro rotos. Cada caso de aqui es un
  * defecto que YA ocurrio: si vuelve, esto se pone rojo.
  *
+ * Esa frase era falsa hasta la revision del paso 6. El caso 27 ("el cardio no
+ * suma racha") importaba un modulo, lo tiraba, y afirmaba "la racha es 0" sobre
+ * una pagina recien abierta y VACIA: sumarle 7 a la racha dentro de
+ * `processCompletedCardioSession` dejaba la puerta en verde. Y el caso 26
+ * bajaba el descanso a 0, con lo que "el ultimo descanso tambien se corre" —el
+ * defecto estrella de ese paso— duraba cero segundos y era inobservable.
+ *
+ * Regla que sale de ahi: un caso que no se ha visto FALLAR con su defecto
+ * reintroducido no cuenta como cobertura. Cada caso nuevo se prueba matando su
+ * propio mutante antes de darlo por bueno.
+ *
  * Sale 1 ante cualquier fallo. Uso: node scripts/verificar-comportamiento.mjs
  */
 import { chromium } from 'playwright';
@@ -30,10 +41,76 @@ const MIME = {
   '.png': 'image/png', '.ico': 'image/x-icon', '.webmanifest': 'application/manifest+json',
   '.map': 'application/json',
 };
-await stat(join(DIST, 'index.html')).catch(() => {
+const distIndex = await stat(join(DIST, 'index.html')).catch(() => {
   console.error('No hay dist/index.html. Corre `npm run build` antes.');
   process.exit(2);
 });
+
+// Frescura, no solo existencia. Un `npm run build` que falla deja el dist
+// ANTERIOR en su sitio, y las tres sondas de navegador lo median tan contentas
+// dando verde sobre un artefacto viejo. Se observo en vivo durante la
+// auditoria: tsc EXIT=2, build EXIT=2, runtime EXIT=0.
+{
+  const fuentes = [];
+  const recorrer = async (dir) => {
+    const { readdir } = await import('fs/promises');
+    for (const e of await readdir(dir, { withFileTypes: true })) {
+      const ruta = join(dir, e.name);
+      if (e.isDirectory()) await recorrer(ruta);
+      else if (/\.(ts|css|html)$/.test(e.name)) fuentes.push(ruta);
+    }
+  };
+  await recorrer(join(RAIZ, 'src'));
+  fuentes.push(join(RAIZ, 'index.html'));
+  let masNueva = 0;
+  let culpable = '';
+  for (const f of fuentes) {
+    const m = (await stat(f)).mtimeMs;
+    if (m > masNueva) {
+      masNueva = m;
+      culpable = f;
+    }
+  }
+  if (masNueva > distIndex.mtimeMs) {
+    console.error(
+      `dist/ esta rancio: ${culpable.replace(RAIZ + '/', '')} es mas nuevo que dist/index.html.\n` +
+        'Corre `npm run build` — medir el artefacto viejo da verdes que no valen nada.'
+    );
+    process.exit(2);
+  }
+}
+
+/**
+ * Literales del propio mockup.
+ *
+ * El `<script data-dc-script>` de `Pantallas Fierro.dc.html` trae los datos con
+ * los que se dibujaron las 32 capturas. Extraerlos de ahi es la unica forma de
+ * que un texto inventado se ponga rojo: mientras las puertas solo compararon
+ * cajas y colores, los seis tags de C-01 estuvieron mal (dos letras en vez de
+ * una) y ninguna se entero — el propio script de fidelidad horneaba el tag
+ * equivocado como si fuera "el mockup".
+ */
+const MOCKUP = await readFile(
+  join(RAIZ, 'redesign', 'design_handoff_fierro', 'Pantallas Fierro.dc.html'),
+  'utf8'
+);
+function datosDelMockup(nombre) {
+  const i = MOCKUP.indexOf(`const ${nombre} = [`);
+  if (i === -1) throw new Error(`El mockup no declara ${nombre}: la puerta no puede comparar contra nada`);
+  const desde = MOCKUP.indexOf('[', i);
+  let nivel = 0;
+  for (let k = desde; k < MOCKUP.length; k++) {
+    if (MOCKUP[k] === '[') nivel++;
+    else if (MOCKUP[k] === ']' && --nivel === 0) {
+      // eslint-disable-next-line no-new-func
+      return Function(`"use strict";return (${MOCKUP.slice(desde, k + 1)})`)();
+    }
+  }
+  throw new Error(`No se pudo cerrar el literal ${nombre} del mockup`);
+}
+
+const CARDIO_MODES_MOCKUP = datosDelMockup('cardioModes');
+const MODOS_ESPERADOS_TAGS = CARDIO_MODES_MOCKUP.map((m) => m.tag).join(',');
 const servidor = createServer(async (q, r) => {
   const ruta = decodeURIComponent((q.url ?? '/').split('?')[0]);
   const archivo = join(DIST, ruta === '/' ? 'index.html' : ruta);
@@ -53,10 +130,17 @@ await new Promise((r) => servidor.listen(0, '127.0.0.1', r));
 const URL_APP = `http://127.0.0.1:${servidor.address().port}/`;
 
 // Tope duro: una puerta que se cuelga no informa, bloquea.
+//
+// 420s. Subio de 180 al añadir los casos de cardio de punta a punta: una
+// sesion de 70 segundos reales no se puede acelerar sin dejar de comprobar lo
+// unico que importaba de ella —que el motor tarda lo que el pie anuncia—, y el
+// recorrido de los seis modos son otros ~20s. El tope sigue siendo un tope: si
+// se dispara, es que algo se colgo.
+const PRESUPUESTO_MS = 420000;
 const abortar = setTimeout(() => {
-  console.error('\nLa puerta excedio 180s y se aborta.');
+  console.error(`\nLa puerta excedio ${PRESUPUESTO_MS / 1000}s y se aborta.`);
   process.exit(1);
-}, 180000);
+}, PRESUPUESTO_MS);
 abortar.unref?.();
 
 const navegador = await chromium.launch({ executablePath: CHROME });
@@ -1236,8 +1320,13 @@ const borradorDePrueba = {
 }
 
 // --------------------------------------------------------------------------
-// 26. Un cardio de punta a punta: timer, resumen, historial y XP. El XP de
-//     cardio existia en el motor y no lo llamaba nadie.
+// 26. Un cardio de punta a punta: timer, resumen, historial y XP.
+//
+//     La version anterior de este caso bajaba `rest` a 0, asi que "el ultimo
+//     descanso tambien se corre" —el defecto estrella del paso 6— duraba cero
+//     segundos y era inobservable: reintroducir el bug dejaba las cuatro
+//     puertas en verde. Ahora el descanso se queda en 5s y se afirma la
+//     duracion EXACTA contra la aritmetica rederivada a mano.
 // --------------------------------------------------------------------------
 {
   const { ctx, pagina } = await abrir({ gymmate_history: historialDePrueba([1, 4]) });
@@ -1245,40 +1334,82 @@ const borradorDePrueba = {
   await pagina.waitForTimeout(350);
   await pagina.locator('[data-modo="tabata"]').click();
   await pagina.waitForTimeout(300);
-  // Al minimo para que la prueba dure segundos, no minutos.
-  for (let i = 0; i < 7; i++) {
+  // 2 rondas x (30s trabajo + 5s descanso) = 70s exactos, con 60s de trabajo.
+  // El trabajo tiene que llegar al minimo que paga XP: por debajo de un minuto
+  // una sesion de cardio no puntua, que es lo que corta la granja de XP.
+  for (let i = 0; i < 6; i++) {
     await pagina.locator('[data-cardio="menos"][data-clave="rounds"]').click();
-    await pagina.waitForTimeout(50);
-  }
-  for (let i = 0; i < 3; i++) {
-    await pagina.locator('[data-cardio="menos"][data-clave="work"]').click();
-    await pagina.waitForTimeout(50);
+    await pagina.waitForTimeout(40);
   }
   for (let i = 0; i < 2; i++) {
-    await pagina.locator('[data-cardio="menos"][data-clave="rest"]').click();
-    await pagina.waitForTimeout(50);
+    await pagina.locator('[data-cardio="mas"][data-clave="work"]').click();
+    await pagina.waitForTimeout(40);
   }
-  await pagina.locator('[data-cardio="comenzar"]').click();
-  // 3 de cuenta atras + 5 de trabajo + margen.
-  await pagina.waitForTimeout(11000);
-  const fin = await pagina.evaluate(() => ({
-    resumen: !document.getElementById('cardioSummaryView')?.classList.contains('hidden'),
-    label: document.querySelector('.f-cardio__resumen-label')?.textContent ?? '',
-    guardado: document.querySelector('.f-cardio__guardado')?.textContent ?? '',
-    metricas: [...document.querySelectorAll('.f-cardio__metrica-label')].map((e) => e.textContent),
-    cardioEnHistorial: JSON.parse(localStorage.getItem('gymmate_history') || '[]').filter(
-      (s) => s.type === 'cardio'
-    ).length,
-    xp: (JSON.parse(localStorage.getItem('gymmate_gamification') || '{}').xpHistory || []).filter(
-      (t) => t.source === 'cardio_complete'
+  await pagina.locator('[data-cardio="menos"][data-clave="rest"]').click();
+  await pagina.waitForTimeout(40);
+
+  const cfg = await pagina.evaluate(() => ({
+    valores: [...document.querySelectorAll('.f-stepper__valor')].map((e) =>
+      Number.parseInt(e.textContent || '0', 10)
     ),
+    pie: document.querySelector('.f-cardio__total-cifra')?.textContent?.trim() ?? '',
+    sub: document.querySelector('.f-cardio__sub')?.textContent?.trim() ?? '',
   }));
+  chk('los steppers quedan donde se los dejo', cfg.valores.join(',') === '2,30,5', cfg.valores.join(','));
+  // 2 x (30 + 5) = 70 s. Rederivado a mano, no leido de la misma funcion.
+  chk('el pie anuncia la duracion rederivada a mano', cfg.pie === '1:10 min', cfg.pie);
+  chk(
+    'el subtitulo sigue a los steppers, no a una cadena fija',
+    cfg.sub === '30s trabajo / 5s descanso × 2 rondas',
+    cfg.sub
+  );
+
+  await pagina.locator('[data-cardio="comenzar"]').click();
+  // 3 de cuenta atras + 70 de sesion + margen.
+  await pagina.waitForTimeout(80000);
+  const fin = await pagina.evaluate(() => {
+    const hist = JSON.parse(localStorage.getItem('gymmate_history') || '[]').filter(
+      (s) => s.type === 'cardio'
+    );
+    return {
+      resumen: !document.getElementById('cardioSummaryView')?.classList.contains('hidden'),
+      label: document.querySelector('.f-cardio__resumen-label')?.textContent ?? '',
+      guardado: document.querySelector('.f-cardio__guardado')?.textContent ?? '',
+      metricas: [...document.querySelectorAll('.f-cardio__metrica-label')].map((e) => e.textContent),
+      cifras: [...document.querySelectorAll('.f-cardio__metrica-cifra')].map((e) => e.textContent),
+      cifraTotal: document.querySelector('.f-cardio__resumen-cifra')?.textContent ?? '',
+      cardioEnHistorial: hist.length,
+      stats: hist[0]?.stats ?? null,
+      xp: (JSON.parse(localStorage.getItem('gymmate_gamification') || '{}').xpHistory || []).filter(
+        (t) => t.source === 'cardio_complete'
+      ),
+    };
+  });
   chk('el cardio llega a su resumen', fin.resumen);
   chk('el resumen dice el modo', fin.label.includes('TABATA'), fin.label);
+  chk('y COMPLETADO, porque llego al final', fin.label.includes('COMPLETADO'), fin.label);
   chk('y que la sesion quedo guardada', fin.guardado.includes('Guardado'), fin.guardado);
   chk('la sesion entra en el historial', fin.cardioEnHistorial === 1, String(fin.cardioEnHistorial));
+
+  // EL chequeo que faltaba: el motor tarda lo que el pie anuncio. Reintroducir
+  // el bug del ultimo descanso (30 -> 25) pone esto rojo.
+  chk(
+    'el motor tarda EXACTAMENTE lo que anuncio el pie',
+    fin.stats?.totalTime === 70,
+    `totalTime ${fin.stats?.totalTime} (esperado 70)`
+  );
+  chk('y lo reparte bien entre trabajo y descanso', fin.stats?.workTime === 60 && fin.stats?.restTime === 10,
+    `trabajo ${fin.stats?.workTime} / descanso ${fin.stats?.restTime} (esperados 60 / 10)`);
+  chk('las rondas completadas son las que se hicieron', fin.stats?.roundsCompleted === 2,
+    String(fin.stats?.roundsCompleted));
+  // 60s de trabajo x 15 kcal/min = 15. El ritmo sale del mockup (C-04: 2:40 -> ~40).
+  chk('las kcal salen del ritmo del mockup', fin.stats?.calories === 15, `${fin.stats?.calories} (esperado 15)`);
+  chk('el reloj del resumen coincide con el total', fin.cifraTotal.trim() === '1:10', fin.cifraTotal);
+
   chk('el cardio SUMA XP', fin.xp.length === 1 && fin.xp[0].amount > 0, JSON.stringify(fin.xp));
   chk('el resumen enseña el XP', fin.metricas.includes('XP'), fin.metricas.join(','));
+  chk('y las cuatro metricas del mockup', fin.metricas.join(',') === 'RONDAS,TRABAJO,KCAL EST.,XP',
+    fin.metricas.join(','));
   const margen = await pagina.evaluate(() => {
     // La rejilla, no una celda: una celda de dos columnas nunca llega al
     // borde derecho y la medida no diria nada.
@@ -1296,30 +1427,250 @@ const borradorDePrueba = {
 }
 
 // --------------------------------------------------------------------------
-// 27. El cardio NO suma racha (README, cambios de comportamiento).
+// 27. El cardio NO suma racha (cambio aprobado nº 4).
+//
+//     El caso anterior importaba un modulo, lo tiraba, y afirmaba "la racha es
+//     0" sobre una pagina recien abierta y VACIA: sumarle 7 a la racha dentro
+//     de `processCompletedCardioSession` dejaba la puerta en verde. Ahora se
+//     siembra una racha real de pesas y se comprueba que el cardio no la mueve.
+// --------------------------------------------------------------------------
+{
+  const hoy = new Date();
+  const diasAtras = (n) => {
+    const d = new Date(hoy);
+    d.setDate(d.getDate() - n);
+    d.setHours(12, 0, 0, 0);
+    return d.toISOString();
+  };
+  // Tres dias LOCALES seguidos de cardio y ni uno de pesas.
+  const soloCardio = [0, 1, 2].map((n) => ({
+    type: 'cardio',
+    mode: 'tabata',
+    sessionId: `c_${n}`,
+    date: diasAtras(n),
+    savedAt: diasAtras(n),
+    grupo: 'Cardio - TABATA',
+    ejercicios: [],
+    volumenTotal: 0,
+    volumenPorGrupo: {},
+    stats: { totalTime: 240, workTime: 160, restTime: 80, roundsCompleted: 8, calories: 40 },
+  }));
+  const { ctx, pagina } = await abrir({ gymmate_history: soloCardio });
+  // initGamification corre en el arranque y persiste; con 500ms se leia el
+  // localStorage antes de que existiera y la asercion se hacia sobre nada.
+  await pagina.waitForTimeout(1600);
+  const r = await pagina.evaluate(() => ({
+    racha: JSON.parse(localStorage.getItem('gymmate_gamification') || '{}').streakData?.currentStreak ?? -1,
+    pantalla: document.body.innerText,
+  }));
+  chk('tres dias seguidos de SOLO cardio no son racha', r.racha === 0, String(r.racha));
+  chk('y la home no pinta un chip de racha', !/RACHA\s+[1-9]/.test(r.pantalla),
+    (r.pantalla.match(/RACHA[^\n]*/) || ['sin chip'])[0]);
+  await ctx.close();
+}
+
+// --------------------------------------------------------------------------
+// 27b. La racha usa el dia LOCAL, no el de Greenwich.
+//
+//      Entrenar cuatro dias seguidos alternando tarde y noche daba racha 1: en
+//      Lima toda sesion posterior a las 19:00 caia en el dia UTC siguiente y
+//      colisionaba con la del dia real siguiente.
+// --------------------------------------------------------------------------
+{
+  const hoy = new Date();
+  const aLaHora = (n, hora) => {
+    const d = new Date(hoy);
+    d.setDate(d.getDate() - n);
+    d.setHours(hora, 0, 0, 0);
+    return d.toISOString();
+  };
+  const mixto = [
+    [0, 12],
+    [1, 20],
+    [2, 12],
+    [3, 20],
+  ].map(([n, hora], i) => ({
+    type: 'weights',
+    sessionId: `w_${i}`,
+    date: aLaHora(n, hora),
+    savedAt: aLaHora(n, hora),
+    grupo: 'Piernas',
+    ejercicios: [],
+    volumenTotal: 1000,
+    volumenPorGrupo: { Piernas: 1000 },
+  }));
+  const { ctx, pagina } = await abrir({ gymmate_history: mixto });
+  await pagina.waitForTimeout(1600);
+  const racha = await pagina.evaluate(
+    () => JSON.parse(localStorage.getItem('gymmate_gamification') || '{}').streakData?.currentStreak ?? -1
+  );
+  chk('cuatro dias locales seguidos son racha 4, se entrene de tarde o de noche', racha === 4, String(racha));
+  await ctx.close();
+}
+
+// --------------------------------------------------------------------------
+// 27c. Los SEIS modos de cardio se dibujan de verdad.
+//
+//      C-06, C-07 y C-08 no se renderizaban en ninguna puerta: un mutante que
+//      hacia reventar `configCircuito`, `configEmom` o `timerPiramide` pasaba
+//      las cuatro en verde. Aqui se abre cada modo, se comprueba que pinta algo
+//      y que no deja un solo error en consola.
+// --------------------------------------------------------------------------
+{
+  const { ctx, pagina } = await abrir({ gymmate_history: historialDePrueba([1, 4]) });
+  const errores = [];
+  pagina.on('pageerror', (e) => errores.push(String(e)));
+  pagina.on('console', (m) => {
+    if (m.type() === 'error') errores.push(m.text());
+  });
+
+  const MODOS = ['tabata', 'emom', 'amrap', 'circuit', 'pyramid', 'custom'];
+  // Literales del `<script data-dc-script>` del mockup (`cardioModes`).
+  const TAGS = { tabata: 'T', emom: 'E', amrap: 'A', circuit: 'C', pyramid: 'P', custom: 'X' };
+
+  await pagina.locator('[data-accion="cardio"]').click();
+  await pagina.waitForTimeout(350);
+
+  const listado = await pagina.evaluate(() =>
+    [...document.querySelectorAll('.f-modo')].map((f) => ({
+      tag: f.querySelector('.f-modo__tag')?.textContent?.trim() ?? '',
+      n: f.querySelector('.f-modo__nombre')?.textContent?.trim() ?? '',
+      d: f.querySelector('.f-modo__desc')?.textContent?.trim() ?? '',
+    }))
+  );
+  chk(
+    'los tags de C-01 son los del mockup, de una letra',
+    listado.map((m) => m.tag).join(',') === MODOS_ESPERADOS_TAGS,
+    `${listado.map((m) => m.tag).join(',')} | mockup ${MODOS_ESPERADOS_TAGS}`
+  );
+  // Cinco de las seis descripciones estaban reescritas a mano y ninguna puerta
+  // lo veia: nada comparaba TEXTO contra el mockup.
+  const desviados = CARDIO_MODES_MOCKUP.filter(
+    (esperado, i) => listado[i]?.n !== esperado.n || listado[i]?.d !== esperado.d
+  ).map((e, i) => `${e.n}: "${listado[i]?.d ?? ''}" != "${e.d}"`);
+  chk('nombre y descripcion de los seis modos son los del mockup, literales',
+    desviados.length === 0, desviados.slice(0, 3).join(' | '));
+
+  for (const modo of MODOS) {
+    await pagina.locator(`[data-modo="${modo}"]`).click();
+    await pagina.waitForTimeout(320);
+    const v = await pagina.evaluate(() => {
+      const cfg = document.getElementById('cardioConfigView');
+      return {
+        visible: cfg ? !cfg.classList.contains('hidden') : false,
+        texto: (cfg?.innerText ?? '').trim(),
+        comenzar: !!cfg?.querySelector('[data-cardio="comenzar"]'),
+      };
+    });
+    chk(`C-02/05/07/08 · ${modo} se dibuja`, v.visible && v.texto.length > 40, `${v.texto.length} chars`);
+    chk(`${modo} ofrece Comenzar`, v.comenzar);
+    await pagina.locator('[data-cardio="volver-selector"]').click();
+    await pagina.waitForTimeout(220);
+  }
+
+  // C-06: el timer de piramide, que tampoco se dibujaba nunca.
+  await pagina.locator('[data-modo="pyramid"]').click();
+  await pagina.waitForTimeout(300);
+  await pagina.locator('[data-cardio="comenzar"]').click();
+  await pagina.waitForTimeout(4200);
+  const piramide = await pagina.evaluate(() => ({
+    hechos: document.querySelectorAll('.f-nivel__barra--hecho').length,
+    activos: document.querySelectorAll('.f-nivel__barra--activo').length,
+    proximos: document.querySelectorAll('.f-nivel__barra--proximo').length,
+    etiquetaActiva: document.querySelector('.f-nivel__seg--activo')?.textContent?.trim() ?? '',
+    leyenda: document.querySelector('.f-piramide__leyenda')?.textContent ?? '',
+  }));
+  // Invertir `estadoDeNivel(i, actual)` pasaba las cuatro puertas: aqui muere.
+  chk('C-06 · exactamente un nivel activo', piramide.activos === 1, String(piramide.activos));
+  chk('C-06 · y los otros seis repartidos entre hechos y proximos',
+    piramide.hechos + piramide.proximos === 6, `${piramide.hechos} hechos / ${piramide.proximos} proximos`);
+  chk('C-06 · al empezar ninguno esta hecho', piramide.hechos === 0, String(piramide.hechos));
+  // README §8: "el activo ... con el countdown encima".
+  chk('C-06 · el nivel activo lleva su countdown, no sus segundos crudos',
+    /^\d+:\d\d$/.test(piramide.etiquetaActiva), piramide.etiquetaActiva);
+
+  chk('ningun modo de cardio deja errores en consola', errores.length === 0, errores.slice(0, 3).join(' | '));
+  await ctx.close();
+}
+
+// --------------------------------------------------------------------------
+// 27d. Salir de cardio para el motor: ni sesiones fantasma ni resumen encima
+//      de otra pantalla.
+// --------------------------------------------------------------------------
+{
+  const { ctx, pagina } = await abrir({ gymmate_history: historialDePrueba([1, 4]) });
+  await pagina.locator('[data-accion="cardio"]').click();
+  await pagina.waitForTimeout(320);
+  await pagina.locator('[data-modo="tabata"]').click();
+  await pagina.waitForTimeout(280);
+  for (let i = 0; i < 7; i++) {
+    await pagina.locator('[data-cardio="menos"][data-clave="rounds"]').click();
+    await pagina.waitForTimeout(35);
+  }
+  await pagina.locator('[data-cardio="comenzar"]').click();
+  await pagina.waitForTimeout(1200);
+  // El usuario se va a mitad de la cuenta atras / del trabajo.
+  await pagina.locator('[data-nav="home"]').click();
+  await pagina.waitForTimeout(12000);
+  const tras = await pagina.evaluate(() => ({
+    cardioVisible: ['cardioSelectorView', 'cardioConfigView', 'cardioTimerView', 'cardioSummaryView'].filter(
+      (id) => document.getElementById(id)?.classList.contains('hidden') === false
+    ),
+    guardadas: JSON.parse(localStorage.getItem('gymmate_history') || '[]').filter((s) => s.type === 'cardio')
+      .length,
+    xp: (JSON.parse(localStorage.getItem('gymmate_gamification') || '{}').xpHistory || []).filter(
+      (t) => t.source === 'cardio_complete'
+    ).length,
+  }));
+  chk('salir de cardio no guarda una sesion abandonada', tras.guardadas === 0, String(tras.guardadas));
+  chk('ni cobra su XP', tras.xp === 0, String(tras.xp));
+  chk('ni pinta el resumen encima de la home', tras.cardioVisible.length === 0, tras.cardioVisible.join(','));
+  await ctx.close();
+}
+
+// --------------------------------------------------------------------------
+// 27e. Un tap en "+" de la duracion de AMRAP sube UN minuto, no sesenta.
 // --------------------------------------------------------------------------
 {
   const { ctx, pagina } = await abrir();
-  const r = await pagina.evaluate(async () => {
-    const antes = JSON.parse(localStorage.getItem('gymmate_gamification') || '{}').streakData
-      ?.currentStreak ?? 0;
-    // Se guarda una sesion de cardio de hoy directamente y se cierra por el
-    // mismo camino que usa la app.
-    const { processCompletedCardioSession } = await import(
-      /* @vite-ignore */ './assets/' + [...document.querySelectorAll('script[type=module]')]
-        .map((s) => s.src.split('/assets/')[1])[0]
-    ).catch(() => ({}));
-    void processCompletedCardioSession;
-    return { antes };
-  });
-  void r;
-  // Camino real: se corre un cardio minimo y se mira la racha.
-  await pagina.locator('[data-nav="home"]').click();
-  await pagina.waitForTimeout(300);
-  const racha = await pagina.evaluate(
-    () => JSON.parse(localStorage.getItem('gymmate_gamification') || '{}').streakData?.currentStreak ?? 0
-  );
-  chk('sin sesiones de pesas la racha es 0', racha === 0, String(racha));
+  await pagina.locator('[data-accion="cardio"]').click();
+  await pagina.waitForTimeout(320);
+  await pagina.locator('[data-modo="amrap"]').click();
+  await pagina.waitForTimeout(280);
+  const leer = () =>
+    pagina.evaluate(() => ({
+      valor: document.querySelector('.f-stepper__valor')?.textContent?.trim() ?? '',
+      pie: document.querySelector('.f-cardio__total-cifra')?.textContent?.trim() ?? '',
+    }));
+  const antes = await leer();
+  await pagina.locator('[data-cardio="mas"][data-clave="duration"]').click();
+  await pagina.waitForTimeout(220);
+  const despues = await leer();
+  chk('AMRAP arranca en los 12 minutos del mockup', antes.valor === '12', antes.valor);
+  chk('y un tap en "+" lo deja en 13, no en 72', despues.valor === '13', despues.valor);
+  chk('el pie nunca escribe "min" detras de un h:mm:ss', !/:\d\d:\d\d\s*min/.test(despues.pie), despues.pie);
+  await ctx.close();
+}
+
+// --------------------------------------------------------------------------
+// 27f. Ni emojis ni dobles exclamaciones en NINGUNA pantalla de cardio.
+//      La prohibicion solo miraba la pantalla de sesion.
+// --------------------------------------------------------------------------
+{
+  const { ctx, pagina } = await abrir({ gymmate_history: historialDePrueba([1, 4]) });
+  await pagina.locator('[data-accion="cardio"]').click();
+  await pagina.waitForTimeout(320);
+  let sospechosos = [];
+  for (const modo of ['tabata', 'emom', 'amrap', 'circuit', 'pyramid', 'custom']) {
+    await pagina.locator(`[data-modo="${modo}"]`).click();
+    await pagina.waitForTimeout(280);
+    const t = await pagina.evaluate(() => document.body.innerText);
+    if (/\p{Extended_Pictographic}/u.test(t)) sospechosos.push(`${modo}: emoji`);
+    if (/!!|¡¡/.test(t)) sospechosos.push(`${modo}: doble exclamacion`);
+    await pagina.locator('[data-cardio="volver-selector"]').click();
+    await pagina.waitForTimeout(200);
+  }
+  chk('cardio no tiene emojis ni dobles exclamaciones', sospechosos.length === 0, sospechosos.join(' | '));
   await ctx.close();
 }
 

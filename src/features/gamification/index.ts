@@ -330,7 +330,11 @@ export function processCompletedSession(
   const history = getHistory();
 
   // Calcular racha actualizada
-  const newStreak = calculateCurrentStreak(history);
+  // El cardio NO suma racha (cambio aprobado nº 4 del handoff). No basta con
+  // que `processCompletedCardioSession` no toque `streakData`: si el historial
+  // completo entra aqui, los dias de cardio cuentan igual en el siguiente
+  // recalculo, y un historial de solo cardio pintaba "RACHA 3" en la home.
+  const newStreak = calculateCurrentStreak(sesionesDeRacha(history));
   const oldStreakData = state.streakData;
 
   // Actualizar racha en estado
@@ -441,8 +445,20 @@ export function processCompletedSession(
  *   - el cardio NO suma racha (por eso no se toca streakData),
  *   - el cardio no mueve rangos musculares: no hay kg que comparar.
  */
+/**
+ * Sesiones que cuentan para la racha: solo pesas.
+ *
+ * Cambio aprobado nº 4 del handoff — "cardio no suma racha". Una sola
+ * implementacion, la de gamificacion: `getQuickStats` tenia otra, con otro
+ * criterio y sin un solo llamador, y se ha borrado.
+ */
+export function sesionesDeRacha(history: HistorySession[]): HistorySession[] {
+  return history.filter((s) => s.type !== 'cardio');
+}
+
 export function processCompletedCardioSession(session: HistorySession): {
   totalXP: number;
+  xpDeLogros: number;
   desglose: { baseXP: number; timeXP: number; roundsXP: number; modeBonus: number };
   newLevel: number;
   oldLevel: number;
@@ -481,7 +497,11 @@ export function processCompletedCardioSession(session: HistorySession): {
   persistState(state);
 
   return {
-    totalXP: total,
+    // El XP DE LA SESION, separado del de los logros. La casilla XP de C-04
+    // los sumaba en una sola cifra, asi que dos sesiones identicas enseñaban
+    // +156 y +56 y el usuario no tenia forma de saber por que.
+    totalXP: xp.totalXP,
+    xpDeLogros: xpLogros,
     desglose: { baseXP: xp.baseXP, timeXP: xp.timeXP, roundsXP: xp.roundsXP, modeBonus: xp.modeBonus },
     newLevel,
     oldLevel,

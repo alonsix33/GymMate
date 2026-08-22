@@ -1,3 +1,4 @@
+import { claveDiaLocal } from '@/utils/fecha';
 import type { HistorySession, ExerciseData } from '@/types';
 import { getHistory, getPRs } from '@/utils/storage';
 
@@ -448,7 +449,7 @@ function getWeekKey(date: Date): string {
   const d = new Date(date);
   d.setHours(0, 0, 0, 0);
   d.setDate(d.getDate() - d.getDay()); // Start of week (Sunday)
-  return d.toISOString().split('T')[0];
+  return claveDiaLocal(d);
 }
 
 /** Devuelve la cifra CON unidad: quien la use no debe anadir "kg" detras,

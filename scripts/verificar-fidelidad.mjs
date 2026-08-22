@@ -3,9 +3,27 @@
  * Puerta de fidelidad FIERRO.
  *
  * Compara los estilos COMPUTADOS de los componentes reales de la app contra
- * los valores declarados en `Pantallas Fierro.dc.html`. Los valores esperados
- * NO estan tecleados aqui: se extraen del mockup en cada corrida, asi que si
- * el mockup cambia, el chequeo cambia con el.
+ * los valores declarados en `Pantallas Fierro.dc.html`.
+ *
+ * ALCANCE REAL, sin adornos. Este comentario decia que los valores esperados
+ * "NO estan tecleados aqui", y era falso: en la seccion de cardio 14 de las 29
+ * aserciones son literales de este mismo script (350, 20, 6, 151, '7:15',
+ * '#20242D', 10, 'round'), y en el bloque Hueso lo son todas. Un chequeo que
+ * miente sobre su alcance apaga la sospecha, que es lo unico que queda cuando
+ * todo esta en verde.
+ *
+ * Lo que SI se extrae del mockup: las cajas y los estilos que se comparan con
+ * `compararCaja`/`comparar` (fragmento localizado por su `style=`), y el radio
+ * del anillo. Lo que esta tecleado: los anchos y margenes de pantalla, las
+ * cuentas de elementos y las cifras de pie. Cuando un valor esta tecleado, va
+ * con su procedencia en el mensaje del chequeo.
+ *
+ * Lo que esta puerta NO comprueba, y hay que saberlo:
+ *   - el TEXTO que lee el usuario (eso vive en verificar-comportamiento.mjs,
+ *     que extrae los literales del `<script data-dc-script>` del mockup),
+ *   - las pantallas que no renderiza (ver la tabla de cobertura del README de
+ *     la fase),
+ *   - los hex crudos y las var() rotas (eso es verificar-tokens.mjs).
  *
  * Como funciona:
  *   1. Localiza el bloque de una pantalla por su data-screen-label.
@@ -154,8 +172,17 @@ async function cajaDelMockup(fragmento, contenedor = '') {
     await d.fonts.ready;
     const el = d.getElementById('r').firstElementChild;
     const c = el.getBoundingClientRect();
+    const cs = marco.contentWindow.getComputedStyle(el);
+    // Solo lo que el mockup DECLARA: comparar un default heredado contra otro
+    // default heredado no dice nada, y ademas daria falsos rojos.
+    const declarado = (el.getAttribute('style') || '').toLowerCase();
+    const estilos = {};
+    for (const prop of ['border-radius', 'padding', 'border-color']) {
+      const raiz = prop === 'border-color' ? 'border' : prop;
+      if (declarado.includes(raiz)) estilos[prop] = cs.getPropertyValue(prop);
+    }
     marco.remove();
-    return { width: +c.width.toFixed(2), height: +c.height.toFixed(2) };
+    return { width: +c.width.toFixed(2), height: +c.height.toFixed(2), estilos };
   }, { html: fragmento, contenedor });
 }
 
@@ -177,7 +204,12 @@ async function cajaDeLaApp(html, selector, contenedor = '') {
       const el = host.querySelector(selector);
       if (!el) return null;
       const c = el.getBoundingClientRect();
-      return { width: +c.width.toFixed(2), height: +c.height.toFixed(2) };
+      const cs = getComputedStyle(el);
+      const estilos = {};
+      for (const prop of ['border-radius', 'padding', 'border-color']) {
+        estilos[prop] = cs.getPropertyValue(prop);
+      }
+      return { width: +c.width.toFixed(2), height: +c.height.toFixed(2), estilos };
     },
     { html, selector, contenedor }
   );
@@ -232,6 +264,16 @@ async function compararCaja(nombre, fragmento, htmlApp, selector, opciones = {})
       dif <= tolerancia,
       `mockup ${esperada[eje]} | app ${obtenida?.[eje]} (dif ${dif.toFixed(2)})`
     );
+  }
+  // Ancho y alto solos dejaban pasar demasiado: cambiar el radio a 2px, el
+  // padding de 16 a 26 o el borde a un hex crudo no movia la caja ni un pixel
+  // y la puerta seguia verde. Estas tres si las declara el mockup en su
+  // `style=`, asi que se comparan cuando estan.
+  for (const prop of ['border-radius', 'padding', 'border-color']) {
+    const esp = esperada.estilos?.[prop];
+    if (esp === undefined) continue;
+    const got = obtenida?.estilos?.[prop];
+    chk(`${nombre} · ${prop}`, norm(esp) === norm(got ?? ''), `mockup ${norm(esp)} | app ${got}`);
   }
 }
 
@@ -1187,6 +1229,10 @@ await compararCaja(
   const avance = circulos.find((c) => c.includes('#FF6317'));
   chk('el anillo del mockup tiene r=104 y grosor 10',
     !!pista && pista.includes('r="104"') && pista.includes('stroke-width="10"'), pista ?? '(no encontrado)');
+  // OJO: `computar` monta HTML que escribe ESTE script, con el r=104 cableado,
+  // asi que solo puede verificar CSS. El radio real de la app se mide abajo,
+  // en su pagina, contra el r extraido del mockup. Cambiar RADIO_ANILLO de 104
+  // a 80 pasaba las cuatro puertas.
   const medido = await computar(
     `<div class="f-anillo"><svg class="f-anillo__svg" viewBox="0 0 230 230"><circle class="f-anillo__pista" cx="115" cy="115" r="104"></circle><circle class="f-anillo__avance" cx="115" cy="115" r="104"></circle></svg></div>`,
     '.f-anillo__pista',
@@ -1266,6 +1312,42 @@ console.log('\n--- Cardio en su pagina real ---');
       desborda: document.documentElement.scrollWidth > window.innerWidth,
     };
   });
+  // --- el anillo REAL de la app, contra el r que declara el mockup ---
+  const rMockup = Number(c03.match(/<circle[^>]*r="(\d+)"/)?.[1] ?? 0);
+  await paginaC.locator('[data-modo="tabata"]').click();
+  await paginaC.waitForTimeout(300);
+  await paginaC.locator('[data-cardio="comenzar"]').click();
+  await paginaC.waitForTimeout(4200);
+  const anillo = await paginaC.evaluate(() => {
+    const pista = document.querySelector('.f-anillo__pista');
+    const arco = document.getElementById('cardioAnillo');
+    if (!pista || !arco) return null;
+    return {
+      r: Number(pista.getAttribute('r')),
+      dasharray: arco.getAttribute('stroke-dasharray'),
+      dashoffset: arco.getAttribute('stroke-dashoffset'),
+      viewBox: document.querySelector('.f-anillo__svg')?.getAttribute('viewBox') ?? '',
+    };
+  });
+  chk('C-03 · el radio del anillo de la app es el del mockup',
+    anillo?.r === rMockup && rMockup > 0, `app ${anillo?.r} | mockup ${rMockup}`);
+  // 2*PI*104 = 653.45; el dasharray se pinta redondeado y el offset tiene que
+  // usar EXACTAMENTE el mismo numero, o queda una astilla de arco al vaciarse.
+  const daEsperado = Math.round(2 * Math.PI * rMockup);
+  chk('C-03 · el dasharray es la circunferencia de ese radio',
+    Number(anillo?.dasharray) === daEsperado, `app ${anillo?.dasharray} | esperado ${daEsperado}`);
+  chk('C-03 · el offset nunca supera al dasharray',
+    Number(anillo?.dashoffset) <= Number(anillo?.dasharray),
+    `offset ${anillo?.dashoffset} | dasharray ${anillo?.dasharray}`);
+  await paginaC.locator('[data-cardio="detener"]').click();
+  await paginaC.waitForTimeout(300);
+  await paginaC.locator('[data-hoja="confirmar"], .f-btn--destructivo').first().click().catch(() => {});
+  await paginaC.waitForTimeout(600);
+  await paginaC.goto(URL_APP, { waitUntil: 'networkidle', timeout: 60000 });
+  await paginaC.waitForTimeout(800);
+  await paginaC.locator('[data-accion="cardio"]').click();
+  await paginaC.waitForTimeout(400);
+
   chk('C-01 · la fila de modo ocupa el ancho del mockup',
     Math.abs((selector.ancho ?? 0) - 350) < 0.5, `real ${selector.ancho} | mockup 350`);
   chk('C-01 · el margen izquierdo es el del mockup',

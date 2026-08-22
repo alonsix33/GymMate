@@ -14,6 +14,7 @@
  *
  * Logica pura, sin DOM: se puede probar sola.
  */
+import { claveDiaLocal } from '@/utils/fecha';
 import type { HistorySession } from '@/types';
 
 export const SEMANAS_VISIBLES = 16;
@@ -56,10 +57,7 @@ const DIA_MS = 24 * 60 * 60 * 1000;
 
 /** YYYY-MM-DD en hora local, no en UTC: toISOString desplaza el dia. */
 export function claveDia(fecha: Date): string {
-  const y = fecha.getFullYear();
-  const m = String(fecha.getMonth() + 1).padStart(2, '0');
-  const d = String(fecha.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
+  return claveDiaLocal(fecha);
 }
 
 /**

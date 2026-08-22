@@ -29,7 +29,9 @@ let hojaViva: HTMLElement | null = null;
 /** Lo que hay que deshacer al cerrarla: el resto de la pagina esta inerte. */
 let liberarFoco: (() => void) | null = null;
 
-function abrirHoja(contenido: string, alCerrar?: () => void): HTMLElement | null {
+/** Primitiva compartida de bottom sheet: velo, foco atrapado, Escape y cierre
+ *  por clic fuera. La usan W-02, W-04 y la eleccion de estacion de C-07. */
+export function abrirHoja(contenido: string, alCerrar?: () => void): HTMLElement | null {
   if (hojaViva) return null;
   const velo = document.createElement('div');
   velo.className = 'f-scrim f-root';

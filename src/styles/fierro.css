@@ -472,6 +472,36 @@
   font-size: var(--fs-14_5);
 }
 
+/* Hoja de eleccion (C-07 · agregar estacion). El mockup no dibuja esta hoja
+   —dibuja el "+" y el texto—, asi que hereda la geometria de las tres que si
+   dibuja: mismo velo, mismo handle, mismo titulo. Las filas reusan el tamaño
+   de la fila de modo de C-01, que es el mismo gesto: elegir de una lista. */
+.f-sheet--lista {
+  max-height: 76vh;
+}
+.f-sheet__opciones {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow-y: auto;
+  min-height: 0;
+}
+.f-sheet__opcion {
+  text-align: left;
+  font-family: var(--font-ui);
+  font-weight: var(--w-600);
+  font-size: var(--fs-15_5);
+  color: var(--text-primary);
+  background: transparent;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--r-row-l);
+  padding: 15px 16px;
+  cursor: pointer;
+}
+.f-sheet__opcion:hover {
+  border-color: var(--border-card-active);
+}
+
 /* El boton suelto de una hoja (el "Cerrar" de W-04) es mas pequeño que el de
    pantalla: 14.5px, R11 y 13 de padding. [REF Pantallas:270] */
 .f-btn--hoja {
@@ -2679,6 +2709,10 @@ body:has(#chartsTab:not(.hidden)) {
   padding: 24px var(--pad-screen-l) 28px;
   gap: 18px;
 }
+/* C-07 y C-08 declaran gap 16 donde C-02 y C-05 declaran 18. [REF Pantallas] */
+.f-cardio--config.f-cardio--compacta {
+  gap: var(--pad-card);
+}
 .f-cardio--timer {
   padding: 32px var(--pad-screen-l) 30px;
   gap: 24px;
@@ -2719,11 +2753,6 @@ body:has(#chartsTab:not(.hidden)) {
   font-size: var(--fs-13);
   color: var(--text-secondary);
 }
-.f-cardio__nota {
-  font-size: var(--fs-11_5);
-  color: var(--text-disabled);
-}
-
 /* C-01 · lista de modos */
 .f-cardio__modos {
   display: flex;
@@ -2808,11 +2837,17 @@ body:has(#chartsTab:not(.hidden)) {
   border-radius: var(--r-btn);
   background: var(--bg-card);
 }
+/* El mockup declara gap 4 y los glifos en #A8AEB9. `--cardio` si bajaba el
+   color; `--compacto` se olvido, y la caja del valor salia 8px mas estrecha. */
+.f-stepper--compacto {
+  gap: 4px;
+}
 .f-stepper--compacto .f-stepper__btn {
   width: 34px;
   height: var(--stepper-h-s);
   font-size: var(--fs-16);
   border-radius: var(--r-btn-s);
+  color: var(--text-tertiary);
 }
 .f-stepper--compacto .f-stepper__valor {
   height: var(--stepper-h-s);
@@ -2828,10 +2863,13 @@ body:has(#chartsTab:not(.hidden)) {
 .f-cardio__total {
   display: flex;
   justify-content: space-between;
-  gap: var(--gap-card);
   border-top: 1px solid var(--border-subtle);
   padding-top: var(--pad-card);
   font-size: var(--fs-13_5);
+}
+/* C-05 y C-07 declaran 14px de separacion sobre el pie; C-02, 16. */
+.f-cardio__total--corto {
+  padding-top: 14px;
 }
 .f-cardio__total-label {
   color: var(--text-secondary);
@@ -2854,6 +2892,13 @@ body:has(#chartsTab:not(.hidden)) {
   color: var(--on-fragua);
 }
 .f-fase--descanso {
+  background: var(--bg-elevated);
+  color: var(--text-tertiary);
+}
+/* En pausa el chip no puede seguir diciendo TRABAJO en Fragua: no se esta
+   trabajando. Mismo tratamiento que el descanso, con su propia etiqueta. */
+.f-fase--pausa,
+.f-piramide__fase--pausa {
   background: var(--bg-elevated);
   color: var(--text-tertiary);
 }
@@ -2895,6 +2940,11 @@ body:has(#chartsTab:not(.hidden)) {
   line-height: var(--lh-1);
   font-variant-numeric: tabular-nums;
 }
+/* "11:58" a 72px mide 243px dentro de un anillo de 230 — y es el estado POR
+   DEFECTO del AMRAP de 12 minutos. */
+.f-anillo__tiempo--largo {
+  font-size: var(--fs-56);
+}
 .f-anillo__sub {
   font-size: var(--fs-13);
   color: var(--text-secondary);
@@ -2913,9 +2963,6 @@ body:has(#chartsTab:not(.hidden)) {
 }
 .f-rondas__marca--hecha {
   background: var(--accent);
-}
-.f-rondas__marca--actual {
-  background: var(--fragua-300);
 }
 .f-cardio__controles {
   display: flex;
@@ -3096,11 +3143,23 @@ body:has(#chartsTab:not(.hidden)) {
 }
 .f-nivel__barra {
   border-radius: var(--r-5) var(--r-5) 0 0;
-  background: var(--fragua-700);
+  background: var(--piramide-nivel-1);
   box-sizing: border-box;
 }
-.f-nivel__barra--pico {
-  background: var(--accent);
+/* Cuatro pasos, no uno. `pyrBars` del mockup pinta 30/45/60/75 en
+   #52290F/#8A3D0B/#C85510/#FF6317; aqui salian seis de siete barras del mismo
+   color y las dos mas bajas se iban dos escalones de rampa. */
+.f-nivel__barra--t1 {
+  background: var(--piramide-nivel-1);
+}
+.f-nivel__barra--t2 {
+  background: var(--piramide-nivel-2);
+}
+.f-nivel__barra--t3 {
+  background: var(--piramide-nivel-3);
+}
+.f-nivel__barra--t4 {
+  background: var(--piramide-nivel-4);
 }
 .f-nivel__barra--hecho {
   background: var(--brasa);
@@ -3112,6 +3171,21 @@ body:has(#chartsTab:not(.hidden)) {
 .f-nivel__barra--proximo {
   background: transparent;
   border: 1.5px dashed var(--border-card-active);
+}
+/* C-06 usa su propia tipografia de etiqueta: el mockup pone 700/10.5px
+   #A8AEB9 en C-05 y 600/10px con color por estado en el timer. */
+.f-nivel__seg--vivo {
+  font-weight: var(--w-600);
+  font-size: var(--fs-10);
+}
+.f-nivel__seg--hecho {
+  color: var(--text-secondary);
+}
+.f-nivel__seg--activo {
+  color: var(--text-primary);
+}
+.f-nivel__seg--proximo {
+  color: var(--text-disabled);
 }
 .f-montana__pie {
   display: flex;
@@ -3127,21 +3201,34 @@ body:has(#chartsTab:not(.hidden)) {
   display: flex;
   gap: var(--gap-card-s);
 }
+/* Ya es `.f-btn--secundario`: reimplementarlo a mano perdia su hover y su
+   estado deshabilitado. Aqui solo queda la geometria propia de C-05. */
 .f-montana__accion {
   flex: 1;
-  font-family: var(--font-ui);
-  font-weight: var(--w-600);
   font-size: var(--fs-13);
-  background: transparent;
-  color: var(--text-primary);
-  border: 1px solid var(--border-secondary-btn);
   border-radius: var(--r-btn);
   padding: 11px;
-  cursor: pointer;
 }
 .f-montana__nota {
   font-size: var(--fs-11_5);
   color: var(--text-disabled);
+}
+
+/* Hover: el README lo define para los botones del sistema y estos tres se lo
+   habian saltado por reimplementarse a mano. */
+.f-modo:hover {
+  border-color: var(--border-card-active);
+}
+.f-preset:hover:not([aria-pressed='true']) {
+  border-color: var(--border-card-active);
+}
+.f-btn--claro:hover:not(:disabled),
+.f-btn--detener:hover:not(:disabled) {
+  border-color: var(--carbon-400);
+}
+.f-estacion__anadir:hover,
+.f-estacion__quitar:hover {
+  color: var(--text-primary);
 }
 
 /* C-06 · cabecera y progreso del timer de piramide */
@@ -3433,7 +3520,10 @@ body:has(#chartsTab:not(.hidden)) {
   font-size: var(--fs-13);
   color: var(--text-secondary);
 }
+/* Sin `nowrap`, "rondas ↑" partia en dos lineas a 390px (el ancho de
+   referencia del mockup) y la fila quedaba 45 vs 64px. */
 .f-amrap__campo-valor {
+  white-space: nowrap;
   font-family: var(--font-display);
   font-weight: var(--w-800);
   font-stretch: var(--stretch-110);
@@ -3444,6 +3534,16 @@ body:has(#chartsTab:not(.hidden)) {
   color: var(--accent);
 }
 
+/* README §9: "tap en cualquier parte del timer suma una ronda". El manejador
+   vivia solo en el boton del contador, 350x91 de una pantalla de 390x844. */
+.f-cardio--amrap-tap {
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.f-cardio--amrap-tap:active .f-amrap-vivo__cifra {
+  color: var(--accent);
+}
+
 /* Contador de rondas de AMRAP en el timer: el protagonista es el numero. */
 .f-amrap-vivo {
   width: 100%;
@@ -3451,12 +3551,6 @@ body:has(#chartsTab:not(.hidden)) {
   flex-direction: column;
   align-items: center;
   gap: var(--gap-card-s);
-  background: none;
-  border: none;
-  color: inherit;
-  font-family: inherit;
-  cursor: pointer;
-  padding: 0;
 }
 .f-amrap-vivo__cifra {
   font-family: var(--font-display);

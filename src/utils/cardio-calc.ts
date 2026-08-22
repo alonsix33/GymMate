@@ -31,9 +31,39 @@ export const PRESETS_PIRAMIDE: Record<string, number[]> = {
   reset: [...PIRAMIDE_MEDIA],
 };
 
-/** Redondeo a 5s: es el paso con el que se piensa un intervalo. */
+/**
+ * Redondeo a 5s: es el paso con el que se piensa un intervalo.
+ *
+ * Sin piso: `Math.max(5, ...)` era inalcanzable desde la UI (con factor 0.8 el
+ * punto fijo es 10s y el preset mas bajo da 20), o sea codigo muerto que
+ * ademas neutralizaba su propio mutante. El piso real vive en `escalarDesde`,
+ * que es quien conoce la piramide base.
+ */
 export function escalar(niveles: number[], factor: number): number[] {
-  return niveles.map((n) => Math.max(5, Math.round((n * factor) / 5) * 5));
+  return niveles.map((n) => Math.round((n * factor) / 5) * 5);
+}
+
+/** Factor minimo y maximo del escalado. Debajo de 0.4 la montaña se aplana:
+ *  el redondeo a 5 iguala los niveles y deja de haber pico, que es justo lo
+ *  que la nota de C-05 promete que no pasa. */
+export const FACTOR_MIN = 0.4;
+export const FACTOR_MAX = 2;
+export const PASO_FACTOR = 1.25;
+
+/**
+ * Escala SIEMPRE desde la piramide base, no desde la ya escalada.
+ *
+ * Encadenar `escalar` pierde informacion en cada redondeo: bajar y volver a
+ * subir devolvia [30,45,65,75,65,45,30] en vez de la MEDIA original, o sea que
+ * deshacer no deshacia. Con un factor acumulado sobre la base, ↓ seguido de ↑
+ * vuelve exactamente al punto de partida.
+ */
+export function escalarDesde(base: number[], factor: number): number[] {
+  return escalar(base, acotarFactor(factor));
+}
+
+export function acotarFactor(factor: number): number {
+  return Math.min(FACTOR_MAX, Math.max(FACTOR_MIN, factor));
 }
 
 /** Segundos de trabajo + descansos entre niveles. */
@@ -62,6 +92,9 @@ export function duracionTotal(mode: CardioMode, config: CardioConfig): number {
       return duracionPiramide(config.levels ?? PIRAMIDE_MEDIA, config.rest ?? DESCANSO_PIRAMIDE);
     case 'circuit': {
       const estaciones = (config.exercises ?? []).length;
+      // Sin estaciones no hay circuito: anunciar los descansos entre rondas de
+      // un recorrido vacio daba "~2:00 min" de una sesion que no existe.
+      if (estaciones === 0) return 0;
       const porRonda = estaciones * ((config.work ?? 0) + (config.rest ?? 0));
       return rondas * porRonda + Math.max(0, rondas - 1) * (config.roundRest ?? 0);
     }
@@ -72,12 +105,20 @@ export function duracionTotal(mode: CardioMode, config: CardioConfig): number {
 
 /** "7:15" · "0:45" · "1:02:40". */
 export function formatearTiempo(segundos: number): string {
+  if (!Number.isFinite(segundos)) return '0:00';
   const s = Math.max(0, Math.round(segundos));
   const h = Math.floor(s / 3600);
   const m = Math.floor((s % 3600) / 60);
   const seg = s % 60;
   const dos = (n: number) => String(n).padStart(2, '0');
   return h > 0 ? `${h}:${dos(m)}:${dos(seg)}` : `${m}:${dos(seg)}`;
+}
+
+/** true cuando `formatearTiempo` devolveria h:mm:ss. El pie de las pantallas
+ *  de configuracion escribe "min" detras de la cifra, y "1:12:00 min" no es
+ *  una duracion en minutos. */
+export function llevaHoras(segundos: number): boolean {
+  return Number.isFinite(segundos) && Math.max(0, Math.round(segundos)) >= 3600;
 }
 
 /** Circunferencia del anillo del mockup: r=104 -> 653.45. */
@@ -90,10 +131,19 @@ export function circunferencia(radio: number): number {
  * restante/total = 1 -> arco lleno (offset 0); 0 -> arco vacio.
  */
 export function offsetDelAnillo(restante: number, total: number, radio: number): number {
-  const c = circunferencia(radio);
-  if (total <= 0) return c;
+  // El mismo valor que se pinta en `stroke-dasharray`. Con la circunferencia
+  // sin redondear (653.45) sobre un dasharray de 653, el patron se repetia
+  // cada 1306 y quedaba una astilla de arco visible con el anillo vacio.
+  const c = dasharrayDelAnillo(radio);
+  if (!Number.isFinite(restante) || !Number.isFinite(total) || total <= 0) return c;
   const fraccion = Math.max(0, Math.min(1, restante / total));
   return c * (1 - fraccion);
+}
+
+/** El `stroke-dasharray` que se pinta en el SVG. Entero: el arco no necesita
+ *  mas precision y asi coincide con el offset. */
+export function dasharrayDelAnillo(radio: number): number {
+  return Math.round(circunferencia(radio));
 }
 
 /**
@@ -108,12 +158,15 @@ export function ritmoEmom(historial: HistorySession[]): number | null {
     const stats = sesion.stats;
     const rondas = stats?.roundsCompleted ?? 0;
     const trabajo = stats?.workTime ?? 0;
-    if (rondas > 0 && trabajo > 0) {
-      // workTime del EMOM cuenta el minuto entero; lo util es el ritmo real
-      // si la sesion lo guardo. Con el modelo actual solo hay minutos, asi
-      // que se toma el tiempo medio por ronda acotado al minuto.
-      return Math.max(1, Math.min(60, Math.round(trabajo / rondas)));
-    }
+    if (rondas <= 0 || trabajo <= 0) continue;
+    const intervalo = sesion.config?.interval ?? 60;
+    const ritmo = Math.round(trabajo / rondas);
+    // Si el ritmo es el minuto entero, no se midio nada: el motor cuenta todo
+    // el intervalo como trabajo porque la app no tiene un gesto de "termine".
+    // Devolver 60 seria inventar un dato y ademas contradecir la propia barra,
+    // que promete enseñar lo que sobra para respirar.
+    if (ritmo >= intervalo) return null;
+    return Math.max(1, Math.min(intervalo, ritmo));
   }
   return null;
 }
@@ -127,8 +180,26 @@ export function estadoDeNivel(indice: number, actual: number): EstadoNivel {
   return 'proximo';
 }
 
-/** Altura de cada barra de la montaña, en % del pico. */
+/**
+ * Altura de cada barra de la montaña, en % del pico.
+ *
+ * `pyrBars` del mockup da 40/60/80/100 para 30/45/60/75 sobre un pico de 75:
+ * proporcion directa, sin piso. El `Math.max(4, ...)` que habia era otro
+ * mutante inmortal (el caso mas extremo alcanzable, 5s sobre pico 135, ya da 4
+ * por redondeo). El techo si hace falta: sin el, un pico mal pasado dibuja una
+ * barra del 133% fuera de su grafico.
+ */
 export function alturaDeNivel(segundos: number, pico: number): number {
-  if (pico <= 0) return 0;
-  return Math.max(4, Math.round((segundos / pico) * 100));
+  if (!Number.isFinite(segundos) || !Number.isFinite(pico) || pico <= 0) return 0;
+  return Math.min(100, Math.max(0, Math.round((segundos / pico) * 100)));
+}
+
+/** Tramo de intensidad de un nivel (1..4) para elegir su color en la rampa de
+ *  la montaña. `pyrBars` del mockup pinta cuatro pasos, no uno. */
+export function tramoDeNivel(segundos: number, pico: number): 1 | 2 | 3 | 4 {
+  const alto = alturaDeNivel(segundos, pico);
+  if (alto >= 100) return 4;
+  if (alto >= 75) return 3;
+  if (alto >= 50) return 2;
+  return 1;
 }

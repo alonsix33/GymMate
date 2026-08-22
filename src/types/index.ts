@@ -127,6 +127,9 @@ export interface HistorySession extends SessionData {
   type?: 'weights' | 'cardio';
   mode?: CardioMode;
   stats?: CardioSessionStats;
+  /** Config con la que se corrio la sesion de cardio. `ritmoEmom` la necesita
+   *  para saber contra que intervalo comparar el ritmo guardado. */
+  config?: CardioConfig;
   rpe?: RPEData;
 }
 

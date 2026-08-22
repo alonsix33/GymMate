@@ -16,6 +16,12 @@ import {
   ritmoEmom,
   estadoDeNivel,
   alturaDeNivel,
+  acotarFactor,
+  escalarDesde,
+  dasharrayDelAnillo,
+  tramoDeNivel,
+  FACTOR_MIN,
+  FACTOR_MAX,
 } from '@/utils/cardio-calc';
 import type { HistorySession } from '@/types';
 
@@ -65,8 +71,22 @@ describe('escalar', () => {
     expect(escalar([20, 40, 60], 1.25)).toEqual([25, 50, 75]);
   });
 
-  it('nunca baja de 5s: un intervalo de 0 no es un intervalo', () => {
-    expect(escalar([5, 10], 0.1)).toEqual([5, 5]);
+  it('escalar no pone piso: el piso vive donde se puede alcanzar', () => {
+    // El `Math.max(5, ...)` que habia aqui era inalcanzable desde la UI (con
+    // factor 0.8 el punto fijo es 10s), o sea codigo muerto que ademas hacia
+    // inmortal a su propio mutante. El limite real es `acotarFactor`.
+    expect(escalar([5, 10], 0.1)).toEqual([0, 0]);
+    expect(acotarFactor(0.1)).toBe(FACTOR_MIN);
+    expect(acotarFactor(99)).toBe(FACTOR_MAX);
+  });
+
+  it('escalar ↓ y luego ↑ devuelve la piramide original', () => {
+    // Encadenar `escalar` perdia informacion en cada redondeo: bajar y subir
+    // daba [30,45,65,75,65,45,30] y deshacer no deshacia.
+    const bajada = escalarDesde(PIRAMIDE_MEDIA, 1 / 1.25);
+    const vuelta = escalarDesde(PIRAMIDE_MEDIA, (1 / 1.25) * 1.25);
+    expect(vuelta).toEqual(PIRAMIDE_MEDIA);
+    expect(bajada).not.toEqual(PIRAMIDE_MEDIA);
   });
 
   it('todo lo que sale es multiplo de 5: es el paso con el que se piensa un intervalo', () => {
@@ -116,8 +136,10 @@ describe('duracionTotal', () => {
     expect(duracionTotal('circuit', config)).toBe(480);
   });
 
-  it('un circuito sin estaciones dura 0, no NaN', () => {
-    expect(duracionTotal('circuit', { rounds: 3, work: 40, rest: 20, roundRest: 60 })).toBe(120);
+  it('un circuito sin estaciones dura 0, no dos minutos de descansos', () => {
+    // El nombre de este test decia 0 y la asercion decia 120: la app anunciaba
+    // "~2:00 min" de descansos entre rondas de un recorrido inexistente.
+    expect(duracionTotal('circuit', { rounds: 3, work: 40, rest: 20, roundRest: 60 })).toBe(0);
   });
 
   it('la piramide usa su propio descanso', () => {
@@ -148,14 +170,28 @@ describe('el anillo', () => {
   });
 
   it('lleno al empezar, vacio al acabar', () => {
-    const c = circunferencia(104);
+    const c = dasharrayDelAnillo(104);
     expect(offsetDelAnillo(20, 20, 104)).toBeCloseTo(0, 5);
     expect(offsetDelAnillo(0, 20, 104)).toBeCloseTo(c, 5);
     expect(offsetDelAnillo(10, 20, 104)).toBeCloseTo(c / 2, 5);
   });
 
   it('un total de 0 no divide por cero', () => {
-    expect(offsetDelAnillo(5, 0, 104)).toBeCloseTo(circunferencia(104), 5);
+    expect(offsetDelAnillo(5, 0, 104)).toBeCloseTo(dasharrayDelAnillo(104), 5);
+  });
+
+  it('el offset nunca supera el dasharray que se pinta', () => {
+    // 653.45 sobre un dasharray de 653 dejaba una astilla de arco visible con
+    // el anillo ya vacio: el patron se repite cada 2x653.
+    const da = dasharrayDelAnillo(104);
+    for (const restante of [0, 1, 5, 10, 20]) {
+      expect(offsetDelAnillo(restante, 20, 104)).toBeLessThanOrEqual(da);
+    }
+  });
+
+  it('NaN no atraviesa la aritmetica del anillo ni del reloj', () => {
+    expect(offsetDelAnillo(NaN, 20, 104)).toBe(dasharrayDelAnillo(104));
+    expect(formatearTiempo(NaN)).toBe('0:00');
   });
 
   it('se acota: un restante mayor que el total no da un offset negativo', () => {
@@ -187,8 +223,12 @@ describe('ritmoEmom', () => {
     expect(ritmoEmom([])).toBeNull();
   });
 
-  it('se acota al minuto: no existe un trabajo de 90s dentro de un minuto', () => {
-    expect(ritmoEmom([sesionCardio('emom', 1, 90)])).toBe(60);
+  it('un ritmo igual o mayor que el intervalo no es un ritmo medido', () => {
+    // El motor cuenta el minuto ENTERO como trabajo, asi que trabajo/rondas da
+    // 60 por construccion. Devolver 60 seria inventar el dato y contradecir la
+    // propia barra, que promete enseñar lo que sobra para respirar.
+    expect(ritmoEmom([sesionCardio('emom', 1, 90)])).toBeNull();
+    expect(ritmoEmom([sesionCardio('emom', 2, 120)])).toBeNull();
   });
 
   it('las sesiones de pesas no cuentan', () => {
@@ -209,8 +249,15 @@ describe('estado y altura de los niveles', () => {
     expect(alturaDeNivel(30, 75)).toBe(40);
   });
 
-  it('nunca una barra de altura 0: se veria como si no existiera', () => {
-    expect(alturaDeNivel(1, 1000)).toBe(4);
-    expect(alturaDeNivel(0, 75)).toBe(4);
+  it('la altura se acota arriba: ninguna barra se sale de su grafico', () => {
+    expect(alturaDeNivel(100, 75)).toBe(100);
+    expect(alturaDeNivel(0, 75)).toBe(0);
+    expect(alturaDeNivel(NaN, 75)).toBe(0);
+  });
+
+  it('el tramo de color reproduce la rampa de cuatro pasos de pyrBars', () => {
+    // 30/45/60/75 sobre pico 75 -> 40/60/80/100% -> tramos 1/2/3/4, que en el
+    // mockup son #52290F, #8A3D0B, #C85510 y #FF6317.
+    expect(PIRAMIDE_MEDIA.map((n) => tramoDeNivel(n, 75))).toEqual([1, 2, 3, 4, 3, 2, 1]);
   });
 });

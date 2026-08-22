@@ -83,7 +83,8 @@ export function migrateExistingData(): GamificationState {
     : { muscleRanks: createInitialMuscleRanks(), exerciseStrengths: {} };
 
   // Calcular racha actual
-  const currentStreak = calculateCurrentStreak(history);
+  // Solo pesas: el cardio no suma racha (cambio aprobado nº 4).
+  const currentStreak = calculateCurrentStreak(history.filter((s) => s.type !== 'cardio'));
 
   // Inicializar y verificar logros
   const initialAchievements = initializeAchievements();

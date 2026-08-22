@@ -190,12 +190,23 @@ function hideCardioViews(): void {
     'cardioSummaryView',
   ];
 
+  const habiaAlguna = cardioViews.some(
+    (id) => document.getElementById(id)?.classList.contains('hidden') === false
+  );
+
   cardioViews.forEach((id) => {
     const view = document.getElementById(id);
     if (view) {
       view.classList.add('hidden');
     }
   });
+
+  // Ocultar no es parar. El motor del cardio seguia vivo al cambiar de
+  // pestaña: sonaba y vibraba invisible y, al cumplirse el tiempo, guardaba
+  // una sesion abandonada y pintaba el resumen encima de la pantalla nueva.
+  if (habiaAlguna) {
+    void import('@/features/cardio').then(({ detenerMotorCardio }) => detenerMotorCardio());
+  }
 }
 
 function updateBottomNav(activeTab: TabName | 'home'): void {

@@ -1,3 +1,4 @@
+import { claveDiaDe, hoyLocal } from '@/utils/fecha';
 import type { HistorySession } from '@/types';
 import { cifra } from '@/utils/formato';
 import { confirmarDestructivo, mostrarToast } from '@/ui/feedback';
@@ -8,7 +9,9 @@ import {
   saveHistory,
   updatePR,
   getProfile,
+  saveProfile,
   getBodyMeasurements,
+  saveBodyMeasurements,
 } from '@/utils/storage';
 import { renderHistorial, renderRecords, abrirDetalle, animarZonas } from '@/ui/hueso';
 import { normalizeExerciseName } from '@/utils/exercise-normalizer';
@@ -302,7 +305,7 @@ export function exportToCSV(): void {
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.setAttribute('href', url);
-  link.setAttribute('download', `GymMate_Historial_${new Date().toISOString().split('T')[0]}.csv`);
+  link.setAttribute('download', `GymMate_Historial_${hoyLocal()}.csv`);
   link.style.visibility = 'hidden';
   document.body.appendChild(link);
   link.click();
@@ -388,9 +391,139 @@ function claveDeSesion(iso: string, grupo: string): string {
   return `${dia}|${grupo}`;
 }
 
+/**
+ * Parte el CSV en sus secciones "=== NOMBRE ===".
+ *
+ * El importador leia SOLO las filas de pesas y cortaba en el siguiente
+ * marcador, asi que el cardio, el perfil y las medidas que el exportador si
+ * escribe se tiraban en silencio detras de un toast verde de exito — y un CSV
+ * de alguien que solo hace cardio se rechazaba con "no tiene el formato
+ * correcto de GymMate", culpando al archivo que la propia app genero.
+ */
+export interface ResultadoImport {
+  imported: number;
+  duplicates: number;
+  descartadas: number;
+  cardio: number;
+  perfil: number;
+  medidas: number;
+}
+
+function partirEnSecciones(lines: string[]): Map<string, string[]> {
+  const secciones = new Map<string, string[]>();
+  let actual = 'PESAS_SUELTO';
+  secciones.set(actual, []);
+  for (const linea of lines) {
+    const marcador = linea.trim().match(/^===\s*(.+?)\s*===$/);
+    if (marcador) {
+      actual = marcador[1].toUpperCase();
+      if (!secciones.has(actual)) secciones.set(actual, []);
+      continue;
+    }
+    secciones.get(actual)!.push(linea);
+  }
+  return secciones;
+}
+
+/** Nombre visible de modo -> clave interna. `fortime` se conserva de solo
+ *  lectura: hay backups viejos que lo traen y perderlos seria peor que
+ *  admitir un modo que ya no se puede crear. */
+const MODO_DESDE_NOMBRE: Record<string, string> = {
+  tabata: 'tabata',
+  emom: 'emom',
+  amrap: 'amrap',
+  circuito: 'circuit',
+  'pirámide': 'pyramid',
+  piramide: 'pyramid',
+  personalizado: 'custom',
+  'for time': 'fortime',
+};
+
+function importarCardio(filas: string[]): HistorySession[] {
+  const sesiones: HistorySession[] = [];
+  for (const linea of filas) {
+    const v = parseCSVLine(linea);
+    if (v.length < 7) continue;
+    if (v[0].toLowerCase().startsWith('fecha')) continue; // cabecera
+    const iso = parseSpanishDate(v[0]);
+    if (!iso) continue;
+    const modo = MODO_DESDE_NOMBRE[(v[1] || '').trim().toLowerCase()];
+    if (!modo) continue;
+    const num = (x: string) => Number.parseInt(x, 10) || 0;
+    sesiones.push({
+      type: 'cardio',
+      mode: modo as HistorySession['mode'],
+      date: iso,
+      savedAt: iso,
+      sessionId: `imported_cardio_${iso}_${modo}`,
+      grupo: `Cardio - ${(v[1] || 'Cardio').toUpperCase()}`,
+      ejercicios: [],
+      volumenTotal: 0,
+      volumenPorGrupo: {},
+      stats: {
+        totalTime: num(v[2]),
+        workTime: num(v[3]),
+        restTime: num(v[4]),
+        roundsCompleted: num(v[5]),
+        calories: num(v[6]),
+      },
+    });
+  }
+  return sesiones;
+}
+
+/** Campos numericos del perfil. El resto entra como texto. */
+const CAMPOS_NUMERICOS_PERFIL = new Set(['weight', 'height', 'activity']);
+
+function importarPerfil(filas: string[]): number {
+  const perfil: Record<string, string | number> = { ...getProfile() };
+  let campos = 0;
+  for (const linea of filas) {
+    const v = parseCSVLine(linea);
+    if (v.length < 2) continue;
+    const campo = v[0].trim();
+    if (!campo || campo.toLowerCase() === 'campo') continue;
+    const bruto = v[1].trim();
+    if (!bruto) continue;
+    perfil[campo] = CAMPOS_NUMERICOS_PERFIL.has(campo) ? Number.parseFloat(bruto) || 0 : bruto;
+    campos++;
+  }
+  if (campos > 0) saveProfile(perfil as unknown as import('@/types').ProfileData);
+  return campos;
+}
+
+function importarMedidas(filas: string[]): number {
+  if (filas.length < 2) return 0;
+  const cabecera = parseCSVLine(filas[0]).map((c) => c.trim());
+  if (cabecera[0]?.toLowerCase() !== 'fecha') return 0;
+  const existentes = getBodyMeasurements();
+  const dias = new Set(existentes.map((m) => claveDiaDe(m.date)));
+  let nuevas = 0;
+  for (const linea of filas.slice(1)) {
+    const v = parseCSVLine(linea);
+    if (v.length < 2 || !v[0].trim()) continue;
+    if (dias.has(claveDiaDe(v[0]))) continue;
+    const medida: Record<string, unknown> = { date: v[0].trim() };
+    cabecera.slice(1).forEach((campo, i) => {
+      const bruto = (v[i + 1] ?? '').trim();
+      if (bruto === '') return;
+      const n = Number.parseFloat(bruto);
+      medida[campo] = Number.isNaN(n) ? bruto : n;
+    });
+    existentes.push(medida as unknown as import('@/types').BodyMeasurement);
+    dias.add(claveDiaDe(v[0]));
+    nuevas++;
+  }
+  if (nuevas > 0) {
+    existentes.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    saveBodyMeasurements(existentes);
+  }
+  return nuevas;
+}
+
 export function importFromCSV(
   file: File
-): Promise<{ imported: number; duplicates: number; descartadas: number }> {
+): Promise<ResultadoImport> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
 
@@ -416,15 +549,25 @@ export function importFromCSV(
             headers.some((header) => header.toLowerCase().includes(h.toLowerCase().split(' ')[0]))
           );
         };
-        const iCabecera = lines.findIndex(esCabeceraDePesas);
-        if (iCabecera === -1) {
+        const secciones = partirEnSecciones(lines);
+        const bloqueDePesas = secciones.get('ENTRENAMIENTOS DE PESAS') ?? secciones.get('PESAS_SUELTO') ?? [];
+        const iCabecera = bloqueDePesas.findIndex(esCabeceraDePesas);
+        const filasDePesas = iCabecera === -1 ? [] : bloqueDePesas.slice(iCabecera + 1);
+
+        // Las otras tres secciones que el exportador escribe. Antes se tiraban
+        // en silencio: el backup era de ida y vuelta solo para las pesas.
+        const sesionesCardio = importarCardio(secciones.get('SESIONES DE CARDIO') ?? []);
+        const camposPerfil = importarPerfil(secciones.get('PERFIL') ?? []);
+        const medidasNuevas = importarMedidas(secciones.get('MEDIDAS CORPORALES') ?? []);
+
+        // Un CSV de quien solo hace cardio no tiene seccion de pesas, y se
+        // rechazaba culpando al archivo que la propia app habia generado.
+        const hayAlgo =
+          filasDePesas.length > 0 || sesionesCardio.length > 0 || camposPerfil > 0 || medidasNuevas > 0;
+        if (!hayAlgo) {
           reject(new Error('El archivo CSV no tiene el formato correcto de GymMate'));
           return;
         }
-        // Las secciones posteriores (cardio, perfil, medidas) no son filas de
-        // pesas: se corta en el siguiente marcador "=== ... ===".
-        const iFin = lines.findIndex((l, i) => i > iCabecera && l.trim().startsWith('==='));
-        const filasDePesas = lines.slice(iCabecera + 1, iFin === -1 ? lines.length : iFin);
 
         // Parsear filas
         const rows: ParsedCSVRow[] = [];
@@ -455,11 +598,6 @@ export function importFromCSV(
           }
         }
 
-        if (rows.length === 0) {
-          reject(new Error('No se encontraron datos válidos en el archivo'));
-          return;
-        }
-
         // Agrupar por fecha + grupo para reconstruir sesiones. La clave se
         // normaliza a YYYY-MM-DD para que coincida con la del historial.
         const sessionMap = new Map<string, ParsedCSVRow[]>();
@@ -481,6 +619,17 @@ export function importFromCSV(
 
         const newSessions: import('@/types').HistorySession[] = [];
         let duplicates = 0;
+
+        // El cardio pasa por la MISMA deduplicacion que las pesas.
+        for (const sesion of sesionesCardio) {
+          const clave = claveDeSesion(sesion.savedAt || sesion.date, sesion.grupo);
+          if (existingKeys.has(clave)) {
+            duplicates++;
+            continue;
+          }
+          existingKeys.add(clave);
+          newSessions.push(sesion);
+        }
 
         sessionMap.forEach((sessionRows, key) => {
           // Verificar si ya existe
@@ -563,7 +712,14 @@ export function importFromCSV(
           });
         }
 
-        resolve({ imported: newSessions.length, duplicates, descartadas });
+        resolve({
+          imported: newSessions.length,
+          duplicates,
+          descartadas,
+          cardio: sesionesCardio.length,
+          perfil: camposPerfil,
+          medidas: medidasNuevas,
+        });
       } catch (error) {
         reject(new Error('Error al procesar el archivo CSV: ' + (error as Error).message));
       }
@@ -603,10 +759,25 @@ export function triggerCSVImport(): void {
           }`
         );
       }
+      // Lo recuperado se dice entero: el toast hablaba solo de las filas de
+      // pesas mientras el cardio, el perfil y las medidas se tiraban.
+      const recuperado: string[] = [];
+      if (result.cardio > 0) {
+        recuperado.push(`${result.cardio} de cardio`);
+      }
+      if (result.perfil > 0) {
+        recuperado.push('perfil');
+      }
+      if (result.medidas > 0) {
+        recuperado.push(
+          `${result.medidas} ${result.medidas === 1 ? 'medición' : 'mediciones'}`
+        );
+      }
+
       mostrarToast({
         tipo: avisos.length > 0 ? 'aviso' : 'exito',
         titulo: `CSV importado: ${result.imported} ${result.imported === 1 ? 'sesión' : 'sesiones'}`,
-        detalle: avisos.join(' · ') || undefined,
+        detalle: [recuperado.join(' · '), avisos.join(' · ')].filter(Boolean).join(' · ') || undefined,
       });
 
       // Recargar historial si estamos en esa pestaña
@@ -637,52 +808,8 @@ export function triggerCSVImport(): void {
 // ==========================================
 // ESTADÍSTICAS RÁPIDAS
 // ==========================================
-
-export function getQuickStats(): {
-  totalWorkouts: number;
-  totalVolume: number;
-  lastWorkout: string | null;
-  streak: number;
-} {
-  const history = getHistory();
-
-  const weightSessions = history.filter((s) => s.type !== 'cardio');
-
-  const totalWorkouts = weightSessions.length;
-  const totalVolume = weightSessions.reduce(
-    (sum, s) => sum + (s.volumenTotal || 0),
-    0
-  );
-  const lastWorkout =
-    weightSessions.length > 0
-      ? weightSessions[0].savedAt || weightSessions[0].date
-      : null;
-
-  // Calcular racha
-  let streak = 0;
-  if (weightSessions.length > 0) {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    for (let i = 0; i < 7; i++) {
-      const checkDate = new Date(today);
-      checkDate.setDate(checkDate.getDate() - i);
-      const dateString = checkDate.toISOString().split('T')[0];
-
-      const hasWorkout = weightSessions.some((s) => {
-        const sessionDate = new Date(s.savedAt || s.date)
-          .toISOString()
-          .split('T')[0];
-        return sessionDate === dateString;
-      });
-
-      if (hasWorkout) {
-        streak++;
-      } else if (i > 0) {
-        break;
-      }
-    }
-  }
-
-  return { totalWorkouts, totalVolume, lastWorkout, streak };
-}
+//
+// `getQuickStats` se ha borrado. Era una SEGUNDA implementacion de la racha
+// —solo pesas, tope de 7 dias, dia UTC— sin un solo llamador en todo el arbol,
+// y contradecia a la que si se usa. El README pide una sola: la de
+// gamificacion (`calculateCurrentStreak` + `sesionesDeRacha`).

@@ -1,3 +1,4 @@
+import { claveDiaDe } from '@/utils/fecha';
 import { STORAGE_KEYS, MAX_HISTORY_ITEMS } from '@/constants';
 import type {
   SessionData,
@@ -279,9 +280,12 @@ export function saveBodyMeasurements(measurements: BodyMeasurement[]): void {
 export function addBodyMeasurement(measurement: BodyMeasurement): void {
   const measurements = getBodyMeasurements();
 
-  // Check if there's already a measurement for today
-  const today = measurement.date.split('T')[0];
-  const existingIndex = measurements.findIndex(m => m.date.split('T')[0] === today);
+  // Una por dia LOCAL: `date` es un ISO en UTC, asi que recortar 'T' hacia que
+  // la medicion de las 20:00 en Lima cayera en el dia siguiente y no
+  // sobrescribiera la de la mañana. El README pide "una por dia, la de hoy
+  // sobrescribe" — en el dia del usuario, no en el de Greenwich.
+  const today = claveDiaDe(measurement.date);
+  const existingIndex = measurements.findIndex((m) => claveDiaDe(m.date) === today);
 
   if (existingIndex >= 0) {
     // Update existing measurement for today
@@ -297,8 +301,13 @@ export function addBodyMeasurement(measurement: BodyMeasurement): void {
 }
 
 export function getLatestMeasurement(): BodyMeasurement | null {
+  // Por fecha, no por posicion: el orden de insercion se pierde en cuanto un
+  // CSV importado llega desordenado, y "la ultima" pasaba a ser otra.
   const measurements = getBodyMeasurements();
-  return measurements.length > 0 ? measurements[0] : null;
+  if (measurements.length === 0) return null;
+  return measurements.reduce((mejor, m) =>
+    new Date(m.date).getTime() > new Date(mejor.date).getTime() ? m : mejor
+  );
 }
 
 export function deleteMeasurement(date: string): void {

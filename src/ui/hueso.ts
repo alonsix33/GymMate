@@ -40,7 +40,15 @@ import type { ExerciseData, HistorySession } from '@/types';
  * actualice: mirar solo uno de los dos deja la barra y la etiqueta contando
  * historias distintas.
  */
-/** Los modos con su nombre de pantalla, no la clave interna. */
+/**
+ * Los modos con su nombre de pantalla, no la clave interna.
+ *
+ * `fortime` esta de SOLO LECTURA: se retiro de `CardioMode` (cambio aprobado
+ * nº 1) pero sigue habiendo historiales y CSV con sesiones asi. Sin esta
+ * entrada el historial las degradaba a "Cardio" mientras el exportador seguia
+ * escribiendo "For Time": el mismo dato con dos nombres segun donde se mirara.
+ * No se puede CREAR una sesion `fortime`; solo leer las que ya existen.
+ */
 const NOMBRE_MODO_CARDIO: Record<string, string> = {
   tabata: 'Tabata',
   emom: 'EMOM',
@@ -48,6 +56,7 @@ const NOMBRE_MODO_CARDIO: Record<string, string> = {
   circuit: 'Circuito',
   pyramid: 'Pirámide',
   custom: 'Personalizado',
+  fortime: 'For Time',
 };
 
 function picoReal(nombre: string, historial: HistorySession[]): number {

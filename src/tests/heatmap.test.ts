@@ -65,7 +65,11 @@ describe('agruparPorDia', () => {
 describe('construirHeatmap', () => {
   it('devuelve exactamente 16 semanas de 7 dias', () => {
     const h = construirHeatmap([], HOY);
-    expect(h.semanas).toHaveLength(SEMANAS_VISIBLES);
+    // 16 literal, NO `SEMANAS_VISIBLES`: comparar contra la constante que genera
+    // el dato es una asercion que no puede fallar. Cambiarla de 16 a 12 dejaba
+    // los 156 tests en verde.
+    expect(h.semanas).toHaveLength(16);
+    expect(SEMANAS_VISIBLES).toBe(16);
     for (const semana of h.semanas) expect(semana).toHaveLength(DIAS_POR_SEMANA);
   });
 

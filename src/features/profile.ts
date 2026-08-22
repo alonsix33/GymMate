@@ -1,3 +1,4 @@
+import { claveDiaLocal, hoyLocal } from '@/utils/fecha';
 import { confirmarDestructivo, mostrarToast } from '@/ui/feedback';
 import { getProfile, saveProfile as saveProfileData, getLatestMeasurement, addBodyMeasurement, getBodyMeasurements, deleteMeasurement } from '@/utils/storage';
 import type { ProfileData, BodyMeasurement } from '@/types';
@@ -137,7 +138,7 @@ export function calculateAge(): void {
 
 export function initializeProfile(): void {
   // Establecer max date para birthdate input (hoy)
-  const today = new Date().toISOString().split('T')[0];
+  const today = hoyLocal();
   const birthdateInput = document.getElementById(
     'profileBirthdate'
   ) as HTMLInputElement;
@@ -148,7 +149,7 @@ export function initializeProfile(): void {
     // Min = 100 años atrás
     const minDate = new Date();
     minDate.setFullYear(minDate.getFullYear() - 100);
-    birthdateInput.setAttribute('min', minDate.toISOString().split('T')[0]);
+    birthdateInput.setAttribute('min', claveDiaLocal(minDate));
 
     birthdateInput.addEventListener('change', calculateAge);
   }

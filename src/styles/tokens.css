@@ -88,6 +88,15 @@
      el resto". Compartir token soldaria la barra a la escala del heatmap.
      PREGUNTA ABIERTA: ¿el hex compartido es intencional? [REF Pantallas:238] */
   --barra-musculo-secundaria: #c85510;
+  /* Rampa de la montaña de la piramide (C-05). Cuatro pasos, literales de
+     `pyrBars` del mockup. Comparten hex con los cuartiles del heatmap, pero no
+     comparten ROL: un token no puede prometer dos sitios a la vez, y el
+     precedente del repo es `--intensidad-moderada-bg`.        [REF pyrBars] */
+  --piramide-nivel-1: #52290f;
+  --piramide-nivel-2: #8a3d0b;
+  --piramide-nivel-3: #c85510;
+  --piramide-nivel-4: #ff6317;
+
   --brasa: #3a1f0c; /* nivel de pirámide ya superado              [README] */
 
   /* ======================================================================

@@ -2,6 +2,7 @@
 // XP CALCULATION SYSTEM
 // ==========================================
 
+import { claveDiaLocal } from '@/utils/fecha';
 import type {
   XPSource,
   XPTransaction,
@@ -175,11 +176,13 @@ export function calculateCurrentStreak(
     (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
   );
 
-  // Obtener fechas unicas (un dia cuenta solo una vez)
+  // Obtener fechas unicas (un dia cuenta solo una vez). Dia LOCAL: con
+  // `toISOString()` toda sesion posterior a las 19:00 en Lima caia en el dia
+  // UTC siguiente y colisionaba con la del dia real siguiente, asi que
+  // entrenar cuatro dias seguidos alternando tarde y noche daba racha 1.
   const uniqueDates = new Set<string>();
   for (const session of sorted) {
-    const dateKey = new Date(session.date).toISOString().split('T')[0];
-    uniqueDates.add(dateKey);
+    uniqueDates.add(claveDiaLocal(new Date(session.date)));
   }
 
   const sortedDates = Array.from(uniqueDates).sort().reverse();
@@ -187,10 +190,10 @@ export function calculateCurrentStreak(
   if (sortedDates.length === 0) return 0;
 
   // Verificar si la ultima sesion fue hoy o ayer
-  const todayStr = new Date(today).toISOString().split('T')[0];
+  const todayStr = claveDiaLocal(new Date(today));
   const yesterday = new Date(today);
   yesterday.setDate(yesterday.getDate() - 1);
-  const yesterdayStr = yesterday.toISOString().split('T')[0];
+  const yesterdayStr = claveDiaLocal(yesterday);
 
   const lastSessionDate = sortedDates[0];
 
@@ -206,7 +209,7 @@ export function calculateCurrentStreak(
   for (let i = 1; i < sortedDates.length; i++) {
     const prevDate = new Date(currentDate);
     prevDate.setDate(prevDate.getDate() - 1);
-    const prevDateStr = prevDate.toISOString().split('T')[0];
+    const prevDateStr = claveDiaLocal(prevDate);
 
     if (sortedDates[i] === prevDateStr) {
       streak++;
@@ -394,6 +397,11 @@ export function getCardioModeBonus(mode: string | undefined): number {
 /**
  * Calcula el XP total para una sesion de cardio
  */
+/** Segundos de trabajo por debajo de los cuales una sesion de cardio no paga
+ *  XP. Un minuto es el intervalo mas corto que la app sabe medir (EMOM), asi
+ *  que es el suelo natural. */
+export const TRABAJO_MINIMO_XP = 60;
+
 export function calculateCardioSessionXP(session: HistorySession): {
   baseXP: number;
   timeXP: number;
@@ -402,6 +410,14 @@ export function calculateCardioSessionXP(session: HistorySession): {
   totalXP: number;
 } {
   if (session.type !== 'cardio' || !session.stats) {
+    return { baseXP: 0, timeXP: 0, roundsXP: 0, modeBonus: 0, totalXP: 0 };
+  }
+
+  // Suelo de trabajo real. Sin el, un Tabata con todos los steppers al minimo
+  // pagaba 40+1+15 = 56 XP cada ~10 segundos de reloj, repetible en bucle: seis
+  // segundos de cardio valian el 74% de una sesion de pierna de 5.760 kg. El
+  // XP dejaba de significar nada y no habia forma de revertirlo.
+  if ((session.stats.workTime || 0) < TRABAJO_MINIMO_XP) {
     return { baseXP: 0, timeXP: 0, roundsXP: 0, modeBonus: 0, totalXP: 0 };
   }
 

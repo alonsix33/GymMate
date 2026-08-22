@@ -26,8 +26,8 @@
  *
  * Sale 1 ante cualquier discrepancia.  Uso: node scripts/verificar-tokens.mjs
  */
-import { readFileSync } from 'fs';
-import { resolve, dirname } from 'path';
+import { readFileSync, readdirSync, statSync } from 'fs';
+import { resolve, dirname, join, relative, basename } from 'path';
 import { fileURLToPath } from 'url';
 
 const RAIZ = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -86,6 +86,11 @@ const cmp = (clave, esperado, origen) => {
     nota(`${clave}: tokens.css=${got} != canon ${esperado} (${origen})`);
 };
 
+// Cuenta real de valores rederivados desde el README. Era una constante
+// decorativa impresa a mano ("41 valores"): un numero que nadie calculaba y que
+// habria seguido diciendo 41 aunque la extraccion cayera a cero.
+let rederivados = 0;
+
 // --- A. rampas --------------------------------------------------------------
 const RAMPAS = {
   carbon: [['950', '900', '800', '700', '600', '500', '400', '300', '200', '100', '50'], '**Carbón**'],
@@ -110,7 +115,10 @@ for (const [nombre, [pasos, marca]] of Object.entries(RAMPAS)) {
   );
   if (vistos.size !== pasos.length)
     nota(`COBERTURA rampa ${nombre}: el README dio ${vistos.size} de ${pasos.length} pasos`);
-  for (const [paso, hex] of vistos) cmp(`--${nombre}-${paso}`, hex, `README rampa ${nombre}`);
+  for (const [paso, hex] of vistos) {
+    cmp(`--${nombre}-${paso}`, hex, `README rampa ${nombre}`);
+    rederivados++;
+  }
 }
 
 // --- B. rangos musculares ---------------------------------------------------
@@ -121,14 +129,20 @@ const SLUG = {
 const lineaRangos = readme.split('\n').find((l) => l.includes('Hierro `#'));
 const rangos = [...(lineaRangos ?? '').matchAll(/([A-ZÁÉÍÓÚ][a-zá-úé]+)\s*`(#[0-9A-Fa-f]{6})`/g)];
 if (rangos.length !== 9) nota(`COBERTURA rangos: el README dio ${rangos.length} de 9`);
-for (const [, nombre, hex] of rangos) cmp(`--rango-${SLUG[nombre]}`, hex, 'README rangos');
+for (const [, nombre, hex] of rangos) {
+  cmp(`--rango-${SLUG[nombre]}`, hex, 'README rangos');
+  rederivados++;
+}
 
 // --- C. heatmap -------------------------------------------------------------
 const lineaHeat = readme.split('\n').find((l) => l.includes('**Heatmap**'));
 const heat = [...(lineaHeat ?? '').matchAll(/(0|Q1|Q2|Q3|Q4)\s*=?\s*`(#[0-9A-Fa-f]{6})`/g)];
 const MAPA_HEAT = { 0: '--heat-0', Q1: '--heat-q1', Q2: '--heat-q2', Q3: '--heat-q3', Q4: '--heat-q4' };
 if (heat.length !== 5) nota(`COBERTURA heatmap: el README dio ${heat.length} de 5`);
-for (const [, k, v] of heat) cmp(MAPA_HEAT[k], v, 'README heatmap');
+for (const [, k, v] of heat) {
+  cmp(MAPA_HEAT[k], v, 'README heatmap');
+  rederivados++;
+}
 
 // --- D. cobertura inversa de color -----------------------------------------
 // Normaliza #abc -> #aabbcc y rgb(a)() -> #rrggbb para comparar de verdad.
@@ -186,9 +200,115 @@ const refs = new Set([...sinComentarios.matchAll(/var\((--[a-z0-9_-]+)/g)].map((
 const rotas = [...refs].filter((r) => !tok.has(r)).sort();
 if (rotas.length) nota(`var() que no resuelve a ningun token de :root: ${rotas.join(', ')}`);
 
+// --- G. reglas estaticas sobre el codigo fuente -----------------------------
+//
+// Estas cuatro las pedia el contrato desde el principio y NINGUNA puerta las
+// miraba. Se descubrio mutando: un `alert()` metido a mano, un hex crudo en
+// `fierro.css`, un `var(--token-inexistente)` y un emoji en una descripcion
+// pasaban las cuatro puertas en verde.
+//
+// Van aqui, en la puerta estatica, porque son propiedades del CODIGO: no hace
+// falta un navegador para comprobarlas y asi fallan en el primer segundo.
+function ficheros(dir, ext) {
+  const salida = [];
+  for (const entrada of readdirSync(dir)) {
+    const ruta = join(dir, entrada);
+    if (statSync(ruta).isDirectory()) salida.push(...ficheros(ruta, ext));
+    else if (ext.some((e) => entrada.endsWith(e))) salida.push(ruta);
+  }
+  return salida;
+}
+
+const SRC = join(RAIZ, 'src');
+const fuentesTS = ficheros(SRC, ['.ts']);
+const fuentesCSS = ficheros(SRC, ['.css']);
+
+// G1 · cero alert()/confirm()/prompt(): los reemplaza F-01.
+for (const f of fuentesTS) {
+  const texto = readFileSync(f, 'utf8');
+  const sinComent = texto.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  for (const fn of ['alert', 'confirm', 'prompt']) {
+    const re = new RegExp(`(?<![\\w.$])${fn}\\s*\\(`, 'g');
+    if (re.test(sinComent)) {
+      fallos.push(`${relative(RAIZ, f)}: usa ${fn}() — el contrato lo prohibe, va por src/ui/feedback.ts`);
+    }
+  }
+}
+
+// G2 · cero dia UTC. `toISOString().split('T')[0]` es dia de Greenwich, y en
+// Lima manda el dia siguiente a partir de las 19:00. Un solo helper decide
+// que dia es: src/utils/fecha.ts.
+for (const f of fuentesTS) {
+  if (relative(RAIZ, f) === join('src', 'utils', 'fecha.ts')) continue;
+  const texto = readFileSync(f, 'utf8');
+  if (/toISOString\(\)\s*\.\s*(split\(['"]T['"]\)\s*\[0\]|slice\(\s*0\s*,\s*10\s*\)|substring\(\s*0\s*,\s*10\s*\))/.test(texto)) {
+    fallos.push(
+      `${relative(RAIZ, f)}: deriva el dia con toISOString() — eso es UTC. Usa claveDiaLocal() de @/utils/fecha`
+    );
+  }
+}
+
+// G3 · cero hex fuera de tokens.css. El contrato: "cualquier hex suelto fuera
+// de tokens.css es un defecto".
+//
+// Queda UNA excepcion declarada, con su cuenta clavada: `main.css` es la hoja
+// legacy que la fase 9 elimina entera. Clavar el numero convierte la excepcion
+// en un trinquete: si aparece un hex nuevo, la puerta se pone roja igual. Una
+// excepcion sin numero seria una puerta que miente sobre su alcance.
+const HEX_LEGACY_PERMITIDOS = { 'src/styles/main.css': 14 };
+for (const f of fuentesCSS) {
+  if (basename(f) === 'tokens.css') continue;
+  const rel = relative(RAIZ, f).split('\\').join('/');
+  const texto = readFileSync(f, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+  const hexes = [...texto.matchAll(/#[0-9a-fA-F]{3,8}\b/g)].map((m) => m[0]);
+  const permitidos = HEX_LEGACY_PERMITIDOS[rel];
+  if (permitidos === undefined) {
+    if (hexes.length) {
+      fallos.push(
+        `${rel}: ${hexes.length} hex fuera de tokens.css (${[...new Set(hexes)].slice(0, 5).join(', ')})`
+      );
+    }
+  } else if (hexes.length !== permitidos) {
+    fallos.push(
+      `${rel}: ${hexes.length} hex, se esperaban ${permitidos} (hoja legacy, la fase 9 la borra). ` +
+        `Si bajaste el numero, actualiza HEX_LEGACY_PERMITIDOS; si subio, no metas hex nuevos.`
+    );
+  }
+}
+
+// G4 · integridad de var() en TODAS las hojas, no solo en tokens.css. Un
+// `var(--r-inexistente)` compilaba y se veia mal en silencio.
+//
+// No cuentan como huerfanas: las que llevan valor de reserva —`var(--x, y)`,
+// que es justo el mecanismo de "el tamaño lo fija quien la use"— ni las que el
+// TS escribe como propiedad en linea (`style="--rango:${color}"`).
+const propsEnLinea = new Set();
+for (const f of fuentesTS) {
+  for (const m of readFileSync(f, 'utf8').matchAll(/(--[a-z0-9_-]+)\s*:/g)) propsEnLinea.add(m[1]);
+}
+for (const f of fuentesCSS) {
+  const texto = readFileSync(f, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+  const declaradosAqui = new Set([...texto.matchAll(/^\s*(--[a-z0-9_-]+)\s*:/gm)].map((m) => m[1]));
+  const usados = new Set(
+    [...texto.matchAll(/var\((--[a-z0-9_-]+)\s*(,?)/g)].filter((m) => m[2] !== ',').map((m) => m[1])
+  );
+  const huerfanos = [...usados]
+    .filter((v) => !tok.has(v) && !declaradosAqui.has(v) && !propsEnLinea.has(v))
+    .sort();
+  if (huerfanos.length) {
+    fallos.push(`${relative(RAIZ, f)}: var() sin token: ${huerfanos.join(', ')}`);
+  }
+}
+
 // --- salida -----------------------------------------------------------------
 console.log(`tokens en :root            : ${tok.size}`);
-console.log(`rampa + rangos + heatmap   : 41 valores rederivados del README`);
+console.log(`rampa + rangos + heatmap   : ${rederivados} valores rederivados del README`);
+if (rederivados < 40) {
+  fallos.push(
+    `solo se rederivaron ${rederivados} valores del README (se esperan 41): la extraccion se rompio ` +
+      'y la puerta estaria comparando casi nada'
+  );
+}
 console.log(`colores unicos con token   : ${tengo.size}`);
 if (faltanSistema.length)
   console.log(

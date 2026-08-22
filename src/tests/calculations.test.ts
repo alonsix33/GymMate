@@ -3,6 +3,8 @@ import {
   calculateVolume,
   calculateVolumenPorGrupo,
   calculateCalories,
+  calculate1RM,
+  REPS_MAX_1RM,
   getWeekNumber,
   daysSince,
 } from '../utils/calculations';
@@ -225,5 +227,69 @@ describe('daysSince', () => {
     futureDate.setDate(futureDate.getDate() + 3);
     const result = daysSince(futureDate);
     expect(result).toBe(-3);
+  });
+});
+
+describe('1RM fuera de dominio', () => {
+  it('37 repeticiones no producen Infinity', () => {
+    // Brzycki es `peso x 36/(37-reps)`: en 37 el denominador es CERO y la
+    // cifra grande de CA-01 escribia "Infinity kg"; en 38, -430.6 kg.
+    localStorage.setItem(
+      'gymmate_history',
+      JSON.stringify([
+        {
+          sessionId: 'w', date: '2026-08-10T12:00:00', savedAt: '2026-08-10T12:00:00',
+          grupo: 'Core', type: 'weights', volumenTotal: 0, volumenPorGrupo: {},
+          ejercicios: [{ nombre: 'Abdominales', sets: 1, reps: 37, peso: 40, volumen: 1480,
+            completado: true, esMancuerna: false, grupoMuscular: 'Core' }],
+        },
+      ])
+    );
+    expect(calculate1RM('Abdominales')).toBeNull();
+    localStorage.clear();
+  });
+
+  it('dentro de dominio, las tres formulas dan cifras posibles', () => {
+    for (let reps = 1; reps <= REPS_MAX_1RM; reps++) {
+      localStorage.setItem(
+        'gymmate_history',
+        JSON.stringify([
+          {
+            sessionId: 'w', date: '2026-08-10T12:00:00', savedAt: '2026-08-10T12:00:00',
+            grupo: 'Pecho', type: 'weights', volumenTotal: 0, volumenPorGrupo: {},
+            ejercicios: [{ nombre: 'Press', sets: 1, reps, peso: 80, volumen: 80 * reps,
+              completado: true, esMancuerna: false, grupoMuscular: 'Pecho' }],
+          },
+        ])
+      );
+      const r = calculate1RM('Press');
+      expect(r).not.toBeNull();
+      for (const v of [r!.epley, r!.brzycki, r!.lombardi, r!.average].map(Number)) {
+        expect(Number.isFinite(v)).toBe(true);
+        // Un 1RM nunca es menor que el peso movido ni el triple de el.
+        expect(v).toBeGreaterThanOrEqual(80);
+        expect(v).toBeLessThanOrEqual(240);
+      }
+    }
+    localStorage.clear();
+  });
+});
+
+describe('CA-02 · el BMR que se enseña es el que multiplica', () => {
+  it('BMR x actividad da el TDEE de la pantalla', () => {
+    // 1592.5 x 1.55 daba 2468 mientras la tarjeta invitaba a multiplicar
+    // 1593 x 1.55 = 2469. Es la unica cuenta que el usuario puede rehacer.
+    for (const edad of [22, 25, 40, 61]) {
+      for (const peso of [55, 65, 82, 104]) {
+        for (const altura of [155, 170, 178, 191]) {
+          for (const act of [1.2, 1.375, 1.55, 1.725, 1.9]) {
+            const r = calculateCalories(edad, 'male', peso, altura, act);
+            expect(Math.round(r.bmr * act)).toBe(r.tdee);
+            expect(Math.round(r.tdee * 0.8)).toBe(r.deficit);
+            expect(Math.round(r.tdee * 1.2)).toBe(r.surplus);
+          }
+        }
+      }
+    }
   });
 });

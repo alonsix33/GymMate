@@ -4370,6 +4370,11 @@ body:has(#medidasTab:not(.hidden)) {
 .f-prog__label--accion:hover {
   color: var(--text-primary);
 }
+.f-prog__nota {
+  font-size: var(--fs-11_5);
+  line-height: var(--lh-1_5);
+  color: var(--text-secondary);
+}
 .f-prog__vacio {
   font-size: var(--fs-12_5);
   color: var(--text-disabled);
@@ -5249,4 +5254,15 @@ body:has(#medidasTab:not(.hidden)) {
     opacity: 1;
     transform: translateY(0);
   }
+}
+
+/* El aviso de cola es accionable: reintenta las guardadas. */
+.f-coach__cola {
+  align-self: flex-start;
+  background: none;
+  border: none;
+  font-family: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }

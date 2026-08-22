@@ -49,6 +49,41 @@ describe('subniveles', () => {
     }
   });
 
+  it('los cortes REDONDOS caen del lado correcto', () => {
+    // La franja Diamante es 1.3–1.6, asi que sus tercios estan en 1.4 y 1.5:
+    // numeros que un ratio real pisa. Sin tolerancia, `(1.4-1.3)/0.3` da
+    // 0.33333333333333287 —menor que 1/3 por un bit— y el subnivel salia I
+    // mientras el consejo de al lado decia "A 0.10x de Diamante III".
+    expect(subnivelDe('Diamante', 1.4)).toBe('II');
+    expect(subnivelDe('Diamante', 1.5)).toBe('III');
+    expect(subnivelDe('Oro', 0.7 + 0.2 / 3)).toBe('II');
+    expect(subnivelDe('Platino', 0.9 + 0.2 / 3)).toBe('II');
+    expect(subnivelDe('Bronce', 0.3 + 0.2 / 3)).toBe('II');
+  });
+
+  it('la escalera y el consejo NUNCA se saltan un subnivel', () => {
+    // La propiedad, no el caso: el subnivel que pinta la escalera y el que
+    // anuncia `siguienteEscalon` tienen que ser consecutivos.
+    const ORDEN = ['I', 'II', 'III'];
+    for (const rango of ['Bronce', 'Plata', 'Oro', 'Platino', 'Esmeralda', 'Diamante', 'Campeon'] as const) {
+      const f = franjaDe(rango)!;
+      for (let k = 0; k <= 300; k++) {
+        const ratio = f.min + ((f.max - f.min) * k) / 300;
+        if (ratio >= f.max) continue;
+        const aqui = subnivelDe(rango, ratio);
+        const e = siguienteEscalon(rango, ratio);
+        if (!e) continue;
+        const [, subSiguiente] = e.nombre.split(' ');
+        if (subSiguiente && e.nombre.startsWith(rango === 'Campeon' ? 'Campeón' : rango)) {
+          expect(ORDEN.indexOf(subSiguiente)).toBe(ORDEN.indexOf(aqui) + 1);
+        } else {
+          // Cambia de rango: entonces estabamos en el ultimo tercio.
+          expect(aqui).toBe('III');
+        }
+      }
+    }
+  });
+
   it('un ratio absurdo no revienta', () => {
     expect(subnivelDe('Oro', NaN)).toBe('');
     expect(subnivelDe('Oro', Infinity)).toBe('');
@@ -80,5 +115,16 @@ describe('el siguiente escalon', () => {
     expect(pesoParaElSiguiente(0.9, 210)).toBe(189);
     // Sin peso corporal no hay cifra que dar.
     expect(pesoParaElSiguiente(0.9, 0)).toBeNull();
+  });
+
+  it('devuelve el multiplicador del ejercicio a la cuenta', () => {
+    // El ratio que decide el rango es `(1RM/peso) / multiplicador`, y el de la
+    // Prensa de Piernas es 2.0. Sin devolverlo, GM-02 decia "sube tu 1RM a
+    // 83 kg" a quien ya levantaba 120.
+    expect(pesoParaElSiguiente(1.1, 75, 2)).toBe(165);
+    expect(pesoParaElSiguiente(1.1, 75, 1)).toBe(83);
+    // Un multiplicador invalido no puede partir la cifra por cero.
+    expect(pesoParaElSiguiente(1.1, 75, 0)).toBe(83);
+    expect(pesoParaElSiguiente(1.1, 75, NaN)).toBe(83);
   });
 });

@@ -179,14 +179,41 @@ export function pieDePerimetros(cambios: CambioPerimetro[]): string {
     .filter((c) => c.delta > 0 && EXTREMIDADES.has(c.nombre))
     .map((c) => c.nombre.toLowerCase());
   const cintura = cambios.find((c) => c.nombre === 'Cintura');
-  if (creciendo.length >= 2 && cintura && cintura.delta < 0) {
-    const lista = creciendo.length === 2
-      ? `${creciendo[0]} y ${creciendo[1]}`
-      : `${creciendo.slice(0, -1).join(', ')} y ${creciendo[creciendo.length - 1]}`;
-    return `${lista.charAt(0).toUpperCase()}${lista.slice(1)} creciendo, cintura bajando — el par que quieres ver junto.`;
+
+  const lista = (xs: string[]) =>
+    xs.length === 2 ? `${xs[0]} y ${xs[1]}` : `${xs.slice(0, -1).join(', ')} y ${xs[xs.length - 1]}`;
+  const enMayuscula = (t: string) => `${t.charAt(0).toUpperCase()}${t.slice(1)}`;
+
+  // Sin dato de cintura no se afirma nada SOBRE la cintura. La version
+  // anterior caia en "la cintura se mantiene" siempre que no bajara —
+  // incluidos "sube 10 cm" y "no hay dato", que es el rotulo mintiendo justo
+  // encima de la fila que dice +10.
+  if (!cintura) {
+    if (creciendo.length === 0) return '';
+    return `${enMayuscula(lista(creciendo))} ${creciendo.length === 1 ? 'creciendo' : 'creciendo'}.`;
   }
-  if (cintura && cintura.delta < 0) return 'La cintura baja. Es la mitad del par que quieres ver.';
-  if (creciendo.length >= 1) return `${creciendo.length === 1 ? 'Un perímetro crece' : 'Varios perímetros crecen'} y la cintura se mantiene.`;
+
+  if (cintura.delta < 0) {
+    if (creciendo.length >= 2) {
+      return `${enMayuscula(lista(creciendo))} creciendo, cintura bajando — el par que quieres ver junto.`;
+    }
+    if (creciendo.length === 1) {
+      return `${enMayuscula(creciendo[0])} creciendo y cintura bajando — el par que quieres ver junto.`;
+    }
+    return 'La cintura baja. Es la mitad del par que quieres ver.';
+  }
+
+  if (cintura.delta > 0) {
+    if (creciendo.length >= 1) {
+      return `${enMayuscula(lista(creciendo.concat('cintura')))} creciendo: sube todo, no solo lo que quieres.`;
+    }
+    return 'La cintura sube.';
+  }
+
+  // Cintura exactamente igual.
+  if (creciendo.length >= 1) {
+    return `${enMayuscula(lista(creciendo))} creciendo y la cintura se mantiene.`;
+  }
   return '';
 }
 
@@ -198,6 +225,11 @@ export interface PuntoSerie {
   x: number;
   y: number;
   valor: number;
+  /** La fecha del PROPIO punto. Sin ella, el rotulo del eje tomaba el mes de
+   *  la medicion mas antigua del historial y el valor del primer punto de la
+   *  serie ya filtrada: dos mitades de fechas distintas en cuanto la mas
+   *  antigua no tenia con que calcular su %. */
+  fecha: string;
 }
 
 /**
@@ -229,6 +261,7 @@ export function serieDeMedidas(
     x: Math.round(margen + k * paso),
     y: max === min ? Math.round(alto / 2) : Math.round(alto - ((p.v - min) / rango) * alto),
     valor: p.v,
+    fecha: orden[p.i].date,
   }));
 }
 
@@ -237,9 +270,13 @@ export function polilineaDe(puntos: PuntoSerie[]): string {
 }
 
 /** "FEB · 77.4" — la etiqueta de los extremos del eje. */
-export function etiquetaDeExtremo(m: BodyMeasurement | undefined, valor: number | null, decimales = 1): string {
-  if (!m || valor === null) return '';
-  const mes = new Date(m.date)
+export function etiquetaDeExtremo(
+  fecha: string | undefined,
+  valor: number | null,
+  decimales = 1
+): string {
+  if (!fecha || valor === null) return '';
+  const mes = new Date(fecha)
     .toLocaleDateString('es-ES', { month: 'short' })
     .replace('.', '')
     .toUpperCase();

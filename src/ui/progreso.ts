@@ -11,6 +11,7 @@
  * rango.
  */
 import {
+  getLevelTitle,
   getAchievements,
   getCurrentLevelProgress,
   getMuscleRanks,
@@ -21,6 +22,7 @@ import { STREAK_MILESTONES, STREAK_XP } from '@/features/gamification/constants'
 import { renderMapaFierro, colorDeRango } from '@/ui/gamification/muscle-map';
 import type { Achievement, GamificationMuscleGroup, MuscleRanks, StrengthRank } from '@/types/gamification';
 import { getProfile } from '@/utils/storage';
+import { getExerciseMultiplier } from '@/features/gamification';
 import { cifra } from '@/utils/formato';
 import { nombreDeRango, pesoParaElSiguiente, siguienteEscalon, franjaDe } from '@/utils/rangos';
 
@@ -83,11 +85,28 @@ function franjaTexto(rango: StrengthRank): string {
   return `${f.min}–${f.max}`;
 }
 
-function ordenados(ranks: MuscleRanks): Array<{ id: GamificationMuscleGroup; nombre: string; rango: StrengthRank; ratio: number }> {
+/**
+ * El ratio que se PINTA es el que DECIDE el rango.
+ *
+ * `calculateMuscleRankData` devuelve `rank` del mejor ejercicio y `ratio` como
+ * media del grupo, y con un ejercicio fuerte y otro flojo el par salia
+ * incoherente: "Piernas Oro I · 0.40x" con la escalera de al lado diciendo que
+ * Oro empieza en 0.70. Dos textos contiguos que se contradicen.
+ */
+function ratioDelRango(d: MuscleRanks[GamificationMuscleGroup] | undefined): number {
+  return d?.bestRatio ?? d?.ratio ?? 0;
+}
+
+function ordenados(ranks: MuscleRanks): Array<{
+  id: GamificationMuscleGroup;
+  nombre: string;
+  rango: StrengthRank;
+  ratio: number;
+}> {
   return GRUPOS.map((g) => ({
     ...g,
     rango: ranks[g.id]?.rank ?? 'Hierro',
-    ratio: ranks[g.id]?.ratio ?? 0,
+    ratio: ratioDelRango(ranks[g.id]),
   })).sort((a, b) => b.ratio - a.ratio);
 }
 
@@ -103,6 +122,10 @@ function vistaProgreso(): string {
   const conseguidos = logros.filter((l) => l.unlockedAt);
   const racha = getStreakInfo();
 
+  // Un estado de gamificacion a medias (una escritura interrumpida, un
+  // localStorage tocado a mano) no puede dejar la pantalla EN BLANCO: sin esto,
+  // un `playerStats` sin `titleInfo` lanzaba y GM-01 no pintaba ni un texto.
+  const titulo = stats?.titleInfo?.full ?? getLevelTitle(nivel.level).full;
   const pct = nivel.maxXP > 0 ? Math.min(100, (nivel.currentXP / nivel.maxXP) * 100) : 100;
   const faltan = Math.max(0, nivel.maxXP - nivel.currentXP);
   const nivelesHasta100 = Math.max(0, 100 - nivel.level);
@@ -125,7 +148,7 @@ function vistaProgreso(): string {
     <section class="f-prog__nivel">
       <div class="f-prog__nivel-fila">
         <span class="f-prog__nivel-cifra">NIVEL ${nivel.level}</span>
-        <span class="f-prog__nivel-meta">${escapar(stats.titleInfo.full)} · ${cifra(
+        <span class="f-prog__nivel-meta">${escapar(titulo)} · ${cifra(
           nivel.currentXP
         )} / ${cifra(nivel.maxXP)} XP</span>
       </div>
@@ -133,7 +156,9 @@ function vistaProgreso(): string {
       <span class="f-prog__nivel-pie">${
         nivelesHasta100 === 0
           ? 'Nivel máximo: has llegado a Simétrico.'
-          : `${cifra(faltan)} XP para el siguiente nivel · ${nivelesHasta100} ${
+          : `${cifra(faltan)} XP para ${escapar(
+              getLevelTitle(nivel.level + 1).full
+            )} · ${nivelesHasta100} ${
               nivelesHasta100 === 1 ? 'nivel' : 'niveles'
             } hasta Simétrico`
       }</span>
@@ -209,9 +234,18 @@ function vistaProgreso(): string {
 }
 
 /** "74,300 / 100,000 kg" o "3 / 7". Sin objetivo no se inventa una fraccion. */
+/** Unidad de la fraccion, por categoria: "26,400 / 100,000 kg" y "5 / 25
+ *  sesiones" son magnitudes distintas y se leian con la misma forma. */
+const UNIDAD_LOGRO: Partial<Record<Achievement['category'], string>> = {
+  volumen: 'kg',
+  sesiones: 'sesiones',
+  rachas: 'días',
+};
+
 function progresoDe(l: Achievement): string {
   if (l.target === undefined) return l.description;
-  return `${cifra(l.progress ?? 0)} / ${cifra(l.target)}`;
+  const unidad = UNIDAD_LOGRO[l.category];
+  return `${cifra(l.progress ?? 0)} / ${cifra(l.target)}${unidad ? ` ${unidad}` : ''}`;
 }
 
 // ==========================================
@@ -223,10 +257,19 @@ function vistaRangos(): string {
   const perfil = getProfile();
   const actual = ranks[musculoElegido];
   const rango = actual?.rank ?? 'Hierro';
-  const ratio = actual?.ratio ?? 0;
+  const ratio = ratioDelRango(actual);
   const nombreMusculo = GRUPOS.find((g) => g.id === musculoElegido)?.nombre ?? 'Piernas';
   const escalon = siguienteEscalon(rango, ratio);
-  const objetivo = escalon ? pesoParaElSiguiente(escalon.ratioObjetivo, perfil.weight ?? 0) : null;
+  // El ejercicio que sostiene el rango: es su 1RM el que hay que subir, y su
+  // multiplicador el que entra en la cuenta.
+  const ejercicio = actual?.bestExercise ?? '';
+  const objetivo = escalon
+    ? pesoParaElSiguiente(
+        escalon.ratioObjetivo,
+        perfil.weight ?? 0,
+        ejercicio ? getExerciseMultiplier(ejercicio) : 1
+      )
+    : null;
 
   return `
     <div class="f-prog__cabecera">
@@ -252,14 +295,21 @@ function vistaRangos(): string {
           <span class="f-escalon__franja">${escapar(franjaTexto(e.rango))}</span>
           ${
             aqui
-              ? `<span class="f-escalon__tuyo">TÚ · ${escapar(
-                  nombreDeRango(rango, ratio).split(' ')[1] ?? '—'
-                )}</span>`
+              ? `<span class="f-escalon__tuyo">${
+                  // Simetrico no tiene subnivel por diseño: anunciar el premio
+                  // final con una raya ("TÚ · —") lo hacia parecer un error.
+                  (() => {
+                    const sub = nombreDeRango(rango, ratio).split(' ')[1];
+                    return sub ? `TÚ · ${escapar(sub)}` : 'TÚ';
+                  })()
+                }</span>`
               : ''
           }
         </div>`;
       }).join('')}
     </div>
+
+    <span class="f-prog__nota">Cada rango se divide en I–III (pasos de ~0.07x): siempre hay un ascenso a la vista sin acercar el techo — Simétrico sigue en 2.0x y no tiene subniveles: es la cima.</span>
 
     <div class="f-prog__consejo">
       <span class="f-prog__consejo-titulo">${escapar(nombreMusculo)} · ${escapar(
@@ -274,9 +324,9 @@ function vistaRangos(): string {
               ? `A ${escalon.falta.toFixed(2)}x de ${escapar(
                   escalon.nombre
                 )}. Pon tu peso corporal en el perfil y te digo con cuántos kg asciendes.`
-              : `A ${escalon.falta.toFixed(2)}x de ${escapar(
-                  escalon.nombre
-                )} — sube tu 1RM a ${cifra(objetivo)} kg y asciendes.`
+              : `A ${escalon.falta.toFixed(2)}x de ${escapar(escalon.nombre)} — sube tu 1RM${
+                  ejercicio ? ` de ${escapar(ejercicio)}` : ''
+                } a ${cifra(objetivo)} kg y asciendes.`
       }</span>
     </div>
 

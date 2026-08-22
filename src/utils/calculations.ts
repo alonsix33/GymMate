@@ -2,7 +2,7 @@ import { LOWER_BODY_KEYWORDS } from '@/constants';
 import type { ExerciseData, MuscleGroup, OneRMResult, ProgressiveResult } from '@/types';
 import { getHistory, getPR } from './storage';
 import { normalizeExerciseName, isSameExercise } from './exercise-normalizer';
-import { getExerciseInfo } from '@/data/exercises';
+import { getExerciseInfo, allExercises } from '@/data/exercises';
 
 // ==========================================
 // CÁLCULO DE VOLUMEN
@@ -40,6 +40,10 @@ export function calculateVolumenPorGrupo(
 // CÁLCULO DE 1RM (Repetition Maximum)
 // ==========================================
 
+/** Tope de repeticiones con el que las tres formulas siguen siendo un ajuste
+ *  razonable. Por encima, la estimacion no vale y se dice que no vale. */
+export const REPS_MAX_1RM = 15;
+
 export function calculate1RM(exerciseName: string): OneRMResult | null {
   const history = getHistory();
   const normalizedName = normalizeExerciseName(exerciseName);
@@ -73,6 +77,17 @@ export function calculate1RM(exerciseName: string): OneRMResult | null {
   const performance = bestPerformance as ExerciseData;
   const peso = performance.peso;
   const reps = performance.reps;
+
+  // Fuera de dominio no hay 1RM que estimar.
+  //
+  // Brzycki es `peso × 36/(37−reps)`: en 37 repeticiones el denominador es CERO
+  // y la cifra grande de CA-01 escribia "Infinity kg"; en 38, −430.6 kg. Las
+  // tres formulas son ajustes empiricos validos hasta ~12-15 repeticiones, y ya
+  // en 30 Brzycki da 5 veces el peso movido. Una serie de 37 repeticiones es
+  // perfectamente registrable (gemelos, abdominales).
+  if (!Number.isFinite(peso) || peso <= 0 || !Number.isFinite(reps) || reps < 1 || reps > REPS_MAX_1RM) {
+    return null;
+  }
 
   // Tres fórmulas de 1RM
   const epley = peso * (1 + reps / 30);
@@ -120,12 +135,17 @@ export function calculateCalories(
   // 2126.6 -> 2,127, y CA-02 del mockup escribe 2,126 (= 2658 x 0.8). Un kcal,
   // pero la cifra del handoff manda y ademas asi las tres filas son coherentes
   // entre si: el usuario puede rehacer la cuenta con la que tiene delante.
-  const tdee = Math.round(bmr * activityLevel);
+  // Desde el BMR REDONDEADO, que es el que la tarjeta enseña. Con el crudo,
+  // 1592.5 × 1.55 daba 2468 mientras la pantalla invitaba a multiplicar
+  // 1593 × 1.55 = 2469. Es la unica multiplicacion que el usuario puede
+  // rehacer de cabeza, y no cuadraba en el 43% de los casos.
+  const bmrMostrado = Math.round(bmr);
+  const tdee = Math.round(bmrMostrado * activityLevel);
   const deficit = Math.round(tdee * 0.8);
   const surplus = Math.round(tdee * 1.2);
 
   return {
-    bmr: Math.round(bmr),
+    bmr: bmrMostrado,
     tdee,
     deficit,
     maintenance: tdee,
@@ -169,7 +189,14 @@ export function esTrenInferior(exerciseName: string): boolean {
     }
   }
 
-  const info = getExerciseInfo(exerciseName);
+  // Con el nombre NORMALIZADO y, si no, por alias: el catalogo guarda
+  // "RDL / Peso Muerto Rumano" y `getExerciseInfo('Peso Muerto Rumano')` no lo
+  // encontraba, asi que caia a las keywords y clasificaba como tren superior
+  // justo el ejemplo que el comentario de arriba dice haber arreglado.
+  const info =
+    getExerciseInfo(normalizado) ??
+    getExerciseInfo(exerciseName) ??
+    allExercises.find((e) => isSameExercise(e.nombre, normalizado));
   if (info) return GRUPOS_INFERIORES.has(info.grupoMuscular);
 
   // Ultimo recurso para ejercicios que no estan ni en el historial ni en el
@@ -212,12 +239,20 @@ export function calculateProgressive(
     aggressive = currentWeight * 1.075; // 7.5%
   }
 
-  // Redondear a múltiplos de 2.5kg
-  const roundTo2_5 = (weight: number) => Math.ceil(weight / 2.5) * 2.5;
+  // Redondear a múltiplos de 2.5kg.
+  //
+  // El `Math.round(w * 1e6) / 1e6` no es cosmetico: `100 × 1.1` da
+  // 110.00000000000001 en doble, y `Math.ceil` de eso salta un escalon entero
+  // — el "agresivo +10%" de una sentadilla de 100 kg salia 112.5, o sea
+  // +12.5%. Pasaba con 25, 50, 100 y 200 kg, que son justo los pesos redondos.
+  const roundTo2_5 = (weight: number) => Math.ceil(Math.round(weight * 1e6) / 1e6 / 2.5) * 2.5;
 
   conservative = roundTo2_5(conservative);
-  moderate = roundTo2_5(moderate);
-  aggressive = roundTo2_5(aggressive);
+  // Tres rotulos distintos exigen tres cifras distintas. Con un PR bajo el
+  // redondeo a 2.5 las colapsaba: "Curl con Barra PR 20" daba 22.5 / 22.5 /
+  // 22.5 bajo Conservador, Moderado y Agresivo.
+  moderate = Math.max(roundTo2_5(moderate), conservative + 2.5);
+  aggressive = Math.max(roundTo2_5(aggressive), moderate + 2.5);
 
   return {
     current: currentWeight,

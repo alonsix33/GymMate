@@ -49,11 +49,25 @@ const CLAVE_CONVERSACION = 'gymmate_coach_conversacion';
 const CLAVE_COLA = 'gymmate_coach_cola';
 const MAX_TURNOS = 100;
 
+/** Un turno que se puede pintar. `Array.isArray` no basta: `[1,2,3]` pasaba el
+ *  guard y la pantalla salia con tres tarjetas "COACH · INVALID DATE" que el
+ *  usuario no podia borrar desde ningun sitio. */
+function esTurno(t: unknown): t is TurnoCoach {
+  if (!t || typeof t !== 'object') return false;
+  const c = t as Partial<TurnoCoach>;
+  return (
+    typeof c.texto === 'string' &&
+    (c.autor === 'coach' || c.autor === 'usuario') &&
+    typeof c.fecha === 'string' &&
+    !Number.isNaN(Date.parse(c.fecha))
+  );
+}
+
 export function leerConversacion(): TurnoCoach[] {
   try {
     const bruto = localStorage.getItem(CLAVE_CONVERSACION);
-    const datos = bruto ? (JSON.parse(bruto) as TurnoCoach[]) : [];
-    return Array.isArray(datos) ? datos : [];
+    const datos = bruto ? JSON.parse(bruto) : [];
+    return Array.isArray(datos) ? datos.filter(esTurno) : [];
   } catch {
     return [];
   }
@@ -71,18 +85,27 @@ export function guardarConversacion(turnos: TurnoCoach[]): void {
 export function leerCola(): string[] {
   try {
     const bruto = localStorage.getItem(CLAVE_COLA);
-    const datos = bruto ? (JSON.parse(bruto) as string[]) : [];
-    return Array.isArray(datos) ? datos : [];
+    const datos = bruto ? JSON.parse(bruto) : [];
+    return Array.isArray(datos) ? datos.filter((p): p is string => typeof p === 'string' && p.trim() !== '') : [];
   } catch {
     return [];
   }
 }
 
-export function guardarCola(preguntas: string[]): void {
+/**
+ * Devuelve si de verdad se guardo.
+ *
+ * Tragar el `QuotaExceededError` en silencio mientras la tarjeta de error dice
+ * "Tu pregunta quedó guardada" es la peor combinacion posible: la pregunta se
+ * pierde Y la pantalla afirma lo contrario. Con 100 turnos, historial y PRs,
+ * la cuota llena es el escenario normal de una PWA de uso diario.
+ */
+export function guardarCola(preguntas: string[]): boolean {
   try {
     localStorage.setItem(CLAVE_COLA, JSON.stringify(preguntas.slice(-20)));
+    return true;
   } catch {
-    /* igual que arriba */
+    return false;
   }
 }
 
@@ -97,7 +120,14 @@ export function datosDelEjercicio(nombre: string, historial: HistorySession[] = 
   const actual = pesoActual(nombre, historial) ?? 0;
   if (pico <= 0 || actual <= 0) return null;
 
-  const reps = repsDeLaMejorSerie(nombre, historial);
+  // Las repeticiones de la MISMA serie de la que sale `actual`.
+  //
+  // Antes se tomaban las del pico historico y se multiplicaban por el peso
+  // actual: con un pico de 120×2 en julio y 100×12 en las ultimas sesiones, el
+  // bloque rotulado "1RM EST." mostraba 107 kg cuando la estimacion correcta
+  // (Epley sobre 100×12) es 140. El handoff promete que esa aritmetica es
+  // determinista; estaba 33 kg baja.
+  const reps = repsDeLaSerieActual(nombre, historial, actual);
   const ratio = actual / pico;
   return {
     ejercicio: nombre,
@@ -110,18 +140,15 @@ export function datosDelEjercicio(nombre: string, historial: HistorySession[] = 
   };
 }
 
-function repsDeLaMejorSerie(nombre: string, historial: HistorySession[]): number {
-  let mejorPeso = 0;
-  let reps = 1;
+/** Las repeticiones de la serie que marco `peso`, mirando de la mas reciente
+ *  hacia atras: es la serie que el usuario reconoce como "la de ahora". */
+function repsDeLaSerieActual(nombre: string, historial: HistorySession[], peso: number): number {
   for (const sesion of historial) {
     for (const ej of sesion.ejercicios ?? []) {
-      if (ej.nombre === nombre && ej.peso > mejorPeso) {
-        mejorPeso = ej.peso;
-        reps = ej.reps || 1;
-      }
+      if (ej.nombre === nombre && ej.peso === peso) return ej.reps || 1;
     }
   }
-  return reps;
+  return 1;
 }
 
 /** El ejercicio del que habla una pregunta, si nombra alguno del historial. */
@@ -179,9 +206,8 @@ export class CoachLocal implements AdaptadorCoach {
     const dato = this.datosPara(pregunta);
     if (!dato) {
       return (
-        'Todavía no tengo respuesta para eso sin un modelo detrás. Lo que sí puedo ' +
-        'darte son tus números: pregúntame por un ejercicio que hayas registrado y te ' +
-        'enseño su 1RM estimado, su pico y cuántas sesiones lleva sin subir.'
+        'Pregúntame por un ejercicio que hayas registrado y te enseño su 1RM ' +
+        'estimado, su pico y cuántas sesiones lleva sin subir.'
       );
     }
     const partes: string[] = [];
@@ -198,7 +224,9 @@ export class CoachLocal implements AdaptadorCoach {
     }
     // La voz del handoff: el peso objetivo, nunca la diferencia.
     partes.push(`Levanta ${dato.pico + 2.5} kg en ${dato.ejercicio} y es PR nuevo.`);
-    partes.push('El resto de la explicación llega cuando conectes el modelo.');
+    // Y se acaba ahi. "El resto de la explicación llega cuando conectes el
+    // modelo" era una nota de implementacion con voz de producto: el usuario
+    // no tiene ninguna pantalla donde conectar nada.
     return partes.join(' ');
   }
 }

@@ -32,8 +32,22 @@ const ID = 'fierroCoach';
 let turnos: TurnoCoach[] = [];
 let estado: 'listo' | 'pensando' | 'escribiendo' = 'listo';
 let parcial = '';
-let ultimaPregunta = '';
 let hayError = false;
+/** true cuando la pregunta ni siquiera se pudo guardar en la cola. */
+let colaFallo = false;
+/**
+ * Token del turno en vuelo. Cerrar el coach a media respuesta y volver a
+ * preguntar dejaba DOS `for await` acumulando sobre el mismo `parcial`: la
+ * primera respuesta salia con los trozos duplicados e intercalados y la
+ * segunda truncada, y asi se persistian las dos.
+ */
+let turnoActivo = 0;
+/** Lo que el usuario lleva escrito. Cada `render()` reconstruye el <input> y
+ *  le borraba el texto y el foco a media escritura. */
+let borrador = '';
+/** Un modelo colgado dejaba el compositor deshabilitado para siempre, y la
+ *  unica salida era cerrar y reabrir — el gesto que corrompia el turno. */
+const TIMEOUT_MS = 30000;
 
 function contenedor(): HTMLElement {
   let el = document.getElementById(ID);
@@ -111,6 +125,7 @@ function turnoHTML(t: TurnoCoach): string {
 
 function render(): void {
   const el = contenedor();
+  const teniaFoco = document.activeElement?.id === 'coachEntrada';
   const cola = leerCola();
 
   const cuerpo = [
@@ -131,8 +146,16 @@ function render(): void {
     hayError
       ? `<div class="f-coach__error">
            <span class="f-coach__error-label">SIN CONEXIÓN</span>
-           <span class="f-coach__texto">Tu pregunta no se ha perdido: sigue aquí y se envía en cuanto vuelvas a tener conexión.</span>
-           <button type="button" class="f-btn f-btn--secundario f-btn--medida" data-coach="reintentar">Reintentar</button>
+           <span class="f-coach__texto">${
+             colaFallo
+               ? 'No se pudo conectar con el coach, y tampoco hubo sitio para guardar tu pregunta: vuelve a escribirla.'
+               : 'No se pudo conectar con el coach. Tu pregunta quedó guardada — reintenta cuando vuelva la señal.'
+           }</span>
+           ${
+             colaFallo
+               ? ''
+               : '<button type="button" class="f-btn f-btn--secundario f-btn--medida" data-coach="reintentar">Reintentar</button>'
+           }
          </div>`
       : '',
     turnos.length === 0 && estado === 'listo' && !hayError
@@ -151,20 +174,31 @@ function render(): void {
     <div class="f-coach__hilo" id="coachHilo">${cuerpo}</div>
     ${
       cola.length > 0
-        ? `<span class="f-coach__cola">${cola.length} ${
-            cola.length === 1 ? 'pregunta pendiente de enviar' : 'preguntas pendientes de enviar'
-          }</span>`
+        ? `<button type="button" class="f-coach__cola" data-coach="reintentar">${cola.length} ${
+            cola.length === 1 ? 'pregunta guardada' : 'preguntas guardadas'
+          } · reintentar</button>`
         : ''
     }
     <div class="f-coach__compositor">
       <input class="f-coach__entrada" id="coachEntrada" type="text"
-        placeholder="Pregúntale a tus datos…" aria-label="Escribe tu pregunta"
-        ${estado === 'listo' ? '' : 'disabled'} />
+        value="${escapar(borrador)}"
+        placeholder="${estado === 'listo' ? 'Pregúntale a tus datos…' : 'Esperando respuesta…'}"
+        aria-label="Escribe tu pregunta" ${estado === 'listo' ? '' : 'disabled'} />
       <button type="button" class="f-coach__enviar" data-coach="enviar"
         ${estado === 'listo' ? '' : 'disabled'} aria-label="Enviar">↑</button>
     </div>
   `;
 
+  const entrada = el.querySelector<HTMLInputElement>('#coachEntrada');
+  if (entrada) {
+    entrada.addEventListener('input', () => {
+      borrador = entrada.value;
+    });
+    if (teniaFoco && !entrada.disabled) {
+      entrada.focus();
+      entrada.setSelectionRange(entrada.value.length, entrada.value.length);
+    }
+  }
   const hilo = el.querySelector<HTMLElement>('#coachHilo');
   if (hilo) hilo.scrollTop = hilo.scrollHeight;
   requestAnimationFrame(() => {
@@ -175,6 +209,8 @@ function render(): void {
 }
 
 export function abrirCoach(mensajeInicial?: string): void {
+  // Cancela cualquier stream que siguiera vivo de una apertura anterior.
+  turnoActivo++;
   turnos = leerConversacion();
   estado = 'listo';
   hayError = false;
@@ -200,23 +236,33 @@ export function abrirCoach(mensajeInicial?: string): void {
 }
 
 export function cerrarCoach(): void {
+  // Cerrar TAMBIEN cancela: el stream en vuelo dejaba de tener pantalla pero
+  // seguia acumulando, y al reabrir y preguntar otra vez los dos escribian
+  // sobre el mismo texto parcial.
+  turnoActivo++;
+  estado = 'listo';
+  parcial = '';
   document.getElementById(ID)?.classList.add('hidden');
 }
 
 async function enviar(): Promise<void> {
   const entrada = document.getElementById('coachEntrada') as HTMLInputElement | null;
-  const pregunta = entrada?.value.trim() ?? '';
+  const pregunta = (entrada?.value ?? borrador).trim();
   if (!pregunta || estado !== 'listo') return;
-  ultimaPregunta = pregunta;
+  borrador = '';
   if (entrada) entrada.value = '';
   await preguntar(pregunta);
 }
 
 async function preguntar(pregunta: string): Promise<void> {
   hayError = false;
+  colaFallo = false;
   turnos.push({ id: `u_${Date.now()}`, autor: 'usuario', texto: pregunta, fecha: new Date().toISOString() });
   guardarConversacion(turnos);
 
+  // Token de este turno: cualquier stream anterior que siga vivo se descarta
+  // en su siguiente `await` en vez de seguir escribiendo sobre `parcial`.
+  const mio = ++turnoActivo;
   estado = 'pensando';
   render();
 
@@ -225,27 +271,38 @@ async function preguntar(pregunta: string): Promise<void> {
     // La aritmetica SIEMPRE en local, pase lo que pase con el modelo.
     const dato = adaptador.datosPara(pregunta) ?? undefined;
 
+    let texto = '';
     parcial = '';
     estado = 'escribiendo';
     render();
 
-    for await (const trozo of adaptador.responder(pregunta, turnos)) {
-      parcial += trozo;
+    // Un modelo que no responde nunca no puede dejar el compositor muerto.
+    const limite = new Promise<never>((_, rechazar) =>
+      setTimeout(() => rechazar(new Error('timeout')), TIMEOUT_MS)
+    );
+    const iterador = adaptador.responder(pregunta, turnos)[Symbol.asyncIterator]();
+
+    for (;;) {
+      const paso = await Promise.race([iterador.next(), limite]);
+      if (mio !== turnoActivo) return; // otro turno tomo el relevo
+      if (paso.done) break;
+      texto += paso.value;
+      parcial = texto;
       // Por ID, no por `:last-of-type`: ese pseudo-selector mira el TIPO de
-      // elemento (span), no la clase, asi que cogia el primer turno del hilo y
-      // el streaming reescribia una respuesta anterior en vez de la nueva.
+      // elemento (span), no la clase, y cogia el primer turno del hilo.
       const nodo = document.getElementById('coachParcial');
       if (nodo) {
-        nodo.textContent = parcial;
+        nodo.textContent = texto;
         nodo.insertAdjacentHTML('beforeend', '<span class="f-coach__cursor" aria-hidden="true"></span>');
       }
       await new Promise((r) => setTimeout(r, 18));
+      if (mio !== turnoActivo) return;
     }
 
     turnos.push({
       id: `c_${Date.now()}`,
       autor: 'coach',
-      texto: parcial.trim(),
+      texto: texto.trim(),
       fecha: new Date().toISOString(),
       dato,
     });
@@ -254,12 +311,14 @@ async function preguntar(pregunta: string): Promise<void> {
     parcial = '';
     render();
   } catch {
-    // La pregunta NO se pierde: queda en cola y se puede reintentar.
+    if (mio !== turnoActivo) return;
+    // La pregunta NO se pierde: queda en cola y se puede reintentar. Y si
+    // tampoco cupo en la cola, la pantalla lo dice en vez de prometer que si.
     estado = 'listo';
     parcial = '';
     hayError = true;
     const cola = leerCola();
-    if (!cola.includes(pregunta)) guardarCola([...cola, pregunta]);
+    colaFallo = cola.includes(pregunta) ? false : !guardarCola([...cola, pregunta]);
     render();
   }
 }
@@ -273,13 +332,27 @@ async function alTocar(el: HTMLElement): Promise<void> {
       await enviar();
       break;
     case 'reintentar': {
-      const cola = leerCola();
-      const pregunta = ultimaPregunta || cola[cola.length - 1];
-      if (!pregunta) return;
-      guardarCola(cola.filter((p) => p !== pregunta));
-      // El turno del usuario ya esta en el hilo: no se duplica.
-      turnos = turnos.filter((t) => !(t.autor === 'usuario' && t.texto === pregunta));
-      await preguntar(pregunta);
+      // Se drena la cola ENTERA. Antes solo se reintentaba la ultima pregunta,
+      // asi que una que fallaba y luego era seguida por otra que funcionaba se
+      // quedaba en localStorage para siempre: el contador la anunciaba en cada
+      // apertura y no habia forma de enviarla ni de borrarla.
+      const pendientes = leerCola();
+      if (pendientes.length === 0) return;
+      guardarCola([]);
+      for (let k = 0; k < pendientes.length; k++) {
+        const pregunta = pendientes[k];
+        // El turno del usuario ya esta en el hilo: no se duplica.
+        turnos = turnos.filter((t) => !(t.autor === 'usuario' && t.texto === pregunta));
+        await preguntar(pregunta);
+        if (hayError) {
+          // Sigue sin haber señal. `preguntar` ya devolvio ESTA a la cola; las
+          // que quedaban detras tambien vuelven, o se perderian al vaciarla.
+          const restantes = pendientes.slice(k + 1).filter((p) => !leerCola().includes(p));
+          if (restantes.length) guardarCola([...leerCola(), ...restantes]);
+          render();
+          break;
+        }
+      }
       break;
     }
   }

@@ -30,7 +30,12 @@ export function subnivelDe(rango: StrengthRank, ratio: number): Subnivel {
   if (!f || !Number.isFinite(ratio) || !Number.isFinite(f.max)) return '';
   const ancho = f.max - f.min;
   if (ancho <= 0) return '';
-  const t = (ratio - f.min) / ancho;
+  // La MISMA tolerancia que `siguienteEscalon`. Se corrigio alli y no aqui, y
+  // las dos funciones se contradecian en los cortes redondos: con ratio 1.4
+  // exacto (Diamante, franja 1.3–1.6) la escalera decia "TÚ · I" y el consejo
+  // de debajo "A 0.10x de Diamante III" — un subnivel saltado. Barriendo
+  // ratios plausibles, 414 de 48.261 caian mal.
+  const t = (ratio - f.min) / ancho + 1e-9;
   if (t < 1 / 3) return 'I';
   if (t < 2 / 3) return 'II';
   return 'III';
@@ -92,11 +97,23 @@ export function siguienteEscalon(
 }
 
 /**
- * El 1RM que hace falta para llegar al siguiente escalon, dado el peso
- * corporal. Es la cifra accionable del mockup: "sube tu 1RM de Prensa a
- * ~189 kg y asciendes".
+ * El 1RM que hace falta para llegar al siguiente escalon.
+ *
+ * El ratio que decide el rango esta AJUSTADO POR EJERCICIO:
+ * `adjustedRatio = (1RM / peso corporal) / multiplicador`, y el multiplicador
+ * de la Prensa de Piernas es 2.0. Asi que despejar el 1RM exige devolver el
+ * multiplicador a la cuenta, o la cifra sale a la mitad.
+ *
+ * Sin el, GM-02 decia "sube tu 1RM a 83 kg y asciendes" a alguien que ya
+ * levantaba 120 — y la cabecera de esa misma pantalla promete "ajustado por
+ * ejercicio". El rotulo anunciaba un ajuste que la cifra no hacia.
  */
-export function pesoParaElSiguiente(ratioObjetivo: number, pesoCorporal: number): number | null {
+export function pesoParaElSiguiente(
+  ratioObjetivo: number,
+  pesoCorporal: number,
+  multiplicador = 1
+): number | null {
   if (!(pesoCorporal > 0) || !Number.isFinite(ratioObjetivo)) return null;
-  return Math.ceil(ratioObjetivo * pesoCorporal);
+  const m = Number.isFinite(multiplicador) && multiplicador > 0 ? multiplicador : 1;
+  return Math.ceil(ratioObjetivo * pesoCorporal * m);
 }

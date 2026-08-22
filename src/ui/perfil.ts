@@ -16,7 +16,6 @@ import { calculate1RM, calculateCalories, calculateProgressive } from '@/utils/c
 import { cifra } from '@/utils/formato';
 import { abrirHoja } from '@/ui/session-screens';
 import { mostrarToast } from '@/ui/feedback';
-import { claveDiaDe } from '@/utils/fecha';
 import {
   GRASA_AMBAR_HASTA,
   GRASA_VERDE_HASTA,
@@ -89,6 +88,12 @@ function segmentado(): string {
       ).join('')}
     </div>
   `;
+}
+
+/** "mejor: 60 kg × 8" — el detalle que el mockup pone en la fila de ejercicio. */
+function mejorSerieDe(nombre: string): string {
+  const r = calculate1RM(nombre);
+  return r ? `mejor: ${cifra(r.bestPerformance.peso)} kg × ${r.bestPerformance.reps}` : 'sin registro';
 }
 
 /** La fila "Press Banca · mejor: 60 kg × 8 ▾" del mockup. */
@@ -175,7 +180,11 @@ function panelProgresivo(): string {
   ];
 
   return `
-    ${filaDeEjercicio(ejercicioProgresivo, `${r.exerciseType.toLowerCase()}`, 'elegir-progresivo')}
+    ${/* El mismo detalle que la pestaña 1RM ("mejor: 60 kg × 8", literal del
+         mockup). Poner aqui la clasificacion interna ("tren inferior") junto a
+         un chevron hacia parecer que el desplegable elegia el tren, y no
+         añadia nada que no diga ya el rotulo de abajo. */ ''}
+    ${filaDeEjercicio(ejercicioProgresivo, mejorSerieDe(ejercicioProgresivo), 'elegir-progresivo')}
     <div class="f-proximo">
       <span class="f-campo__label f-campo__label--corto">PRÓXIMO PESO · ${escapar(
         ejercicioProgresivo.toUpperCase()
@@ -488,7 +497,7 @@ export function renderPerfil(contenedor: HTMLElement): void {
       ${tarjetaDeMedidas()}
       <section class="f-card-perfil">
         <span class="f-card-perfil__titulo">Copia de seguridad</span>
-        <span class="f-card-perfil__cuerpo">El CSV incluye perfil y medidas, no solo el historial: es la copia con la que se recupera todo.</span>
+        <span class="f-card-perfil__cuerpo">El CSV ahora incluye perfil y medidas — antes solo cubría el historial y podías perderlo todo.</span>
         <div class="f-card-perfil__acciones">
           <button type="button" class="f-btn f-btn--primario f-btn--medida" data-perfil="exportar">Exportar todo</button>
           <button type="button" class="f-btn f-btn--secundario f-btn--medida" data-perfil="importar">Importar CSV</button>
@@ -533,8 +542,6 @@ function abrirHojaDeMedida(alGuardar: () => void): void {
   const perfil = getProfile();
   const medidas = getBodyMeasurements();
   const previa = ultimaMedida(medidas);
-  const hoy = new Date();
-  const yaHayDeHoy = previa !== null && claveDiaDe(previa.date) === claveDiaDe(hoy.toISOString());
 
   // Se arranca desde la ultima medicion: casi nada cambia entre una y otra, y
   // reescribir ocho numeros para mover uno es la forma de que no se registre.
@@ -558,7 +565,7 @@ function abrirHojaDeMedida(alGuardar: () => void): void {
       </div>
     </div>`;
 
-  const fechaTexto = `Hoy, ${hoy.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' }).replace('.', '')}`;
+  const fechaTexto = `Hoy, ${new Date().toLocaleDateString('es-ES', { day: 'numeric', month: 'short' }).replace('.', '')}`;
 
   const velo = abrirHoja(`
     <div class="f-sheet f-sheet--medida" role="dialog" aria-modal="true" aria-label="Nueva medición">
@@ -578,11 +585,7 @@ function abrirHojaDeMedida(alGuardar: () => void): void {
         <span class="f-grasa-vivo__label">% grasa calculado en vivo</span>
         <span class="f-grasa-vivo__cifra" id="grasaEnVivo">—</span>
       </div>
-      ${
-        yaHayDeHoy
-          ? '<span class="f-sheet__aviso">Ya hay una medición de hoy: al guardar, se reemplaza.</span>'
-          : ''
-      }
+
       <button type="button" class="f-btn f-btn--primario f-btn--bloque" data-guardar-medida>Guardar medición</button>
     </div>
   `);
@@ -752,8 +755,8 @@ export function renderHistorialDeMedidas(contenedor: HTMLElement): void {
               .join('')}
           </svg>
           <div class="f-medidas__eje">
-            <span>${escapar(etiquetaDeExtremo(viejo, viejo.weight ?? null))}</span>
-            <span>${escapar(etiquetaDeExtremo(nuevo, nuevo.weight ?? null))}</span>
+            <span>${escapar(etiquetaDeExtremo(pesos[0]?.fecha, pesos[0]?.valor ?? null))}</span>
+            <span>${escapar(etiquetaDeExtremo(pesos[pesos.length - 1]?.fecha, pesos[pesos.length - 1]?.valor ?? null))}</span>
           </div>
         </section>`
             : ''
@@ -773,7 +776,7 @@ export function renderHistorialDeMedidas(contenedor: HTMLElement): void {
               fill="none" stroke="var(--zona-ambar)" stroke-width="2" stroke-linejoin="round"></polyline>
           </svg>
           <div class="f-medidas__eje">
-            <span>${escapar(etiquetaDeExtremo(viejo, grasas[0].valor))}</span>
+            <span>${escapar(etiquetaDeExtremo(grasas[0]?.fecha, grasas[0]?.valor ?? null))}</span>
             <span>ZONA SALUDABLE 14–20%</span>
           </div>
         </section>`

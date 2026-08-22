@@ -92,10 +92,56 @@ describe('CA-01 · las dos calculadoras no pueden discrepar', () => {
     expect(prog).not.toBeNull();
     expect(prog?.current).toBe(60);
     // Tren superior: 60 x1.025 / x1.05 / x1.075, techo a multiplos de 2.5.
+    // Moderado y Agresivo caian los dos en 65: tres rotulos distintos con la
+    // misma cifra. Los porcentajes son internos; lo que el usuario lee es
+    // "Conservador / Moderado / Agresivo", y tienen que ser tres pesos.
     expect(prog?.conservative).toBe('62.5');
     expect(prog?.moderate).toBe('65.0');
-    expect(prog?.aggressive).toBe('65.0');
+    expect(prog?.aggressive).toBe('67.5');
     expect(prog?.exerciseType).toBe('Tren Superior');
+    localStorage.clear();
+  });
+
+  it('las tres opciones son SIEMPRE tres pesos distintos y crecientes', () => {
+    // Con PR bajo el redondeo a 2.5 las colapsaba: "Curl con Barra PR 20" daba
+    // 22.5 / 22.5 / 22.5 bajo tres rotulos distintos.
+    for (const pr of Array.from({ length: 160 }, (_, i) => (i + 1) * 2.5)) {
+      for (const grupo of ['Pecho', 'Piernas'] as const) {
+        localStorage.setItem(
+          'gymmate_prs',
+          JSON.stringify({ X: { peso: pr, sets: 3, reps: 8, volumen: pr * 24, date: '2026-08-10' } })
+        );
+        localStorage.setItem(
+          'gymmate_history',
+          JSON.stringify([
+            {
+              sessionId: 'w', date: '2026-08-10T12:00:00', savedAt: '2026-08-10T12:00:00',
+              grupo, type: 'weights', volumenTotal: 0, volumenPorGrupo: {},
+              ejercicios: [{ nombre: 'X', sets: 3, reps: 8, peso: pr, volumen: pr * 24,
+                completado: true, esMancuerna: false, grupoMuscular: grupo }],
+            },
+          ])
+        );
+        const r = calculateProgressive('X');
+        const [c, m, a] = [r!.conservative, r!.moderate, r!.aggressive].map(Number);
+        expect(c).toBeLessThan(m);
+        expect(m).toBeLessThan(a);
+        // Y ninguna se sale del multiplo de 2.5 por basura binaria.
+        for (const v of [c, m, a]) expect(Math.abs(v / 2.5 - Math.round(v / 2.5))).toBeLessThan(1e-9);
+      }
+    }
+    localStorage.clear();
+  });
+
+  it('el +10% de tren inferior no salta un escalon por coma flotante', () => {
+    // `100 x 1.1` da 110.00000000000001 en doble y `Math.ceil` a 2.5 lo subia a
+    // 112.5, o sea +12.5% bajo un rotulo que dice +10%.
+    localStorage.setItem(
+      'gymmate_prs',
+      JSON.stringify({ Sentadilla: { peso: 100, sets: 3, reps: 8, volumen: 2400, date: '2026-08-10' } })
+    );
+    localStorage.setItem('gymmate_history', JSON.stringify([]));
+    expect(calculateProgressive('Sentadilla')?.aggressive).toBe('110.0');
     localStorage.clear();
   });
 
@@ -259,6 +305,32 @@ describe('P-03 · perimetros', () => {
     ]);
     expect(pieDePerimetros(subiendo)).not.toContain('cintura bajando');
   });
+
+  it('con la cintura SUBIENDO no dice que se mantiene', () => {
+    // El caso anterior no tocaba esta rama: al no crecer ni brazo ni muslo la
+    // funcion devolvia '' y la asercion pasaba sin comprobar nada. Con la
+    // cintura +10 el pie decia "la cintura se mantiene" justo encima de la
+    // fila que dice +10.
+    const pie = pieDePerimetros(
+      cambioDePerimetros([
+        dia('2026-02-11T12:00:00', { waist: 80, armRight: 35, thighRight: 56 }),
+        dia('2026-08-10T12:00:00', { waist: 90, armRight: 37, thighRight: 58 }),
+      ])
+    );
+    expect(pie).not.toContain('se mantiene');
+    expect(pie).not.toContain('bajando');
+    expect(pie).toContain('cintura');
+  });
+
+  it('sin dato de cintura no afirma nada SOBRE la cintura', () => {
+    const pie = pieDePerimetros(
+      cambioDePerimetros([
+        dia('2026-02-11T12:00:00', { armRight: 35, thighRight: 56 }),
+        dia('2026-08-10T12:00:00', { armRight: 37, thighRight: 58 }),
+      ])
+    );
+    expect(pie).not.toContain('cintura');
+  });
 });
 
 describe('orden y series de medidas', () => {
@@ -307,12 +379,30 @@ describe('orden y series de medidas', () => {
 
 describe('rotulos de P-03', () => {
   it('el extremo lleva mes y valor', () => {
-    expect(etiquetaDeExtremo(dia('2026-02-11T12:00:00'), 77.4)).toBe('FEB · 77.4');
+    expect(etiquetaDeExtremo('2026-02-11T12:00:00', 77.4)).toBe('FEB · 77.4');
   });
 
   it('sin medicion no rotula nada', () => {
     expect(etiquetaDeExtremo(undefined, 77.4)).toBe('');
-    expect(etiquetaDeExtremo(dia('2026-02-11T12:00:00'), null)).toBe('');
+    expect(etiquetaDeExtremo('2026-02-11T12:00:00', null)).toBe('');
+  });
+
+  it('el mes y el valor salen del MISMO punto de la serie', () => {
+    // La medicion mas antigua no tiene cuello, asi que no entra en la serie de
+    // grasa. El rotulo tomaba el mes de esa (FEB) y el valor de la primera que
+    // SI entra (may): dos mitades de fechas distintas.
+    const conHueco = [
+      dia('2026-02-11T12:00:00', { weight: 78, waist: 88 }),
+      dia('2026-05-10T12:00:00', { weight: 76, waist: 84, neck: 38 }),
+      dia('2026-08-10T12:00:00', { weight: 75, waist: 82, neck: 38 }),
+    ];
+    const serie = serieDeMedidas(
+      conHueco,
+      (m) => grasaNavy(m, 176, 'male'),
+      54
+    );
+    expect(serie).toHaveLength(2);
+    expect(etiquetaDeExtremo(serie[0].fecha, serie[0].valor)).toMatch(/^MAY · /);
   });
 
   it('el resumen no escribe un cero cuando no hay mediciones', () => {

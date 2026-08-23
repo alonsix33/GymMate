@@ -88,6 +88,32 @@ export function guardarConversacion(turnos: TurnoCoach[]): void {
   }
 }
 
+/**
+ * Empieza de cero.
+ *
+ * Hacia falta y no existia: la conversacion se acumulaba hasta 100 turnos y no
+ * habia forma de vaciarla. El motivo NO es el coste ni la cache —eso se
+ * explica abajo— sino la RELEVANCIA: un consejo de hace cuatro meses, cuando
+ * entrenabas otra cosa, sigue en los ultimos turnos y arrastra la respuesta de
+ * hoy.
+ *
+ * Sobre la cache, para que nadie repita mi propia intuicion equivocada:
+ * borrar NO la libera. El prefijo cacheado es sistema + contexto + acuse, y va
+ * ANTES del historial; la conversacion se añade detras y lo extiende. Vaciarla
+ * devuelve la cache a su prefijo mas corto, no la suelta.
+ *
+ * Se lleva tambien la cola: preguntas que nunca salieron y que, tras un
+ * borron, no tienen hilo al que volver.
+ */
+export function borrarConversacion(): void {
+  try {
+    localStorage.removeItem(CLAVE_CONVERSACION);
+    localStorage.removeItem(CLAVE_COLA);
+  } catch {
+    // Si ni siquiera se puede borrar, la pantalla se encarga de decirlo.
+  }
+}
+
 export function leerCola(): string[] {
   try {
     const bruto = localStorage.getItem(CLAVE_COLA);

@@ -3156,6 +3156,92 @@ const borradorDePrueba = {
 }
 
 // --------------------------------------------------------------------------
+// CASO 51 — empezar una conversacion nueva
+//
+// No existia la forma de hacerlo: el hilo se acumulaba hasta 100 turnos y un
+// consejo de hace meses seguia arrastrando la respuesta de hoy. El boton borra
+// el hilo Y la cola, pero NO el historial de entrenamiento — que es lo primero
+// que uno teme al ver una ✕ roja, asi que el dialogo lo dice.
+{
+  const ctx = await navegador.newContext({ viewport: { width: 390, height: 844 }, ...ZONA });
+  const pagina = await ctx.newPage();
+  pagina.setDefaultTimeout(6000);
+  await pagina.addInitScript(() => {
+    localStorage.setItem('gymmate_history', JSON.stringify([{
+      sessionId: 'h1', date: '2026-08-20T19:00:00.000Z', savedAt: '2026-08-20T19:00:00.000Z',
+      grupo: 'Pecho', type: 'weights', volumenTotal: 2400, volumenPorGrupo: { Pecho: 2400 },
+      ejercicios: [{ nombre: 'Press Banca', sets: 3, reps: 8, peso: 100, volumen: 2400, completado: true }],
+    }]));
+    localStorage.setItem('gymmate_coach_conversacion', JSON.stringify([
+      { id: 'u1', autor: 'usuario', texto: 'una pregunta vieja', fecha: '2026-04-01T12:00:00.000Z' },
+      { id: 'c1', autor: 'coach', texto: 'una respuesta desactualizada', fecha: '2026-04-01T12:00:01.000Z' },
+    ]));
+    localStorage.setItem('gymmate_coach_cola', JSON.stringify(['una pregunta que nunca salio']));
+  });
+  await pagina.goto(URL_APP, { waitUntil: 'networkidle', timeout: 60000 });
+  await pagina.locator('.f-home__coach').first().click();
+  await pagina.waitForTimeout(600);
+
+  chk('coach nuevo · el hilo viejo esta ahi al abrir',
+    (await pagina.locator('.f-coach__hilo').textContent())?.includes('una respuesta desactualizada') === true);
+  chk('coach nuevo · y existe el boton para empezar de cero',
+    (await pagina.locator('[data-coach="nueva"]').count()) === 1);
+
+  // Cuantos turnos hay AHORA, no un numero inventado: abrir el coach desde el
+  // banner de Home añade ese mensaje como primer turno, asi que fijar "2" era
+  // una expectativa mia, no una propiedad del sistema.
+  const antes = await pagina.evaluate(
+    () => JSON.parse(localStorage.getItem('gymmate_coach_conversacion') ?? '[]').length
+  );
+
+  // Es destructivo: tiene que preguntar, y cancelar NO puede borrar nada.
+  await pagina.locator('[data-coach="nueva"]').click();
+  await pagina.waitForTimeout(400);
+  const dialogo = (await pagina.locator('body').textContent()) ?? '';
+  chk('coach nuevo · pregunta antes de borrar', /conversación nueva\?/i.test(dialogo));
+  chk('coach nuevo · y dice que el historial de entrenamiento NO se toca',
+    /historial de entrenamiento no se toca/i.test(dialogo), dialogo.slice(0, 0));
+
+  const cancelar = pagina.locator('button', { hasText: /^Cancelar$/ }).first();
+  if (await cancelar.count()) {
+    await cancelar.click();
+    await pagina.waitForTimeout(400);
+  }
+  const despues = await pagina.evaluate(
+    () => JSON.parse(localStorage.getItem('gymmate_coach_conversacion') ?? '[]').length
+  );
+  chk('coach nuevo · al cancelar NO se borra nada', despues === antes && antes > 0,
+    `antes ${antes}, despues ${despues}`);
+
+  // Y ahora de verdad.
+  await pagina.locator('[data-coach="nueva"]').click();
+  await pagina.waitForTimeout(400);
+  await pagina.locator('button', { hasText: /Borrar el hilo/ }).first().click();
+  await pagina.waitForTimeout(600);
+
+  chk('coach nuevo · el hilo se vacia en pantalla',
+    (await pagina.locator('.f-coach__hilo').textContent())?.includes('una respuesta desactualizada') === false);
+  chk('coach nuevo · y en el almacenamiento, no solo a la vista',
+    (await pagina.evaluate(() => localStorage.getItem('gymmate_coach_conversacion'))) === null);
+  chk('coach nuevo · la cola de preguntas sin enviar tambien se va',
+    (await pagina.evaluate(() => localStorage.getItem('gymmate_coach_cola'))) === null);
+  chk('coach nuevo · el historial de entrenamiento NO se toca',
+    (await pagina.evaluate(() => JSON.parse(localStorage.getItem('gymmate_history') ?? '[]').length)) === 1);
+  chk('coach nuevo · el boton desaparece cuando ya no hay nada que borrar',
+    (await pagina.locator('[data-coach="nueva"]').count()) === 0);
+
+  // Sobrevive a cerrar y volver a abrir: si solo se limpiara la variable en
+  // memoria, el hilo volveria del almacenamiento.
+  await pagina.locator('[data-coach="cerrar"]').click();
+  await pagina.waitForTimeout(300);
+  await pagina.locator('.f-home__coach').first().click();
+  await pagina.waitForTimeout(600);
+  chk('coach nuevo · y no resucita al reabrir',
+    (await pagina.locator('.f-coach__hilo').textContent())?.includes('una respuesta desactualizada') === false);
+  await ctx.close();
+}
+
+// --------------------------------------------------------------------------
 // CASO 50 — la marca del servidor dice la verdad, o no dice nada
 //
 // La tarjeta pintaba "comprobando…" cada vez que habia token guardado, y NADA
@@ -3254,7 +3340,7 @@ servidor.close();
 // abrir un selector de archivo o una pantalla deja de pintarse, media docena
 // de casos dejan de ejecutarse y el verde no cambia de color.
 console.log(`\n${ejecutados} chequeos ejecutados`);
-const CHEQUEOS_MINIMO = 335;
+const CHEQUEOS_MINIMO = 345;
 if (ejecutados < CHEQUEOS_MINIMO) {
   fallos++;
   console.log(

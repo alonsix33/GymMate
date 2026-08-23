@@ -13,6 +13,7 @@ import {
   adaptadorActual,
   datosDelEjercicio,
   ejercicioMencionado,
+  borrarConversacion,
   guardarConversacion,
   guardarCola,
   leerCola,
@@ -21,6 +22,7 @@ import {
   type TurnoCoach,
 } from '@/features/coach-ia';
 import { cifra, escapar, taparNavegacion } from '@/utils/formato';
+import { confirmarDestructivo, mostrarToast } from '@/ui/feedback';
 
 
 const ID = 'fierroCoach';
@@ -179,6 +181,12 @@ function render(): void {
     <div class="f-coach__cabecera">
       <button type="button" class="f-hueso__volver" data-coach="cerrar" aria-label="Volver">←</button>
       <span class="f-coach__titulo">COACH</span>
+      ${
+        turnos.length > 0
+          ? `<button type="button" class="f-hueso__volver f-coach__nueva" data-coach="nueva"
+               aria-label="Empezar una conversación nueva" title="Conversación nueva">✕</button>`
+          : ''
+      }
     </div>
     <div class="f-coach__hilo" id="coachHilo">${cuerpo}</div>
     ${
@@ -375,6 +383,31 @@ async function alTocar(el: HTMLElement): Promise<void> {
       parcial = '';
       render();
       break;
+    case 'nueva': {
+      // El hilo se pierde de verdad, asi que se pregunta. Y se dice lo que NO
+      // se lleva por delante: el historial de entrenamiento no se toca, que es
+      // lo primero que uno teme al ver una ✕ roja.
+      const seguro = await confirmarDestructivo({
+        titulo: '¿Empezar una conversación nueva?',
+        cuerpo:
+          'Se borra el hilo del coach y las preguntas que quedaron sin enviar. ' +
+          'Tu historial de entrenamiento no se toca: el coach sigue viendo tus 12 meses.',
+        confirmar: 'Borrar el hilo',
+      });
+      if (!seguro) return;
+      borrarConversacion();
+      turnos = [];
+      parcial = '';
+      hayError = false;
+      colaFallo = false;
+      estado = 'listo';
+      // El turno en vuelo, si lo hay, deja de valer: su respuesta no tiene
+      // hilo al que llegar.
+      turnoActivo++;
+      render();
+      mostrarToast({ tipo: 'exito', titulo: 'Conversación nueva' });
+      break;
+    }
     case 'reintentar': {
       // Se drena la cola ENTERA. Antes solo se reintentaba la ultima pregunta,
       // asi que una que fallaba y luego era seguida por otra que funcionaba se

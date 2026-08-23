@@ -4956,6 +4956,11 @@ body:has(#medidasTab:not(.hidden)) {
   border-bottom: 1px solid var(--bg-elevated);
   flex: none;
 }
+/* Empezar de cero. Va al extremo derecho, con el mismo cuerpo que el volver:
+   son los dos cerradores de la pantalla y tienen que pesar lo mismo. */
+.f-coach__nueva {
+  margin-left: auto;
+}
 /* Sin nombre propio ni avatar: solo el rotulo. [README §15] */
 .f-coach__titulo {
   font-family: var(--font-mono);

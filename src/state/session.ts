@@ -1,4 +1,5 @@
 import { claveDia } from '@/utils/heatmap';
+import { FACTOR_SOSPECHOSO } from '@/features/coach-estado';
 import type { SessionData, ExerciseData, CardioState, RPEData } from '@/types';
 import { DRAFT_SAVE_DELAY, DRAFT_MAX_AGE } from '@/constants';
 import {
@@ -193,7 +194,9 @@ export function scheduleDraftSave(): void {
 
 export function saveDraftNow(): void {
   if (sessionData.ejercicios.length > 0) {
-    saveDraft(sessionData);
+    // Con el sessionId: sin el, reanudar el borrador y guardar creaba una
+    // sesion nueva al lado de la ya guardada.
+    saveDraft({ ...sessionData, sessionId: sessionId ?? sessionData.sessionId });
     hasUnsavedChanges = false;
     // Notify UI to update indicator
     if (onDraftSavedCallback) {
@@ -224,7 +227,7 @@ export function restoreFromDraft(draft: SessionData): void {
   hasUnsavedChanges = false;
   sessionSaved = false;
   lastSavedData = null;
-  sessionId = null;
+  sessionId = draft.sessionId ?? null;
 }
 
 // ==========================================
@@ -277,6 +280,11 @@ function checkAndUpdatePR(ejercicioData: ExerciseData): void {
 
   const currentPR = getPR(ejercicioData.nombre);
 
+  // Un peso de mas de 3 veces el record NO entra como record mientras se
+  // teclea: "450" escrito por "45" mas un cero se quedaba de PR para siempre.
+  // Si el usuario lo confirma al guardar, `registrarPRConfirmado` lo anota.
+  if (currentPR && ejercicioData.peso > currentPR.peso * FACTOR_SOSPECHOSO) return;
+
   if (!currentPR || ejercicioData.peso > currentPR.peso) {
     updatePR(ejercicioData.nombre, {
       peso: ejercicioData.peso,
@@ -286,6 +294,18 @@ function checkAndUpdatePR(ejercicioData: ExerciseData): void {
       date: new Date().toISOString(),
     });
   }
+}
+
+/** El record de un peso que el usuario confirmo tras el aviso de "3 veces el
+ *  mejor anterior". */
+export function registrarPRConfirmado(ejercicioData: ExerciseData): void {
+  updatePR(ejercicioData.nombre, {
+    peso: ejercicioData.peso,
+    sets: ejercicioData.sets,
+    reps: ejercicioData.reps,
+    volumen: ejercicioData.volumen,
+    date: new Date().toISOString(),
+  });
 }
 
 // ==========================================

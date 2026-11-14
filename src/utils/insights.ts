@@ -1,4 +1,5 @@
-import { claveDiaLocal } from '@/utils/fecha';
+import { claveDiaLocal, claveDiaLima } from '@/utils/fecha';
+import { fusionarDias, volumenSemanal } from '@/features/coach-estado';
 import type { HistorySession, ExerciseData } from '@/types';
 import { getHistory, getPRs } from '@/utils/storage';
 
@@ -257,26 +258,16 @@ function analyzeVolumetrend(history: HistorySession[]): Insight | null {
 
   if (weightSessions.length < 4) return null;
 
-  const now = new Date();
-  const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-  const twoWeeksAgo = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
+  // 7 dias moviles contra los 7 anteriores, en dias completos de Lima, y solo
+  // si el periodo esta cubierto: la tarjeta "bajo 23%" salia a las 15:21
+  // comparando una ventana en curso contra una completa, antes de que se
+  // viera la sesion de ayer. Ver `volumenSemanal`.
+  const v = volumenSemanal(fusionarDias(history), claveDiaLima(new Date()));
+  if (!v.comparable || v.actualKg === null || v.anteriorKg === null || v.cambioPct === null) return null;
 
-  const thisWeek = weightSessions.filter(s => {
-    const date = new Date(s.savedAt || s.date);
-    return date >= oneWeekAgo;
-  });
-
-  const lastWeek = weightSessions.filter(s => {
-    const date = new Date(s.savedAt || s.date);
-    return date >= twoWeeksAgo && date < oneWeekAgo;
-  });
-
-  if (lastWeek.length === 0) return null;
-
-  const thisWeekVolume = thisWeek.reduce((sum, s) => sum + (s.volumenTotal || 0), 0);
-  const lastWeekVolume = lastWeek.reduce((sum, s) => sum + (s.volumenTotal || 0), 0);
-
-  const percentChange = ((thisWeekVolume - lastWeekVolume) / lastWeekVolume) * 100;
+  const thisWeekVolume = v.actualKg;
+  const lastWeekVolume = v.anteriorKg;
+  const percentChange = v.cambioPct;
 
   if (percentChange >= 10) {
     return {

@@ -5009,6 +5009,15 @@ body:has(#medidasTab:not(.hidden)) {
   font-size: var(--fs-14_5);
   line-height: var(--lh-1_5);
 }
+/* Markdown basico del coach: parrafos, listas y negrita. */
+.f-coach__md p { margin: 0 0 8px; }
+.f-coach__md p:last-child,
+.f-coach__md ul:last-child,
+.f-coach__md ol:last-child { margin-bottom: 0; }
+.f-coach__md ul,
+.f-coach__md ol { margin: 0 0 8px; padding-left: 18px; }
+.f-coach__md li { margin: 0 0 4px; }
+.f-coach__md strong { font-weight: 600; }
 /* El del usuario, fila R10 a la derecha. */
 .f-coach__usuario {
   align-self: flex-end;
@@ -5341,3 +5350,6 @@ body:has(#medidasTab:not(.hidden)) {
   text-decoration: underline;
   text-underline-offset: 3px;
 }
+
+/* Las hojas de confirmacion con varias lineas (lista de lo que va a cambiar). */
+.f-sheet__cuerpo { white-space: pre-line; }

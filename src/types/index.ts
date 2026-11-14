@@ -19,6 +19,13 @@ export interface ExerciseData extends Exercise {
   completado: boolean;
   /** RPE del ejercicio (5-9), elegido con los chips al marcar ✓ (W-01). */
   rpe?: number;
+  /**
+   * Serie que NO cuenta: ni para el pico, ni para el volumen, ni para el
+   * estado. Se marca con confirmacion del usuario (un outlier, o "eso no lo
+   * hice") y NO se borra: el dato queda en la bitacora para poder deshacerlo.
+   */
+  excluido?: boolean;
+  motivoExclusion?: 'no_hecho' | 'outlier';
 }
 
 export interface SessionData {

@@ -33,8 +33,9 @@ import {
   updateCoachOnExerciseUpdate,
   updateCoachOnExerciseComplete,
 } from '@/features/coach';
-import { getPRs } from '@/utils/storage';
-import { setExerciseRPE } from '@/state/session';
+import { getPRs, getHistory } from '@/utils/storage';
+import { setExerciseRPE, sessionId, registrarPRConfirmado } from '@/state/session';
+import { pesoSospechoso } from '@/features/coach-estado';
 import { processCompletedSession } from '@/features/gamification';
 
 // ==========================================
@@ -410,7 +411,36 @@ export function showSavedIndicator(): void {
 // GUARDAR SESIÓN
 // ==========================================
 
-export function saveWorkout(): void {
+/**
+ * Un peso mayor a 3 veces el mejor anterior pide confirmacion ANTES de
+ * guardarse. Devuelve false si el usuario prefiere corregirlo: no se guarda
+ * nada. El Hip Thrust de 450 kg entro a la bitacora sin que nadie preguntara.
+ */
+async function confirmarPesosSospechosos(): Promise<boolean> {
+  // Sin la propia sesion: si ya se guardo antes, su version anterior no es "el
+  // mejor anterior" contra el que comparar.
+  const previo = getHistory().filter((s) => !sessionId || s.sessionId !== sessionId);
+  const raros = sessionData.ejercicios
+    .filter((e) => e.volumen > 0)
+    .map((e) => ({ e, r: pesoSospechoso(e.nombre, e.peso, previo) }))
+    .filter(({ r }) => r.sospechoso);
+  if (raros.length === 0) return true;
+  const respuesta = await preguntar({
+    titulo: '¿Este peso está bien?',
+    cuerpo:
+      raros
+        .map(({ e, r }) => `${e.nombre}: ${cifra(e.peso)} kg, y tu mejor marca es ${cifra(r.mejorAnterior)} kg.`)
+        .join('\n') + '\n\nSi es un error de tecleo, corrígelo antes de guardar.',
+    cancelar: 'Corregir',
+    confirmar: 'Sí, es correcto',
+  });
+  if (respuesta !== 'confirmar') return false;
+  raros.forEach(({ e }) => registrarPRConfirmado(e));
+  return true;
+}
+
+export async function saveWorkout(): Promise<void> {
+  if (!(await confirmarPesosSospechosos())) return;
   const result = saveCurrentSession();
   mostrarToast({
     tipo: 'exito',
@@ -494,6 +524,8 @@ export async function finishWorkout(): Promise<void> {
       window.location.reload();
       return;
     }
+    // "Guardar": el mismo aviso de pesos raros que el boton de guardar.
+    if (!(await confirmarPesosSospechosos())) return;
     pendingSaveBeforeRPE = true;
   }
 

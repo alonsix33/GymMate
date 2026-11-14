@@ -234,11 +234,14 @@ describe('contextoCompleto · el panorama no contradice a la pantalla', () => {
     ]);
     const banca = c?.panorama.find((e) => e.ejercicio === 'Press Banca');
     expect(banca?.sesiones).toBe(2);
+    // La fecha viaja YA escrita ("jue 12 nov"), con su dia de la semana: el
+    // modelo no la calcula ni la reformatea.
     const hoy = new Date();
     const esperada = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate() - 2);
-    const p = (n: number) => String(n).padStart(2, '0');
+    const dias = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
+    const meses = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
     expect(banca?.ultimaVez).toBe(
-      `${esperada.getFullYear()}-${p(esperada.getMonth() + 1)}-${p(esperada.getDate())}`
+      `${dias[esperada.getDay()]} ${esperada.getDate()} ${meses[esperada.getMonth()]}`
     );
   });
 
@@ -369,19 +372,20 @@ describe('contextoCompleto · el panorama no contradice a la pantalla', () => {
 });
 
 describe('contextoCompleto · la bitacora', () => {
-  it('va de la mas ANTIGUA a la mas reciente, que es como se lee una progresion', () => {
+  it('va de la mas RECIENTE a la mas antigua: la primera linea es la ultima sesion', () => {
     const c = contextoCompleto([
       sesion('Press Banca', 105, 8, 1),
       sesion('Press Banca', 100, 8, 8),
     ]);
     const lineas = (c?.bitacora ?? '').split('\n');
-    expect(lineas[0]).toContain('@100');
-    expect(lineas[1]).toContain('@105');
+    expect(lineas[0]).toContain('@105');
+    expect(lineas[1]).toContain('@100');
   });
 
   it('una linea por sesion, con series por peso', () => {
     const c = contextoCompleto([sesion('Press Banca', 100, 8, 3)]);
-    expect(c?.bitacora).toMatch(/^\d{4}-\d{2}-\d{2} Pecho · Press Banca 3x8@100$/);
+    // Un solo formato de fecha: "mar 10 nov". Nunca 2026-11-10 ni 10-11.
+    expect(c?.bitacora).toMatch(/^[a-zé]{3} \d{1,2} [a-z]{3} · Pecho · Press Banca 3x8@100$/);
   });
 
   it('el cardio sale con sus minutos, no con series inventadas', () => {

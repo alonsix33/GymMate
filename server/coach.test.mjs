@@ -263,21 +263,49 @@ describe('SISTEMA — es un coach, no un formulario', () => {
     expect(SISTEMA).toMatch(/no una licencia que tengas que pedir/i);
   });
 
-  it('el limite se enuncia UNA vez y al final, no como identidad', () => {
-    const pos = SISTEMA.indexOf('Un solo límite');
-    expect(pos).toBeGreaterThan(SISTEMA.length / 2);
-    expect(SISTEMA.match(/Un solo límite/g)).toHaveLength(1);
+  it('los limites se enuncian UNA vez y al final, no como identidad', () => {
+    const pos = SISTEMA.indexOf('Dos límites');
+    expect(pos).toBeGreaterThan(SISTEMA.length / 3);
+    expect(SISTEMA.match(/Dos límites/g)).toHaveLength(1);
   });
 
-  it('y sigue siendo el mismo limite: no recalcular lo que la app enseña', () => {
-    expect(SISTEMA).toMatch(/las COPIAS de PANORAMA y RESUMEN/);
-    expect(SISTEMA).toMatch(/No las\s+recalculas ni las estimas/);
-    expect(SISTEMA).toMatch(/dos números para lo mismo destruyen la confianza/i);
+  it('limite 1: los numeros y las fechas los pone la app y el modelo los COPIA', () => {
+    expect(SISTEMA).toMatch(/los COPIAS/);
+    expect(SISTEMA).toMatch(/No cuentas días/);
+    expect(SISTEMA).toMatch(/no deduces el día de la semana/);
+    expect(SISTEMA).toMatch(/Si no la\s+recibiste, dices que no la tienes/);
+    expect(SISTEMA).toMatch(/dos números para lo mismo\s+destruyen la confianza/i);
   });
 
-  it('con la frontera dicha en positivo: contar dias no es calcular metricas', () => {
-    expect(SISTEMA).toMatch(/Leer fechas, comparar periodos, contar días/);
-    expect(SISTEMA).toMatch(/eso no es calcular\s+métricas, es entrenar/);
+  it('un solo formato de fecha, y los dos que fallaron prohibidos por su nombre', () => {
+    expect(SISTEMA).toMatch(/SOLO como "jue 12\s+nov"/);
+    expect(SISTEMA).toMatch(/nunca 12-11 ni 2026-11-12/);
+  });
+
+  it('limite 2: el grupo de hoy lo decide la app y el modelo no lo cambia', () => {
+    expect(SISTEMA).toMatch(/SUGERENCIA DE HOY/);
+    expect(SISTEMA).toMatch(/no lo cambias porque suene mejor/);
+    expect(SISTEMA).toMatch(/si el usuario\s+pregunta de nuevo dices el mismo/);
+  });
+
+  it('si hoy ya entreno, resume lo hecho y NO propone plan', () => {
+    expect(SISTEMA).toMatch(/hoy ya entrenó, resumes\s+lo que hizo y no propones plan/);
+  });
+
+  it('no atribuye al usuario frases que no estan en la conversacion', () => {
+    expect(SISTEMA).toMatch(/Solo le citas frases que estén en esta conversación/);
+    expect(SISTEMA).toMatch(/no te entendí, ¿qué quieres decir\?/);
+  });
+
+  it('ante una contradiccion con el registro pregunta, y pide la marca exacta', () => {
+    expect(SISTEMA).toMatch(/¿lo marco como no hecho\?/);
+    expect(SISTEMA).toMatch(/\[\[excluir\|Nombre del ejercicio\|vie 13 nov\]\]/);
+    expect(SISTEMA).toMatch(/Mientras no confirme,\s+el registro manda/);
+  });
+
+  it('y sigue siendo un coach: la frontera NO le quita el criterio', () => {
+    expect(SISTEMA).toMatch(/Cruzar, comparar, ordenar, buscar patrones/);
+    expect(SISTEMA).toMatch(/no una licencia que tengas que pedir/i);
   });
 });
 

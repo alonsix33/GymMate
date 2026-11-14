@@ -369,10 +369,14 @@ const cab = (r, n) => r.headers.get(n);
         !/NO calcules|prohibid/i.test(sistema.split('\n').slice(0, 4).join(' ')));
     chk('sistema · le manda opinar, proponer y explicar',
       /Forma una opinión y dila/.test(sistema) &&
-        /Ve un paso más allá/.test(sistema) &&
+        /Ve un paso más allá, con medida/.test(sistema) &&
         /Explica el porqué/.test(sistema));
     chk('sistema · le quita el tic de preguntar al cierre',
       /NO termines cada mensaje con una pregunta/.test(sistema) && /Propón y calla/.test(sistema));
+    chk('sistema · responde primero, corto, sin sermones y sin repetirse',
+      /Responde PRIMERO lo que te preguntó/.test(sistema) && /de dos a cinco frases/.test(sistema) &&
+        /Sin sermones, sin frases de efecto/.test(sistema) && /No repitas lo que ya dijiste/.test(sistema) &&
+        /Si te corrige, una línea y sigues/.test(sistema));
     chk('sistema · los limites van UNA vez y despues del trabajo',
       (sistema.match(/Dos límites/g) ?? []).length === 1 &&
         sistema.indexOf('Dos límites') > sistema.length / 3);

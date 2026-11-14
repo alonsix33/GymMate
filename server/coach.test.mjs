@@ -238,9 +238,11 @@ describe('SISTEMA — es un coach, no un formulario', () => {
     expect(SISTEMA).toMatch(/no con "¿quieres que te sugiera uno\?"/i);
   });
 
-  it('le manda ir mas alla de lo que le preguntan', () => {
-    expect(SISTEMA).toMatch(/Ve un paso más allá/i);
+  it('le manda ir mas alla de lo que le preguntan, pero con medida', () => {
+    expect(SISTEMA).toMatch(/Ve un paso más allá, con medida/i);
+    expect(SISTEMA).toMatch(/como MÁXIMO una cosa/i);
     expect(SISTEMA).toMatch(/sin que te lo pidan/i);
+    expect(SISTEMA).toMatch(/no la\s+repitas/i);
   });
 
   it('le manda explicar el porque, no soltar el numero', () => {
@@ -301,6 +303,28 @@ describe('SISTEMA — es un coach, no un formulario', () => {
     expect(SISTEMA).toMatch(/¿lo marco como no hecho\?/);
     expect(SISTEMA).toMatch(/\[\[excluir\|Nombre del ejercicio\|vie 13 nov\]\]/);
     expect(SISTEMA).toMatch(/Mientras no confirme,\s+el registro manda/);
+  });
+
+  it('responde PRIMERO lo que le preguntaron, y corto', () => {
+    expect(SISTEMA).toMatch(/Responde PRIMERO lo que te preguntó/);
+    expect(SISTEMA).toMatch(/empieza por sí o no/);
+    expect(SISTEMA).toMatch(/de dos a cinco frases/);
+  });
+
+  it('sin sermones ni frases de efecto, y sin el ejemplo que el modelo copiaba', () => {
+    expect(SISTEMA).toMatch(/Sin sermones, sin frases de efecto/);
+    expect(SISTEMA).toMatch(/sin regañar/);
+    // "es un techo" salia en cada respuesta porque el propio prompt lo usaba de ejemplo.
+    expect(SISTEMA.match(/es un techo/g)).toHaveLength(1); // solo como ejemplo PROHIBIDO
+  });
+
+  it('cuando le corrigen, una linea y sigue', () => {
+    expect(SISTEMA).toMatch(/Si te corrige, una línea y sigues/);
+    expect(SISTEMA).toMatch(/Sin pedir\s+perdón/);
+  });
+
+  it('no se repite a si mismo', () => {
+    expect(SISTEMA).toMatch(/No repitas lo que ya dijiste/);
   });
 
   it('y sigue siendo un coach: la frontera NO le quita el criterio', () => {

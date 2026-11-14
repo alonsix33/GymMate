@@ -186,6 +186,14 @@ const MUTANTES = [
     minimo: 1,
   },
   {
+    nombre: 'vuelven los sermones y la respuesta que no contesta lo preguntado',
+    porque: 'El 13-nov el coach respondio "¿Hoy?" con un repaso de la semana, y a "ya lo hice" con un parrafo de autocritica. Responde primero, corto, y se corrige en una linea.',
+    archivo: 'server/coach.mjs',
+    de: '- Responde PRIMERO lo que te preguntó, en la primera frase.',
+    a: '- Empieza por contexto y deja la respuesta para el final.',
+    minimo: 1,
+  },
+  {
     nombre: 'el prompt vuelve a empezar por la prohibicion',
     porque: 'Un prompt que arranca con "la regla mas importante: NO calcules NADA" produce un modelo que pide permiso en vez de entrenar. El trabajo va primero.',
     archivo: 'server/coach.mjs',

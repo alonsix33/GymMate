@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   construirEstado, fusionarDias, volumenSemanal, sugerirGrupoDeHoy, gruposMusculares,
-  pesoSospechoso, detectarOutliers, prsVigentes, idDe, type PlantillaDeGrupo,
+  pesoSospechoso, detectarOutliers, prsVigentes, prsDescartados, idDe, type PlantillaDeGrupo,
 } from '@/features/coach-estado';
 import {
   buscarSeries, excluirSeries, restaurarSeries, parsearMarcaDeExclusion, resolverFecha,
@@ -128,6 +128,20 @@ describe('peso sospechoso y outliers', () => {
     const o = detectarOutliers([...h, ses('2026-10-20', 'P', [ej('Hip Thrust', 4, 10, 450, 'Glúteos')])], 2026);
     expect(o).toEqual([expect.objectContaining({ ejercicio: 'Hip Thrust', peso: 450, mejorOtro: 55, etiqueta: 'mar 20 oct' })]);
   });
+  it('un PR SIN ninguna serie que pase 3x la mejor serie real se descarta (el 450 solo vivia en RECORDS)', () => {
+    const hist = [ses('2026-11-12', 'P', [ej('Hip Thrust', 2, 10, 55, 'Glúteos')])];
+    const prs = { 'Hip Thrust': { peso: 450, sets: 4, reps: 10, volumen: 18000, date: 'x' } };
+    expect(prsVigentes(prs, hist)).toEqual({});
+    expect(prsDescartados(prs, hist)).toEqual([{ ejercicio: 'Hip Thrust', peso: 450, mejorSerieReal: 55 }]);
+  });
+  it('un PR razonable, o de un ejercicio sin series (CSV que guardo el PR y no la sesion), SI vale', () => {
+    const hist = [ses('2026-11-12', 'P', [ej('Hip Thrust', 2, 10, 55, 'Glúteos')])];
+    const prs = {
+      'Hip Thrust': { peso: 100, sets: 4, reps: 10, volumen: 4000, date: 'x' },
+      'Press Militar': { peso: 450, sets: 4, reps: 10, volumen: 18000, date: 'x' },
+    };
+    expect(Object.keys(prsVigentes(prs, hist)).sort()).toEqual(['Hip Thrust', 'Press Militar']);
+  });
   it('un PR cuya unica serie esta excluida deja de valer', () => {
     const hist = [ses('2026-10-20', 'P', [ej('Hip Thrust', 4, 10, 450, 'Glúteos', { excluido: true })]), ...h];
     const prs = { 'Hip Thrust': { peso: 450, sets: 4, reps: 10, volumen: 18000, date: 'x' }, Prensa: { peso: 180, sets: 4, reps: 10, volumen: 7200, date: 'x' } };
@@ -252,6 +266,30 @@ describe('hoy, ayer y el grupo que toca', () => {
   it('la rutina propia "Espalda" cuenta como GRUPO 4 si se hizo la mitad de sus ejercicios', () => {
     const d = fusionarDias([ses('2026-11-12', 'Espalda', [ej('Jalón al Pecho', 4, 10, 55), ej('Remo en Máquina', 4, 10, 60)])]);
     expect(sugerirGrupoDeHoy(d, '2026-11-13', PL, 2026)?.grupo).toBe('GRUPO 1 - Piernas'); // G4 acaba de hacerse
+  });
+  it('rota entre los grupos HABITUALES: uno que casi no entrena no gana por llevar mas tiempo', () => {
+    // El caso real: Hombro + Triceps, la ultima vez hace 38 dias y 2 veces en 60.
+    const plantillas: PlantillaDeGrupo[] = [
+      { nombre: 'G1', ejercicios: ['Prensa'] },
+      { nombre: 'G4', ejercicios: ['Jalón'] },
+      { nombre: 'G5', ejercicios: ['Face Pull'] },
+    ];
+    const d = fusionarDias([
+      ses('2026-11-12', 'G1', [ej('Prensa', 4, 10, 180, 'Piernas')]),
+      ses('2026-11-09', 'G4', [ej('Jalón', 4, 10, 55)]),
+      ses('2026-11-05', 'G1', [ej('Prensa', 4, 10, 180, 'Piernas')]),
+      ses('2026-11-03', 'G4', [ej('Jalón', 4, 10, 55)]),
+      ses('2026-10-30', 'G1', [ej('Prensa', 4, 10, 180, 'Piernas')]),
+      ses('2026-10-29', 'G4', [ej('Jalón', 4, 10, 55)]),
+      ses('2026-10-06', 'G5', [ej('Face Pull', 4, 10, 20, 'Hombros')]),
+    ]);
+    expect(sugerirGrupoDeHoy(d, '2026-11-13', plantillas, 2026)?.grupo).toBe('G4');
+  });
+  it('sin ningun grupo habitual (historial corto) usa todos', () => {
+    const d = fusionarDias([ses('2026-11-12', 'G1', [ej('Prensa', 4, 10, 180, 'Piernas')])]);
+    expect(sugerirGrupoDeHoy(d, '2026-11-13', [
+      { nombre: 'G1', ejercicios: ['Prensa'] }, { nombre: 'G4', ejercicios: ['Jalón'] },
+    ], 2026)?.grupo).toBe('G4');
   });
   it('sin la sesion de AYER cargada lo dice, no la inventa', () => {
     const e = construirEstado([ses('2026-11-10', 'G', [ej('Prensa', 4, 10, 100, 'Piernas')])], { ahora: AHORA });

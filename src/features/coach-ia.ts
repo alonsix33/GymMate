@@ -414,7 +414,7 @@ export function contextoCompleto(
       grasaCorporal: typeof ultima?.bodyFat === 'number' ? Math.round(ultima.bodyFat * 10) / 10 : null,
     },
     bitacora: bitacoraDe(dias),
-    estado: construirEstado(historial, { ahora, plantillas: plantillasDeGrupo() }),
+    estado: construirEstado(historial, { ahora, plantillas: plantillasDeGrupo(), prs: getPRs() }),
   };
 }
 

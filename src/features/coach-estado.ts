@@ -123,12 +123,34 @@ export function fusionarDias(historial: HistorySession[], anioActual?: number): 
 // PRs, OUTLIERS, EXCLUIDOS
 // ==========================================
 
+/** Factor a partir del cual un peso nuevo pide confirmacion. */
+export const FACTOR_SOSPECHOSO = 3;
+
+/** Mejor peso REAL (con volumen y no excluido) de un ejercicio en el historial. */
+function mejorPesoReal(nombre: string, historial: HistorySession[]): number {
+  let mejor = 0;
+  for (const s of historial) {
+    if (s.type === 'cardio') continue;
+    for (const e of s.ejercicios ?? []) {
+      if (e.nombre === nombre && e.volumen > 0 && !e.excluido) mejor = Math.max(mejor, e.peso);
+    }
+  }
+  return mejor;
+}
+
 /**
  * Los PRs que siguen valiendo.
  *
- * El record guardado vive aparte del historial: excluir el Hip Thrust de 450
- * kg de la bitacora y dejar el PR de 450 dejaba el pico en 450 para todos los
- * calculos. Un PR cuyo peso solo existe en series excluidas deja de valer.
+ * El record guardado vive aparte del historial, y de ahi salen dos formas de
+ * que un peso falso siga mandando:
+ *   - su unica serie esta excluida (el 450 excluido de la bitacora, con el PR
+ *     de 450 intacto), o
+ *   - NO TIENE ninguna serie: el Hip Thrust de 450 kg de este usuario solo
+ *     existe en RECORDS, y su mejor serie real es de 55. Un record que pasa 3
+ *     veces la mejor serie real se descarta del calculo (no se borra: sigue en
+ *     RECORDS hasta que el usuario lo corrija).
+ * Un ejercicio sin ninguna serie real no tiene con que compararse: su record
+ * (por ejemplo, de un CSV que guardo el PR y no la sesion) vale.
  */
 export function prsVigentes(
   prs: Record<string, PRData>,
@@ -145,13 +167,30 @@ export function prsVigentes(
   for (const [nombre, pr] of Object.entries(prs)) {
     const k = `${nombre}|${pr.peso}`;
     if (excluidos.has(k) && !validos.has(k)) continue;
+    const real = mejorPesoReal(nombre, historial);
+    if (real > 0 && pr.peso > real * FACTOR_SOSPECHOSO) continue;
     vigentes[nombre] = pr;
   }
   return vigentes;
 }
 
-/** Factor a partir del cual un peso nuevo pide confirmacion. */
-export const FACTOR_SOSPECHOSO = 3;
+export interface PRDescartado {
+  ejercicio: string;
+  peso: number;
+  mejorSerieReal: number;
+}
+
+/** Los records que `prsVigentes` deja fuera por pasar 3x la mejor serie real. */
+export function prsDescartados(prs: Record<string, PRData>, historial: HistorySession[]): PRDescartado[] {
+  const salida: PRDescartado[] = [];
+  for (const [nombre, pr] of Object.entries(prs)) {
+    const real = mejorPesoReal(nombre, historial);
+    if (real > 0 && pr.peso > real * FACTOR_SOSPECHOSO) {
+      salida.push({ ejercicio: nombre, peso: pr.peso, mejorSerieReal: real });
+    }
+  }
+  return salida;
+}
 
 /**
  * Un peso mayor a 3 veces el mejor anterior del mismo ejercicio. Sin historial
@@ -328,6 +367,10 @@ export function gruposMusculares(dias: DiaEntrenado[], hoy: string, anioActual?:
     .sort((a, b) => b.diasSinTocar - a.diasSinTocar || a.grupo.localeCompare(b.grupo));
 }
 
+/** Un grupo es habitual con al menos 3 dias en los ultimos 60. */
+export const VENTANA_HABITUAL = 60;
+export const MIN_DIAS_HABITUAL = 3;
+
 export interface PlantillaDeGrupo {
   nombre: string;
   /** Ejercicios obligatorios. */
@@ -353,18 +396,26 @@ export function sugerirGrupoDeHoy(
   if (dias.some((d) => d.fecha === hoy && (d.series.length > 0 || d.cardio))) return null;
   if (plantillas.length === 0) return null;
 
-  const ultimaVez = (p: PlantillaDeGrupo): string | null => {
+  const hechoEn = (p: PlantillaDeGrupo, d: DiaEntrenado): boolean => {
     const minimo = Math.max(1, Math.ceil(p.ejercicios.length / 2));
-    for (const d of dias) {
-      if (d.grupos.includes(p.nombre)) return d.fecha;
-      const hechos = p.ejercicios.filter((n) => d.series.some((s) => s.nombre === n)).length;
-      if (hechos >= minimo) return d.fecha;
-    }
-    return null;
+    if (d.grupos.includes(p.nombre)) return true;
+    return p.ejercicios.filter((n) => d.series.some((s) => s.nombre === n)).length >= minimo;
   };
+  const ultimaVez = (p: PlantillaDeGrupo): string | null => dias.find((d) => hechoEn(p, d))?.fecha ?? null;
+
+  // La rotacion es entre los grupos que el usuario SI usa: al menos
+  // `MIN_DIAS_HABITUAL` dias en los ultimos `VENTANA_HABITUAL`. Con "el mas
+  // antiguo de todos", un grupo que casi nunca entrena (Hombro + Triceps: 6
+  // sesiones en su vida, la ultima hace 38 dias) ganaba siempre, y el coach
+  // mandaba a hacer lo que el usuario no hace. Si ninguno califica (historial
+  // corto), se usan todos.
+  const habituales = plantillas.filter(
+    (p) => dias.filter((d) => diasEntre(d.fecha, hoy) <= VENTANA_HABITUAL && hechoEn(p, d)).length >= MIN_DIAS_HABITUAL
+  );
+  const candidatas = habituales.length > 0 ? habituales : plantillas;
 
   let elegido: { p: PlantillaDeGrupo; fecha: string | null } | null = null;
-  for (const p of plantillas) {
+  for (const p of candidatas) {
     const fecha = ultimaVez(p);
     if (!elegido) {
       elegido = { p, fecha };
@@ -413,6 +464,8 @@ export interface EstadoCoach {
   ultimosDias: ResumenDeDia[];
   outliersExcluidos: SerieExcluida[];
   outliersSospechosos: OutlierDetectado[];
+  /** Records que no cuentan por pasar 3x la mejor serie real. */
+  prsDescartados: PRDescartado[];
 }
 
 /** Cuantos dias recientes viajan con su detalle, para "¿que hice ayer?". */
@@ -420,7 +473,7 @@ export const DIAS_CON_DETALLE = 14;
 
 export function construirEstado(
   historial: HistorySession[],
-  opciones: { ahora: Date; plantillas?: PlantillaDeGrupo[] }
+  opciones: { ahora: Date; plantillas?: PlantillaDeGrupo[]; prs?: Record<string, PRData> }
 ): EstadoCoach {
   const hoy = claveDiaLima(opciones.ahora);
   const anio = Number(hoy.slice(0, 4));
@@ -449,6 +502,7 @@ export function construirEstado(
     ultimosDias: dias.filter((d) => diasEntre(d.fecha, hoy) < DIAS_CON_DETALLE).map(resumir),
     outliersExcluidos: seriesExcluidas(historial, anio),
     outliersSospechosos: detectarOutliers(historial, anio),
+    prsDescartados: prsDescartados(opciones.prs ?? {}, historial),
   };
 }
 

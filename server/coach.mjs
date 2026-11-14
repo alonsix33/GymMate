@@ -271,6 +271,14 @@ function textoDeEstado(e) {
         '. Pregunta si se excluyen.'
     );
   }
+  const pd = Array.isArray(e.prsDescartados) ? e.prsDescartados : [];
+  if (pd.length) {
+    salida.push(
+      'records DESCARTADOS (no cuentan: pasan 3 veces la mejor serie real): ' +
+        pd.map((x) => `${x.ejercicio} ${x.peso} kg contra una mejor serie real de ${x.mejorSerieReal} kg`).join('; ') +
+        '. Pregunta una vez si se corrige el record; mientras tanto tu pico es la mejor serie real.'
+    );
+  }
   return salida;
 }
 

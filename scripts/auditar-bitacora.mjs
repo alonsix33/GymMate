@@ -3,9 +3,11 @@
  * Audita la bitacora SIN TOCARLA. Solo lee y lista.
  *
  *   node scripts/auditar-bitacora.mjs copia.json
+ *   node scripts/auditar-bitacora.mjs GymMate_Historial_2026-11-14.csv
  *
  * `copia.json` es la copia que guarda el servidor (GET /api/datos con tu token:
  * `{ datos: { gymmate_history: [...] } }`), o el propio array del historial.
+ * Tambien acepta el CSV que exporta la app (seccion ENTRENAMIENTOS DE PESAS).
  *
  * Busca lo que el 13-nov-2026 ensucio el coach, para que el usuario vea QUE hay
  * antes de decidir nada (la regla del encargo: no se borra ni se reescribe sin
@@ -27,7 +29,26 @@ if (!ruta) {
   process.exit(2);
 }
 
-const crudo = JSON.parse(readFileSync(ruta, 'utf8'));
+/** El CSV de la app -> sesiones (una por fecha + grupo, como las guarda la app). */
+function leerCSV(texto) {
+  const lineas = texto.replace(/^\uFEFF/, '').split(/\r?\n/);
+  const i = lineas.findIndex((l) => l.startsWith('=== ENTRENAMIENTOS'));
+  const por = new Map();
+  for (let j = i + 2; j < lineas.length && lineas[j] && !lineas[j].startsWith('==='); j++) {
+    const [f, grupo, nombre, sets, reps, peso, mano, musc, vol, comp] = lineas[j].split(',');
+    const [d, m, a] = f.split('/').map(Number);
+    const fecha = `${a}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+    const k = `${fecha}|${grupo}`;
+    if (!por.has(k)) por.set(k, { date: fecha, grupo, type: 'weights', ejercicios: [] });
+    por.get(k).ejercicios.push({
+      nombre, sets: +sets, reps: +reps, peso: +peso, volumen: +vol, esMancuerna: mano === 'Sí', grupoMuscular: musc, completado: comp === 'Sí',
+    });
+  }
+  return [...por.values()];
+}
+
+const bruto = readFileSync(ruta, 'utf8');
+const crudo = ruta.toLowerCase().endsWith('.csv') ? leerCSV(bruto) : JSON.parse(bruto);
 const historial = Array.isArray(crudo) ? crudo : (crudo.datos ?? crudo).gymmate_history;
 if (!Array.isArray(historial)) {
   console.error('No encuentro `gymmate_history` en ese archivo.');

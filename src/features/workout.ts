@@ -13,6 +13,7 @@ import {
   hasUnsavedData,
   hasUnsavedChanges,
   setOnDraftSavedCallback,
+  resetSession,
 } from '@/state/session';
 import {
   renderSesion,
@@ -64,6 +65,13 @@ export async function loadTrainingGroup(grupoId: string): Promise<boolean> {
     });
     if (!cambiar) return false;
   }
+
+  // Una rutina nueva es una sesion NUEVA. `sessionId`, `sessionSaved` y
+  // `lastSavedData` solo se reiniciaban al terminar: guardar la rutina A,
+  // volver al inicio y elegir la B reutilizaba el id de A, y al guardar B
+  // `addToHistory` sustituia la sesion A por la B (una sola sesion en el
+  // historial, y la otra perdida sin aviso).
+  resetSession();
 
   // Establecer grupo en sesión
   setSessionGroup(grupo.nombre);

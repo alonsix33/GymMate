@@ -161,7 +161,8 @@ describe('exclusiones: se ve QUE cambia, se marca y se puede deshacer', () => {
     const antes = JSON.stringify(getHistory());
     const r = buscarSeries({ ejercicio: 'Hip Thrust', peso: 450 });
     expect(r).toHaveLength(1);
-    expect(r[0]).toMatchObject({ peso: 450, etiqueta: 'mar 20 oct', excluida: false });
+    // El año de la etiqueta sigue al reloj: el test no puede fijarlo en 2026.
+    expect(r[0]).toMatchObject({ peso: 450, etiqueta: etiquetaDia('2026-10-20', Number(claveDiaLima(new Date()).slice(0, 4))), excluida: false });
     expect(JSON.stringify(getHistory())).toBe(antes);
   });
   it('excluir marca la serie, NO la borra, y recalcula volumen y PR', () => {

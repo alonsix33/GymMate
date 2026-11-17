@@ -385,7 +385,7 @@ describe('contextoCompleto · la bitacora', () => {
   it('una linea por sesion, con series por peso', () => {
     const c = contextoCompleto([sesion('Press Banca', 100, 8, 3)]);
     // Un solo formato de fecha: "mar 10 nov". Nunca 2026-11-10 ni 10-11.
-    expect(c?.bitacora).toMatch(/^[a-zé]{3} \d{1,2} [a-z]{3} · Pecho · Press Banca 3x8@100$/);
+    expect(c?.bitacora).toMatch(/^[a-záéíóú]{3} \d{1,2} [a-z]{3} · Pecho · Press Banca 3x8@100$/);
   });
 
   it('el cardio sale con sus minutos, no con series inventadas', () => {

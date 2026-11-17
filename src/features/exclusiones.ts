@@ -16,7 +16,7 @@
  * y quien llame a la segunda tiene que haber pintado la primera.
  */
 import { getHistory, saveHistory, getPRs, savePRs } from '@/utils/storage';
-import { claveDiaDeSesion, etiquetaDia } from '@/utils/fecha';
+import { claveDiaDeSesion, claveDiaLima, etiquetaDia } from '@/utils/fecha';
 import { prsDescartados } from '@/features/coach-estado';
 import { calculateVolumenPorGrupo } from '@/utils/calculations';
 import type { HistorySession } from '@/types';
@@ -63,7 +63,7 @@ export function buscarSeries(
       const fecha = claveDiaDeSesion(s) ?? '';
       salida.push({
         fecha,
-        etiqueta: fecha ? etiquetaDia(fecha, new Date().getFullYear()) : 'sin fecha',
+        etiqueta: fecha ? etiquetaDia(fecha, Number(claveDiaLima(new Date()).slice(0, 4))) : 'sin fecha',
         grupo: s.grupo,
         ejercicio: e.nombre,
         sets: e.sets,

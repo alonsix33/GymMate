@@ -17,6 +17,7 @@
  */
 import { getHistory, saveHistory, getPRs, savePRs } from '@/utils/storage';
 import { claveDiaDeSesion, etiquetaDia } from '@/utils/fecha';
+import { prsDescartados } from '@/features/coach-estado';
 import { calculateVolumenPorGrupo } from '@/utils/calculations';
 import type { HistorySession } from '@/types';
 
@@ -194,4 +195,61 @@ export function parsearMarcaDeExclusion(
   const criterio: CriterioDeSerie = { ejercicio: m[1].trim(), fecha };
   if (m[3]) criterio.peso = Number(m[3]);
   return { limpio, criterio: buscarSeries(criterio, historial).some((x) => !x.excluida) ? criterio : null };
+}
+
+// ==========================================
+// RECORDS QUE SON UN ERROR (sin ninguna serie detras)
+// ==========================================
+
+export interface CorreccionDeRecord {
+  ejercicio: string;
+  actual: { peso: number; sets: number; reps: number };
+  /** La mejor serie real, o null si no queda ninguna (el record se quita). */
+  nuevo: { peso: number; sets: number; reps: number; volumen: number; fecha: string } | null;
+}
+
+/**
+ * Solo LEE: que cambiaria corregir el record de un ejercicio. Devuelve null si
+ * ese record no es sospechoso (no pasa 3x la mejor serie real): esta accion no
+ * sirve para reescribir records buenos.
+ */
+export function previsualizarRecord(nombre: string): CorreccionDeRecord | null {
+  const prs = getPRs();
+  const historial = getHistory();
+  if (!prs[nombre] || !prsDescartados({ [nombre]: prs[nombre] }, historial).length) return null;
+  let mejor: CorreccionDeRecord['nuevo'] = null;
+  for (const s of historial) {
+    if (s.type === 'cardio') continue;
+    for (const e of s.ejercicios ?? []) {
+      if (e.nombre !== nombre || !(e.volumen > 0) || e.excluido) continue;
+      // Mas peso; a igual peso, mas repeticiones; a igual, mas volumen (4x10
+      // antes que 2x10).
+      if (
+        !mejor ||
+        e.peso > mejor.peso ||
+        (e.peso === mejor.peso && (e.reps > mejor.reps || (e.reps === mejor.reps && e.volumen > mejor.volumen)))
+      ) {
+        mejor = { peso: e.peso, sets: e.sets, reps: e.reps, volumen: e.volumen, fecha: s.savedAt || s.date };
+      }
+    }
+  }
+  return {
+    ejercicio: nombre,
+    actual: { peso: prs[nombre].peso, sets: prs[nombre].sets, reps: prs[nombre].reps },
+    nuevo: mejor,
+  };
+}
+
+/** Escribe: el record pasa a la mejor serie real. Las sesiones NO se tocan. */
+export function corregirRecord(nombre: string): boolean {
+  const c = previsualizarRecord(nombre);
+  if (!c) return false;
+  const prs = getPRs();
+  if (c.nuevo) {
+    prs[nombre] = { peso: c.nuevo.peso, sets: c.nuevo.sets, reps: c.nuevo.reps, volumen: c.nuevo.volumen, date: c.nuevo.fecha };
+  } else {
+    delete prs[nombre];
+  }
+  savePRs(prs);
+  return true;
 }

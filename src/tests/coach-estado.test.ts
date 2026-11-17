@@ -4,7 +4,7 @@ import {
   pesoSospechoso, detectarOutliers, prsVigentes, prsDescartados, idDe, type PlantillaDeGrupo,
 } from '@/features/coach-estado';
 import {
-  buscarSeries, excluirSeries, restaurarSeries, parsearMarcaDeExclusion, resolverFecha,
+  buscarSeries, excluirSeries, restaurarSeries, parsearMarcaDeExclusion, resolverFecha, previsualizarRecord, corregirRecord,
 } from '@/features/exclusiones';
 import { etiquetaDia, claveDiaDeSesion, claveDiaLima, ahoraLimaTexto, diasEntre } from '@/utils/fecha';
 import { markdownBasico } from '@/utils/markdown';
@@ -191,6 +191,43 @@ describe('exclusiones: se ve QUE cambia, se marca y se puede deshacer', () => {
     const e = construirEstado(getHistory(), { ahora: AHORA });
     expect(e.outliersExcluidos).toEqual([expect.objectContaining({ ejercicio: 'Hip Thrust', peso: 450, motivo: 'outlier' })]);
     expect(e.outliersSospechosos).toEqual([]);
+  });
+});
+
+describe('corregir un record que es un error (el 450 que solo vivia en RECORDS)', () => {
+  const sesionesAntes = () => JSON.stringify(getHistory());
+  beforeEach(() => {
+    saveHistory([ses('2026-11-12', 'P', [ej('Hip Thrust', 2, 10, 55, 'Glúteos')]), ses('2026-10-30', 'P', [ej('Hip Thrust', 4, 10, 55, 'Glúteos')])]);
+    savePRs({
+      'Hip Thrust': { peso: 450, sets: 4, reps: 10, volumen: 18000, date: '2026-10-18T03:27:02.470Z' },
+      Prensa: { peso: 180, sets: 4, reps: 10, volumen: 7200, date: '2026-11-12T12:00:00.000Z' },
+    });
+  });
+  it('previsualizar SOLO LEE y dice por que se reemplaza', () => {
+    const antes = JSON.stringify(getPRs());
+    const c = previsualizarRecord('Hip Thrust');
+    expect(c).toMatchObject({ ejercicio: 'Hip Thrust', actual: { peso: 450 }, nuevo: { peso: 55, sets: 4, reps: 10 } });
+    expect(JSON.stringify(getPRs())).toBe(antes);
+  });
+  it('corregir pone la mejor serie real y NO toca las sesiones ni los demas records', () => {
+    const h = sesionesAntes();
+    expect(corregirRecord('Hip Thrust')).toBe(true);
+    expect(getPRs()['Hip Thrust'].peso).toBe(55);
+    expect(getPRs().Prensa.peso).toBe(180);
+    expect(sesionesAntes()).toBe(h);
+  });
+  it('no sirve para reescribir un record BUENO', () => {
+    expect(previsualizarRecord('Prensa')).toBeNull();
+    expect(corregirRecord('Prensa')).toBe(false);
+    expect(getPRs().Prensa.peso).toBe(180);
+  });
+  it('sin ninguna serie real, el record sospechoso solo se quita si hay con que compararlo: sin series no es sospechoso', () => {
+    saveHistory([]);
+    expect(previsualizarRecord('Hip Thrust')).toBeNull(); // nada con que compararlo: vale
+  });
+  it('corregir dos veces no hace nada la segunda', () => {
+    corregirRecord('Hip Thrust');
+    expect(corregirRecord('Hip Thrust')).toBe(false);
   });
 });
 

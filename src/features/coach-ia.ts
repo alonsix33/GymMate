@@ -70,6 +70,11 @@ export interface TurnoCoach {
   grafico?: GraficoDelTurno | { ejercicio: string };
   /** Botones para elegir qué gráfico dibujar. Una cadena es un ejercicio (primera versión). */
   opciones?: Array<string | Opcion>;
+  /** 'app' = tarjeta que mostro la APP (la de Home), no algo que dijo el modelo.
+   *  El modelo la recibe como AVISO DE LA APP, con sus cifras. */
+  origen?: 'app';
+  /** Las cifras de las que salio el aviso (p. ej. "41,2k vs 36,5k kg"). */
+  cifras?: string;
   /** Un turno que no se pudo enviar y espera red. */
   pendiente?: boolean;
   error?: boolean;
@@ -611,7 +616,11 @@ export class CoachRemoto implements AdaptadorCoach {
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${this.token}` },
       body: JSON.stringify({
         pregunta,
-        historial: historial.slice(-12).map((t) => ({ autor: t.autor, texto: t.texto })),
+        historial: historial.slice(-12).map((t) => ({
+          autor: t.autor,
+          texto: t.texto,
+          ...(t.origen ? { origen: t.origen, cifras: t.cifras } : {}),
+        })),
         // El ejercicio de la pregunta, si lo hay: es el que se pinta como
         // tarjeta al lado de la respuesta.
         datos,

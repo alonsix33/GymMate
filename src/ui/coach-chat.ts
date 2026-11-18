@@ -159,7 +159,7 @@ function turnoHTML(t: TurnoCoach): string {
   // La marca [[excluir|...]] no se ve: se convierte en un boton, y solo si
   // coincide con una serie real del registro.
   const { limpio, criterio } = parsearMarcaDeExclusion(t.texto);
-  const sello = `COACH${
+  const sello = `${t.origen === 'app' ? 'AVISO DE LA APP' : 'COACH'}${
     esHoy
       ? ` · HOY ${String(hora.getHours()).padStart(2, '0')}:${String(hora.getMinutes()).padStart(2, '0')}`
       : ` · ${hora.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' }).replace('.', '').toUpperCase()}`
@@ -277,7 +277,7 @@ function render(): void {
   });
 }
 
-export function abrirCoach(mensajeInicial?: string): void {
+export function abrirCoach(mensajeInicial?: string, cifras?: string): void {
   // Cancela cualquier stream que siguiera vivo de una apertura anterior.
   turnoActivo++;
   turnos = leerConversacion();
@@ -294,6 +294,9 @@ export function abrirCoach(mensajeInicial?: string): void {
       autor: 'coach',
       texto: mensajeInicial,
       fecha: new Date().toISOString(),
+      // Es una tarjeta de la APP, no algo que dijo el modelo.
+      origen: 'app',
+      ...(cifras ? { cifras } : {}),
       dato: ejercicio ? datosDelEjercicio(ejercicio) ?? undefined : undefined,
     });
     guardarConversacion(turnos);

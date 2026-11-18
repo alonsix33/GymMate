@@ -390,3 +390,37 @@ describe('armarMensajes — casos vacios', () => {
     expect(m[1].content).toBe('bien');
   });
 });
+
+describe('armarMensajes — avisos de la app (tarjetas que NO dijo el coach)', () => {
+  const AVISO = {
+    autor: 'coach', origen: 'app', texto: 'Tu volumen subió 13% esta semana',
+    cifras: '7 días: 41.200 kg · 7 anteriores: 36.500 kg',
+  };
+
+  it('un aviso de la app no viaja como si lo hubiera dicho el asistente', () => {
+    const m = pedir({ historial: [...CHARLA, AVISO] });
+    const comoAsistente = m.filter((x) => x.role === 'assistant').map((x) => x.content);
+    expect(comoAsistente.some((c) => c.includes('volumen subió'))).toBe(false);
+  });
+
+  it('va en la ultima pregunta, con sus cifras de origen, como AVISOS DE LA APP', () => {
+    const m = pedir({ historial: [...CHARLA, AVISO] });
+    const ultimo = m[m.length - 1].content;
+    expect(ultimo).toContain('AVISOS DE LA APP');
+    expect(ultimo).toContain('Tu volumen subió 13%');
+    expect(ultimo).toContain('41.200 kg');
+    expect(ultimo.startsWith('¿como voy?')).toBe(true);
+  });
+
+  it('sin avisos no cambia nada: el prefijo cacheable queda igual', () => {
+    const sin = pedir();
+    const con = pedir({ historial: [...CHARLA, AVISO] });
+    expect(prefijo(con).startsWith(prefijo(sin).slice(0, -1))).toBe(true);
+    expect(sin[sin.length - 1].content).toBe('¿como voy?');
+  });
+
+  it('un turno normal del coach sigue siendo del asistente', () => {
+    const m = pedir();
+    expect(m.some((x) => x.role === 'assistant' && x.content === 'dime')).toBe(true);
+  });
+});

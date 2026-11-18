@@ -97,7 +97,7 @@ function bloqueCoach(insight: Insight): string {
   // vista con ese mensaje como primer turno." [REF reglas del coach]
   return `
     <button type="button" class="f-home__coach" data-accion="coach"
-      data-mensaje="${escapar(insight.message)}" aria-label="Abrir el coach">
+      data-mensaje="${escapar(insight.message)}" data-cifras="${escapar(insight.subtext ?? '')}" aria-label="Abrir el coach">
       <span class="f-label">COACH</span>
       <span class="f-home__coach-mensaje">${mensajeConDato(insight)}</span>
       ${insight.subtext ? `<span class="f-home__coach-contexto">${escapar(insight.subtext)}</span>` : ''}

@@ -306,8 +306,16 @@ export function armarMensajes(cuerpo) {
   const datos = cuerpo?.datos ?? null;
   const contexto = cuerpo?.contexto ?? null;
 
-  const mensajes = historial
-    .filter((t) => t && (t.autor === 'coach' || t.autor === 'usuario') && typeof t.texto === 'string')
+  // Las tarjetas que la APP mostro (no el coach) no son turnos del asistente:
+  // viajan como AVISOS DE LA APP con las cifras de las que salieron, para que el
+  // modelo las explique en vez de negarlas ("no lo voy a repetir como si fuera
+  // mio") o inventarse el origen.
+  const validos = historial.filter(
+    (t) => t && (t.autor === 'coach' || t.autor === 'usuario') && typeof t.texto === 'string'
+  );
+  const avisos = validos.filter((t) => t.origen === 'app');
+  const mensajes = validos
+    .filter((t) => t.origen !== 'app')
     .map((t) => ({ role: t.autor === 'usuario' ? 'user' : 'assistant', content: t.texto.slice(0, 4000) }));
 
   if (contexto) {
@@ -325,7 +333,13 @@ export function armarMensajes(cuerpo) {
   const bloqueDatos = datos
     ? `\n\nDATOS DE ESTE EJERCICIO (los mismos que la tarjeta que se pinta al lado):\n${JSON.stringify(datos)}`
     : '';
-  mensajes.push({ role: 'user', content: pregunta + bloqueDatos });
+  const bloqueAvisos = avisos.length
+    ? `\n\nAVISOS DE LA APP (tarjetas que la app mostro en pantalla; no las escribiste tu, pero el usuario las ve y puede preguntar por ellas):\n` +
+      avisos
+        .map((a) => `- ${String(a.texto).slice(0, 300)}${a.cifras ? ` (cifras: ${String(a.cifras).slice(0, 300)})` : ''}`)
+        .join('\n')
+    : '';
+  mensajes.push({ role: 'user', content: pregunta + bloqueDatos + bloqueAvisos });
   return [{ role: 'system', content: SISTEMA }, ...mensajes];
 }
 

@@ -24,7 +24,7 @@ import {
 import { cifra, escapar, taparNavegacion } from '@/utils/formato';
 import { markdownBasico } from '@/utils/markdown';
 import { getHistory } from '@/utils/storage';
-import { detectarPedidoDeGrafico, graficoSVG, resumenDeSerie, serieDeEjercicio } from '@/features/coach-grafico';
+import { detectarPedidoDeGrafico, dibujarGrafico, type GraficoDelTurno, type Opcion } from '@/features/coach-grafico';
 import { buscarSeries, excluirSeries, parsearMarcaDeExclusion } from '@/features/exclusiones';
 import { confirmarDestructivo, mostrarToast } from '@/ui/feedback';
 
@@ -122,19 +122,28 @@ function botonDeExclusion(c: { ejercicio: string; fecha?: string; peso?: number 
       )}">Marcar como no hecho · ${escapar(que)}</button>`;
 }
 
-/** El gráfico se dibuja AL PINTAR, con la bitácora de ese momento. */
-function bloqueDeGrafico(ejercicio: string): string {
-  const puntos = serieDeEjercicio(ejercicio, getHistory(), new Date());
-  if (puntos.length === 0) return '';
-  return `<div class="f-coach__grafico">${graficoSVG(ejercicio, puntos)}</div>`;
+/** El gráfico se dibuja AL PINTAR, con la bitácora de ese momento. Los turnos
+ *  de la primera versión guardaban solo `{ ejercicio }`: era el de peso. */
+function bloqueDeGrafico(g: GraficoDelTurno | { ejercicio: string }): string {
+  const grafico: GraficoDelTurno = 'tipo' in g ? g : { tipo: 'peso', ejercicio: g.ejercicio };
+  const { svg } = dibujarGrafico(grafico, getHistory(), new Date());
+  return svg ? `<div class="f-coach__grafico">${svg}</div>` : '';
 }
 
-function opcionesDeGrafico(opciones: string[]): string {
-  return `<div class="f-coach__opciones" role="group" aria-label="Elegir ejercicio">${opciones
-    .map(
-      (o) =>
-        `<button type="button" class="f-btn f-btn--secundario f-btn--medida" data-coach="grafico" data-ejercicio="${escapar(o)}">${escapar(o)}</button>`
-    )
+function opcionesDeGrafico(opciones: Array<string | Opcion>): string {
+  const lista: Opcion[] = opciones.map((o) => (typeof o === 'string' ? { etiqueta: o, frase: `Gráfico de ${o}` } : o));
+  // Agrupadas (con su titulo) en el orden en que llegan; sin grupo, todas juntas.
+  const grupos = new Map<string, Opcion[]>();
+  for (const o of lista) grupos.set(o.grupo ?? '', [...(grupos.get(o.grupo ?? '') ?? []), o]);
+  const botones = (os: Opcion[]) =>
+    `<div class="f-coach__opciones">${os
+      .map(
+        (o) =>
+          `<button type="button" class="f-btn f-btn--secundario f-btn--medida" data-coach="grafico" data-frase="${escapar(o.frase)}">${escapar(o.etiqueta)}</button>`
+      )
+      .join('')}</div>`;
+  return `<div class="f-coach__elegir" role="group" aria-label="Elegir gráfico">${[...grupos.entries()]
+    .map(([g, os]) => `${g ? `<span class="f-coach__elegir-titulo">${escapar(g)}</span>` : ''}${botones(os)}`)
     .join('')}</div>`;
 }
 
@@ -161,7 +170,7 @@ function turnoHTML(t: TurnoCoach): string {
       <div class="f-coach__card">
         <div class="f-coach__texto f-coach__md">${markdownBasico(limpio)}</div>
         ${criterio ? botonDeExclusion(criterio) : ''}
-        ${t.grafico ? bloqueDeGrafico(t.grafico.ejercicio) : ''}
+        ${t.grafico ? bloqueDeGrafico(t.grafico) : ''}
         ${t.opciones?.length ? opcionesDeGrafico(t.opciones) : ''}
         ${t.dato ? bloqueDeDatos(t.dato) : ''}
       </div>
@@ -318,11 +327,12 @@ async function enviar(): Promise<void> {
 
 function responderConGrafico(pedido: NonNullable<ReturnType<typeof detectarPedidoDeGrafico>>): void {
   const base = { id: `c_${Date.now()}`, autor: 'coach' as const, fecha: new Date().toISOString() };
-  if (pedido.tipo === 'ejercicio') {
-    const puntos = serieDeEjercicio(pedido.ejercicio, getHistory(), new Date());
-    turnos.push({ ...base, texto: resumenDeSerie(pedido.ejercicio, puntos), grafico: { ejercicio: pedido.ejercicio } });
+  if (pedido.tipo === 'grafico') {
+    const { texto } = dibujarGrafico(pedido.grafico, getHistory(), new Date());
+    turnos.push({ ...base, texto, grafico: pedido.grafico });
   } else {
-    turnos.push({ ...base, texto: '¿De cuál ejercicio quieres el gráfico?', opciones: pedido.opciones });
+    // Poco claro: se pregunta, no se adivina.
+    turnos.push({ ...base, texto: pedido.pregunta, opciones: pedido.opciones });
   }
   guardarConversacion(turnos);
   estado = 'listo';
@@ -444,8 +454,8 @@ async function alTocar(el: HTMLElement): Promise<void> {
       render();
       break;
     case 'grafico':
-      // Tocar un ejercicio es pedirlo con su nombre entero.
-      if (estado === 'listo' && el.dataset.ejercicio) await preguntar(`Gráfico de ${el.dataset.ejercicio}`);
+      // Cada boton manda una frase que el reconocedor entiende sin ambiguedad.
+      if (estado === 'listo' && el.dataset.frase) await preguntar(el.dataset.frase);
       break;
     case 'excluir': {
       // Primero SE ENSEÑA que cambia, y no se toca nada hasta que confirme: el

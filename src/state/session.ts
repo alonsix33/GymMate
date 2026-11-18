@@ -205,6 +205,23 @@ export function saveDraftNow(): void {
   }
 }
 
+/**
+ * Vuelca el borrador YA, si hay algo que perder. Se llama al ocultar la app:
+ * el autoguardado espera 15 s tras cada cambio, y iOS suspende la PWA al
+ * bloquear la pantalla, asi que lo tecleado en esos segundos se perdia.
+ * Sin datos reales no escribe nada: una plantilla en 0 no es un borrador.
+ */
+export function guardarBorradorSiHayCambios(): void {
+  if (sessionData.ejercicios.length === 0) return;
+  if (hasUnsavedChanges || sessionData.volumenTotal > 0) {
+    if (draftSaveTimeout) {
+      clearTimeout(draftSaveTimeout);
+      draftSaveTimeout = null;
+    }
+    saveDraftNow();
+  }
+}
+
 export function checkForExistingDraft(): {
   hasDraft: boolean;
   draft: ReturnType<typeof getDraft>;

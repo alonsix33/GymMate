@@ -1,0 +1,68 @@
+# Las puertas de verificación del proyecto, en cada PR y en cada push a main.
+#
+# Antes de esto el unico filtro era el build de Netlify (`tsc && vite build`):
+# un test o una puerta de comportamiento en rojo no frenaba ningun despliegue.
+#
+# Dos trabajos para que el rapido (el que casi siempre falla primero) avise en
+# un par de minutos y el de navegador, que tarda ~6, no lo retrase.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # La zona del usuario: V8 la cachea al arrancar, asi que va en el entorno.
+  TZ: America/Lima
+
+jobs:
+  rapido:
+    name: Tipos, tests, build y servidor
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Tokens de diseño
+        run: npm run verificar:tokens
+      - name: Tipos
+        run: npx tsc --noEmit
+      - name: Tests
+        run: npx vitest run
+      - name: Build
+        run: npm run build
+      - name: Servidor
+        run: node scripts/verificar-servidor.mjs
+      - name: Mutantes del servidor
+        run: node scripts/verificar-mutantes.mjs
+
+  navegador:
+    name: Navegador (runtime, fidelidad y comportamiento)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Build
+        run: npm run build
+      - name: Runtime
+        run: FIERRO_CHROME="$(node -p "require('playwright').chromium.executablePath()")" node scripts/verificar-runtime.mjs
+      - name: Fidelidad
+        run: FIERRO_CHROME="$(node -p "require('playwright').chromium.executablePath()")" node scripts/verificar-fidelidad.mjs
+      - name: Comportamiento
+        run: FIERRO_CHROME="$(node -p "require('playwright').chromium.executablePath()")" node scripts/verificar-comportamiento.mjs

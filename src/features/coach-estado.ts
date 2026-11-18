@@ -212,6 +212,16 @@ export function pesoSospechoso(
   return { sospechoso: mejor > 0 && peso > mejor * FACTOR_SOSPECHOSO, mejorAnterior: mejor };
 }
 
+export const FACTOR_MEDIANA = 2.5;
+export const MIN_REGISTROS_MEDIANA = 5;
+
+function medianaDe(valores: number[]): number {
+  if (valores.length === 0) return 0;
+  const o = [...valores].sort((x, y) => x - y);
+  const m = o.length >> 1;
+  return o.length % 2 ? o[m] : (o[m - 1] + o[m]) / 2;
+}
+
 export interface OutlierDetectado {
   ejercicio: string;
   fecha: string;
@@ -237,7 +247,15 @@ export function detectarOutliers(historial: HistorySession[], anioActual?: numbe
     const otros = filas.filter((o) => o.nombre === f.nombre && o !== f).map((o) => o.peso);
     const mejorOtro = otros.length ? Math.max(...otros) : 0;
     const k = `${f.nombre}|${f.fecha}|${f.peso}`;
-    if (mejorOtro > 0 && f.peso > mejorOtro * FACTOR_SOSPECHOSO && !vistos.has(k)) {
+    // Dos reglas. (1) mas de 3x el mejor de las demas; (2) mas de 2.5x la
+    // MEDIANA de las demas, con al menos 5 registros del ejercicio: dos "60"
+    // seguidos en un ejercicio de 15 kg se tapaban entre si en la regla (1)
+    // porque cada uno era el "mejor otro" del otro.
+    const mediana = medianaDe(otros);
+    const sospechosa =
+      (mejorOtro > 0 && f.peso > mejorOtro * FACTOR_SOSPECHOSO) ||
+      (otros.length >= MIN_REGISTROS_MEDIANA - 1 && mediana > 0 && f.peso > mediana * FACTOR_MEDIANA);
+    if (sospechosa && !vistos.has(k)) {
       vistos.add(k);
       salida.push({
         ejercicio: f.nombre,

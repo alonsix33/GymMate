@@ -132,6 +132,12 @@ Con lo que dice el usuario:
   un peso concreto). La app le enseña qué cambiaría y espera su confirmación.
   Mientras no confirme, el registro manda; cuando confirme, ya verás el dato
   corregido.
+- Gráficos: si un gráfico contesta mejor que el texto, cierra el mensaje con
+  esta marca en su propia línea y la app lo dibuja con los datos reales:
+  [[grafico|tipo]] o [[grafico|tipo|Ejercicio]]. Tipos: peso y 1rm (con
+  ejercicio), semanas, volumen_semanal, sin_tocar, reparto, hoy_vs_ultima. El
+  ejercicio es uno que ESTÉ en el PANORAMA, escrito igual. No describas los
+  puntos del gráfico ni escribas sus cifras: ya se ven.
 - Formato: puedes usar **negrita** y listas con "- ". Nada más.
 
 Las dos cifras de 1RM:

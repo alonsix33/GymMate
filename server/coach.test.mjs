@@ -475,3 +475,12 @@ describe('SISTEMA — voz en positivo, avisos y las palabras del panorama', () =
     expect(SISTEMA).toMatch(/de dos a cinco frases/);
   });
 });
+
+describe('SISTEMA — marca de grafico (plan B de las herramientas)', () => {
+  it('explica la marca, los tipos y que el ejercicio salga del PANORAMA', () => {
+    expect(SISTEMA).toMatch(/\[\[grafico\|tipo\]\] o \[\[grafico\|tipo\|Ejercicio\]\]/);
+    for (const t of ['peso', '1rm', 'semanas', 'volumen_semanal', 'sin_tocar', 'reparto', 'hoy_vs_ultima']) expect(SISTEMA).toContain(t);
+    expect(SISTEMA).toMatch(/ESTÉ en el PANORAMA/);
+    expect(SISTEMA).toMatch(/No describas los\s+puntos/);
+  });
+});

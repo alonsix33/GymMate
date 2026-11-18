@@ -5484,3 +5484,6 @@ body:has(#medidasTab:not(.hidden)) {
   color: var(--text-secondary);
   margin-top: 8px;
 }
+
+.f-builder__sin-resultados { display: block; padding: 16px 4px; font-size: var(--fs-13); color: var(--text-secondary); }
+.f-builder__grupo[hidden], .f-fila-ej[hidden] { display: none; }

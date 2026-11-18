@@ -16,6 +16,23 @@ import { mostrarToast } from '@/ui/feedback';
 import type { CustomWorkout } from '@/utils/storage';
 import type { MuscleGroup } from '@/types';
 import { escapar, taparNavegacion } from '@/utils/formato';
+import { getHistory } from '@/utils/storage';
+import { seriesValidas } from '@/utils/series';
+import type { HistorySession } from '@/types';
+
+const sinTildes = (t: string): string =>
+  t.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+
+/** Los ejercicios que mas has hecho (series validas), de mas a menos. */
+export function ejerciciosMasUsados(historial: HistorySession[], limite = 12): string[] {
+  const cuenta = new Map<string, number>();
+  for (const s of historial) {
+    if (s.type === 'cardio') continue;
+    for (const e of seriesValidas(s.ejercicios)) cuenta.set(e.nombre, (cuenta.get(e.nombre) ?? 0) + 1);
+  }
+  return [...cuenta.entries()].sort((a, b) => b[1] - a[1]).slice(0, limite).map(([n]) => n);
+}
+
 
 
 interface Elegido {
@@ -26,6 +43,7 @@ interface Elegido {
 let elegidos: Elegido[] = [];
 let nombreEditado = '';
 let formularioAbierto = false;
+let busqueda = '';
 
 const ID = 'fierroBuilder';
 
@@ -81,6 +99,46 @@ function contenedor(): HTMLElement {
   return el;
 }
 
+function filaDeEjercicio(e: Elegido): string {
+  const marcado = elegidos.some((x) => x.nombre === e.nombre);
+  return `
+    <button type="button" class="f-fila-ej${marcado ? ' f-fila-ej--marcado' : ''}"
+      data-builder="alternar" data-nombre="${escapar(e.nombre)}" data-grupo="${escapar(e.grupoMuscular)}"
+      aria-pressed="${marcado}">
+      <span class="f-fila-ej__check">${marcado ? '✓' : ''}</span>
+      <span class="f-fila-ej__nombre">${escapar(e.nombre)}</span>
+      <span class="f-fila-ej__grupo">${escapar(e.grupoMuscular.toUpperCase())}</span>
+    </button>`;
+}
+
+/** Oculta lo que no coincide (sin repintar: repintar en cada tecla mata el cursor). */
+function aplicarBusqueda(el: HTMLElement): void {
+  const q = sinTildes(busqueda.trim());
+  let hayAlguna = false;
+  el.querySelectorAll<HTMLElement>('.f-builder__grupo').forEach((grupo) => {
+    // Buscando, los "mas usados" sobran: cada ejercicio sale una vez, en su grupo.
+    if (grupo.dataset.usados && q) {
+      grupo.hidden = true;
+      return;
+    }
+    let visibles = 0;
+    grupo.querySelectorAll<HTMLElement>('.f-fila-ej').forEach((fila) => {
+      const coincide = !q || sinTildes(fila.dataset.nombre ?? '').includes(q);
+      fila.hidden = !coincide;
+      if (coincide) visibles++;
+    });
+    grupo.hidden = visibles === 0;
+    if (visibles > 0) hayAlguna = true;
+  });
+  el.querySelector('.f-builder__sin-resultados')?.remove();
+  if (q && !hayAlguna) {
+    el.querySelector('.f-builder__lista')?.insertAdjacentHTML(
+      'beforeend',
+      `<span class="f-builder__sin-resultados">Ningún ejercicio se llama así. Puedes crearlo arriba.</span>`
+    );
+  }
+}
+
 function render(): void {
   const el = contenedor();
   const sugerido = nombreSugerido(elegidos);
@@ -89,6 +147,9 @@ function render(): void {
   // Los grupos que el usuario ya toco van primero: es donde va a seguir
   // eligiendo. Con nada elegido, el orden es el de siempre.
   const tocados = new Set(elegidos.map((e) => e.grupoMuscular));
+  const usados = ejerciciosMasUsados(getHistory())
+    .map((n) => lista.find((e) => e.nombre === n))
+    .filter((e): e is Elegido => !!e);
   const grupos = [...ORDEN].sort((a, b) => Number(tocados.has(b)) - Number(tocados.has(a)));
 
   el.innerHTML = `
@@ -139,7 +200,20 @@ function render(): void {
       }
     </div>
 
+    <div class="f-campo">
+      <input class="f-campo__caja" type="search" id="builderBuscar" value="${escapar(busqueda)}"
+        placeholder="Buscar ejercicio" aria-label="Buscar ejercicio" autocomplete="off" />
+    </div>
+
     <div class="f-builder__lista">
+      ${
+        usados.length === 0
+          ? ''
+          : `<div class="f-builder__grupo" data-usados="si">
+              <span class="f-prog__label">TUS EJERCICIOS</span>
+              ${usados.map(filaDeEjercicio).join('')}
+            </div>`
+      }
       ${grupos
         .map((grupo) => {
           const delGrupo = lista.filter((e) => e.grupoMuscular === grupo);
@@ -147,19 +221,7 @@ function render(): void {
           return `
           <div class="f-builder__grupo">
             <span class="f-prog__label">${escapar(grupo.toUpperCase())}</span>
-            ${delGrupo
-              .map((e) => {
-                const marcado = elegidos.some((x) => x.nombre === e.nombre);
-                return `
-                <button type="button" class="f-fila-ej${marcado ? ' f-fila-ej--marcado' : ''}"
-                  data-builder="alternar" data-nombre="${escapar(e.nombre)}" data-grupo="${escapar(e.grupoMuscular)}"
-                  aria-pressed="${marcado}">
-                  <span class="f-fila-ej__check">${marcado ? '✓' : ''}</span>
-                  <span class="f-fila-ej__nombre">${escapar(e.nombre)}</span>
-                  <span class="f-fila-ej__grupo">${escapar(e.grupoMuscular.toUpperCase())}</span>
-                </button>`;
-              })
-              .join('')}
+            ${delGrupo.map(filaDeEjercicio).join('')}
           </div>`;
         })
         .join('')}
@@ -175,6 +237,13 @@ function render(): void {
     </button>
   `;
 
+  const buscar = el.querySelector<HTMLInputElement>('#builderBuscar');
+  buscar?.addEventListener('input', () => {
+    busqueda = buscar.value;
+    aplicarBusqueda(el);
+  });
+  aplicarBusqueda(el);
+
   const input = el.querySelector<HTMLInputElement>('#builderNombre');
   input?.addEventListener('input', () => {
     nombreEditado = input.value;
@@ -188,6 +257,7 @@ export function abrirBuilder(): void {
   elegidos = [];
   nombreEditado = '';
   formularioAbierto = false;
+  busqueda = '';
   const el = contenedor();
   el.classList.remove('hidden');
   taparNavegacion(true);

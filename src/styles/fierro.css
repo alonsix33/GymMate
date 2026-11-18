@@ -5363,4 +5363,11 @@ body:has(#medidasTab:not(.hidden)) {
 .f-coach__grafico-punto--pico { fill: var(--text-primary); }
 .f-coach__grafico-punto--ultimo { fill: var(--accent); }
 .f-coach__grafico-txt { fill: var(--text-secondary); font-size: 10px; font-family: inherit; }
-.f-coach__opciones { display: flex; flex-wrap: wrap; gap: 8px; }
+.f-coach__opciones { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+/* Dos columnas: con seis botones en una fila los nombres largos se pisaban. */
+.f-coach__opciones .f-btn { box-sizing: border-box; width: 100%; min-width: 0; height: auto; min-height: 44px; padding: 8px 10px; line-height: 1.2; overflow-wrap: anywhere; }
+
+.f-coach__barra { fill: var(--carbon-300); }
+.f-coach__barra--destacada { fill: var(--accent); }
+.f-coach__elegir { display: flex; flex-direction: column; gap: 8px; }
+.f-coach__elegir-titulo { font-size: var(--fs-12, 12px); letter-spacing: .06em; text-transform: uppercase; color: var(--text-secondary); margin-top: 4px; }

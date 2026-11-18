@@ -40,6 +40,7 @@ import {
   type PlantillaDeGrupo,
 } from '@/features/coach-estado';
 import type { HistorySession, PRData } from '@/types';
+import type { GraficoDelTurno, Opcion } from '@/features/coach-grafico';
 
 export interface DatoDeEjercicio {
   ejercicio: string;
@@ -62,11 +63,12 @@ export interface TurnoCoach {
   fecha: string;
   /** El componente de datos que acompaña al turno del coach, si lo hay. */
   dato?: DatoDeEjercicio;
-  /** Gráfico que dibuja la app (no el modelo): solo el ejercicio; los puntos
-   *  se recalculan al pintar, así que nunca quedan viejos ni inventados. */
-  grafico?: { ejercicio: string };
-  /** Botones para elegir de qué ejercicio dibujar el gráfico. */
-  opciones?: string[];
+  /** Gráfico que dibuja la app (no el modelo): solo el tipo y el ejercicio; los
+   *  puntos se recalculan al pintar, así que nunca quedan viejos ni inventados.
+   *  Los turnos guardados con la primera versión traen solo `{ ejercicio }`. */
+  grafico?: GraficoDelTurno | { ejercicio: string };
+  /** Botones para elegir qué gráfico dibujar. Una cadena es un ejercicio (primera versión). */
+  opciones?: Array<string | Opcion>;
   /** Un turno que no se pudo enviar y espera red. */
   pendiente?: boolean;
   error?: boolean;

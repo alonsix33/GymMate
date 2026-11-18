@@ -34,6 +34,38 @@ const RAIZ = resolve(dirname(fileURLToPath(import.meta.url)), '..');
  */
 const MUTANTES = [
   {
+    nombre: 'la copia chica vuelve a pisar a la grande',
+    porque: 'Un telefono con el almacenamiento vacio que pulsara "Subir copia" destruia la unica copia buena. Hay que rechazarla (409).',
+    archivo: 'server/almacen.mjs',
+    de: 'if (actual.sesiones >= MIN_SESIONES_PROTEGIDAS && nueva.sesiones < actual.sesiones * FRACCION_MINIMA) {',
+    a: 'if (false) {',
+    minimo: 1,
+  },
+  {
+    nombre: 'la subida deja de archivar la copia que sustituye',
+    porque: 'Con forzar se sube igual, pero la buena tiene que quedar como version recuperable.',
+    archivo: 'server/almacen.mjs',
+    de: "    await escribirAtomico(join(DIR, `gymmate.v${Math.max(Date.now(), mayor + 1)}.json`), JSON.stringify(previa));",
+    a: '    void mayor;',
+    minimo: 1,
+  },
+  {
+    nombre: 'forzar=1 deja de llegar al almacen',
+    porque: 'Sin forzar no hay forma de subir deliberadamente una copia mas pequeña.',
+    archivo: 'server/index.mjs',
+    de: "const r = await guardar(cuerpo.datos, 'yo', { forzar });",
+    a: "const r = await guardar(cuerpo.datos, 'yo', {});",
+    minimo: 1,
+  },
+  {
+    nombre: 'las versiones dejan de exigir token',
+    porque: 'Son el historial completo del usuario: nunca fuera de la puerta de auth.',
+    archivo: 'server/index.mjs',
+    de: "      if (ruta === '/api/datos/versiones' && req.method === 'GET') {",
+    a: "      if (ruta === '/api/datos/versiones-x' && req.method === 'GET') {",
+    minimo: 1,
+  },
+  {
     nombre: 'el preflight vuelve a exigir token',
     porque: 'El defecto original: el navegador no manda Authorization en un preflight, asi que la peticion real no salia nunca.',
     archivo: 'server/index.mjs',
@@ -262,7 +294,7 @@ for (const m of MUTANTES) {
 }
 
 // Que la lista no se vacie por el mismo camino que este script vino a cerrar.
-const MUTANTES_MINIMO = 21;
+const MUTANTES_MINIMO = 25;
 if (MUTANTES.length < MUTANTES_MINIMO) {
   fallos++;
   console.log(`\nFALLA solo hay ${MUTANTES.length} mutantes (minimo ${MUTANTES_MINIMO}).`);

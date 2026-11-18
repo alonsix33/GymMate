@@ -19,6 +19,7 @@ import {
 import {
   ultimaVezDe,
   renderSesion,
+  repintarVolumenPorMusculo,
   fijarObligatorios,
   activarOpcional,
   reiniciarOpcionales,
@@ -37,6 +38,7 @@ import {
   updateCoachOnExerciseComplete,
 } from '@/features/coach';
 import { getPRs, getHistory, getDraft } from '@/utils/storage';
+import { rpeDeSesionDesdeEjercicios } from '@/utils/rpe';
 import { setExerciseRPE, sessionId, registrarPRConfirmado, registrarRPEDeSesionGuardada } from '@/state/session';
 import { pesoSospechoso } from '@/features/coach-estado';
 import { processCompletedSession } from '@/features/gamification';
@@ -389,6 +391,11 @@ export function toggleCompletado(index: number): void {
   if (nuevoEstado) {
     const completados = sessionData.ejercicios.filter((e) => e.completado).length;
     updateCoachOnExerciseComplete(ejercicio, completados, sessionData.ejercicios.length);
+    // El descanso arranca solo al marcar ✓ (con el ultimo tiempo que elegiste),
+    // salvo en el ultimo ejercicio: ahi no hay nada que esperar.
+    if (completados < sessionData.ejercicios.length) {
+      void import('@/features/timer').then(({ iniciarDescansoAutomatico }) => iniciarDescansoAutomatico());
+    }
   }
 }
 
@@ -433,7 +440,9 @@ export function updateVolumeDisplay(): void {
 
   const pintadas = bloque ? bloque.querySelectorAll('.f-volumen__fila').length : 0;
   if (filas.length !== pintadas) {
-    pintarSesion();
+    // Solo ese bloque: repintar la sesion entera reemplazaba los campos y el
+    // foco se perdia al pasar de uno a otro.
+    if (!repintarVolumenPorMusculo()) pintarSesion();
     return;
   }
   if (!bloque || filas.length === 0) return;
@@ -666,10 +675,16 @@ export async function finishWorkout(): Promise<void> {
  * el unico slider de RPE de la app.
  */
 async function preguntarRPEYCerrar(): Promise<void> {
-  const elegido = await preguntarRPEDeSesion({
-    inicial: RPE_INICIAL,
-    etiqueta: (v) => RPE_LABELS[v] ?? '',
-  });
+  // Un solo RPE: si ya contestaste el esfuerzo de tus ejercicios, la sesion
+  // lleva su promedio y no se te pregunta otra vez.
+  const derivado = rpeDeSesionDesdeEjercicios(sessionData.ejercicios);
+  const elegido =
+    derivado !== null
+      ? derivado
+      : await preguntarRPEDeSesion({
+          inicial: RPE_INICIAL,
+          etiqueta: (v) => RPE_LABELS[v] ?? '',
+        });
   const rpeData: RPEData | undefined =
     elegido === null ? undefined : { value: elegido, label: RPE_LABELS[elegido] ?? '' };
 

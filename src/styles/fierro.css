@@ -5171,7 +5171,10 @@ body:has(#medidasTab:not(.hidden)) {
         pantalla. El mockup no lo dibuja como pantalla propia (W-01 tiene su
         bloque de descanso), asi que se viste con el sistema.
    -------------------------------------------------------------------------- */
-.f-descanso {
+/* Solo el banner flotante de index.html. Antes estas reglas valian para TODO
+   `.f-descanso` y la barra de descanso de la sesion (que reutiliza la clase)
+   heredaba `display: none`: el descanso corria y nadie lo veia. */
+#restTimerBanner.f-descanso {
   position: fixed;
   left: var(--pad-screen-l);
   right: var(--pad-screen-l);
@@ -5187,15 +5190,15 @@ body:has(#medidasTab:not(.hidden)) {
   padding: 14px 16px;
   box-shadow: var(--shadow-toast);
 }
-.f-descanso.active {
+#restTimerBanner.f-descanso.active {
   display: flex;
 }
-.f-descanso__textos {
+#restTimerBanner .f-descanso__textos {
   display: flex;
   flex-direction: column;
   gap: 3px;
 }
-.f-descanso__label {
+#restTimerBanner .f-descanso__label {
   font-family: var(--font-mono);
   font-weight: var(--label-weight-strong);
   font-size: var(--fs-10);
@@ -5203,7 +5206,7 @@ body:has(#medidasTab:not(.hidden)) {
   letter-spacing: var(--label-tracking);
   color: var(--text-secondary);
 }
-.f-descanso__cifra {
+#restTimerBanner .f-descanso__cifra {
   font-family: var(--font-display);
   font-stretch: var(--stretch-112);
   font-weight: var(--w-900);
@@ -5212,11 +5215,11 @@ body:has(#medidasTab:not(.hidden)) {
   font-variant-numeric: tabular-nums;
   color: var(--accent);
 }
-.f-descanso__acciones {
+#restTimerBanner .f-descanso__acciones {
   display: flex;
   gap: 8px;
 }
-.f-descanso__btn {
+#restTimerBanner .f-descanso__btn {
   font-size: var(--fs-13);
   border-radius: var(--r-10);
   padding: 10px 14px;
@@ -5373,3 +5376,75 @@ body:has(#medidasTab:not(.hidden)) {
 .f-coach__barra--destacada { fill: var(--accent); }
 .f-coach__elegir { display: flex; flex-direction: column; gap: 8px; }
 .f-coach__elegir-titulo { font-size: var(--fs-12, 12px); letter-spacing: .06em; text-transform: uppercase; color: var(--text-secondary); margin-top: 4px; }
+
+/* ==========================================================================
+   AREA TACTIL MINIMA · 44 px (WCAG 2.5.5 / HIG)
+   El dibujo NO cambia: se agranda el area que recibe el toque con un
+   pseudo-elemento invisible centrado en el control. Los controles que ya
+   miden 44 no se tocan.
+   ========================================================================== */
+.f-sesion__volver,
+.f-sesion__crono,
+.f-ejercicio__nombre,
+.f-ejercicio__info,
+.f-ejercicio__check,
+.f-opcional__check,
+.f-opcional__nombre,
+.f-home__enlace {
+  position: relative;
+}
+.f-sesion__volver::after,
+.f-sesion__crono::after,
+.f-ejercicio__nombre::after,
+.f-ejercicio__info::after,
+.f-ejercicio__check::after,
+.f-opcional__check::after,
+.f-opcional__nombre::after,
+.f-home__enlace::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: max(100%, var(--touch-min));
+  height: max(100%, var(--touch-min));
+  transform: translate(-50%, -50%);
+}
+/* Los "+" y "-" de la sesion miden 30 de ancho porque tres campos tienen que
+   caber en 390 (y la puerta de fidelidad fija ese 32 del mockup): el area
+   extra se reparte SOLO hacia afuera, hacia el hueco entre campos, para no
+   tapar el numero que tienen al lado. Quedan en 40x48, no 44: pasar de ahi
+   obliga a bajar el KG a una segunda fila, que es decision de diseño. */
+.f-stepper--sesion .f-stepper__btn { position: relative; }
+.f-stepper--sesion .f-stepper__btn::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+}
+.f-stepper--sesion .f-stepper__btn[data-sesion='menos']::after { left: -4px; }
+.f-stepper--sesion .f-stepper__btn[data-sesion='mas']::after { right: -4px; }
+
+.f-root .f-tabbar__item { min-height: var(--touch-min); }
+
+/* La barra de descanso de la sesion queda a la vista aunque el ejercicio que
+   acabas de marcar este arriba: sticky al borde inferior, sobre la barra de
+   navegacion. Antes vivia al final de la pagina, 1.700 px mas abajo. */
+#fierroDescanso {
+  position: sticky;
+  bottom: calc(var(--h-nav-inferior) + 8px);
+  z-index: 30;
+}
+#fierroDescanso .f-descanso {
+  box-shadow: var(--shadow-toast);
+}
+.f-descanso__accion { position: relative; }
+.f-descanso__accion::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: max(100%, var(--touch-min));
+  height: max(100%, var(--touch-min));
+  transform: translate(-50%, -50%);
+}

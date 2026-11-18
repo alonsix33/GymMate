@@ -17,7 +17,7 @@
  */
 import { sessionData } from '@/state/session';
 import { getHistory, getPR } from '@/utils/storage';
-import { cifra, escapar } from '@/utils/formato';
+import { cifra, cifraDecimal, escapar } from '@/utils/formato';
 import type { ExerciseData, HistorySession } from '@/types';
 
 // --------------------------------------------------------------------------
@@ -258,7 +258,7 @@ export function refrescarIntensidad(indice: number, _ejercicio: ExerciseData): v
 function cardActiva(ejercicio: ExerciseData, indice: number, historial: HistorySession[]): string {
   const ultima = ultimaVezDe(ejercicio.nombre, historial);
   const meta = ultima
-    ? `${escapar(ejercicio.grupoMuscular).toUpperCase()} · Última vez: ${ultima.sets}×${ultima.reps} · ${cifra(
+    ? `${escapar(ejercicio.grupoMuscular).toUpperCase()} · Última vez: ${ultima.sets}×${ultima.reps} · ${cifraDecimal(
         ultima.peso
       )} kg`
     : escapar(ejercicio.grupoMuscular).toUpperCase();
@@ -327,7 +327,7 @@ function filaRPE(ejercicio: ExerciseData, indice: number): string {
 }
 
 function cardHecha(ejercicio: ExerciseData, indice: number): string {
-  const detalle = `${ejercicio.sets}×${ejercicio.reps} · ${cifra(ejercicio.peso)} kg · ${cifra(
+  const detalle = `${ejercicio.sets}×${ejercicio.reps} · ${cifraDecimal(ejercicio.peso)} kg · ${cifra(
     ejercicio.volumen
   )} kg`;
   return `
@@ -386,6 +386,27 @@ function bloqueVolumenPorMusculo(): string {
     })
     .join('');
   return `<div class="f-volumen" role="group" aria-label="Volumen por músculo">${cuerpo}</div>`;
+}
+
+/**
+ * Repinta SOLO el bloque de volumen por musculo (aparece, desaparece o cambia
+ * de filas). Repintar la sesion entera para esto reemplazaba todos los campos:
+ * el foco caia al body y el toque siguiente no escribia nada. Devuelve false si
+ * no hay donde colgarlo (el llamador repinta todo).
+ */
+export function repintarVolumenPorMusculo(): boolean {
+  const html = bloqueVolumenPorMusculo();
+  const actual = document.querySelector('.f-volumen');
+  if (actual) {
+    if (html) actual.outerHTML = html;
+    else actual.remove();
+    return true;
+  }
+  if (!html) return true;
+  const ancla = document.getElementById('fierroDescanso');
+  if (!ancla) return false;
+  ancla.insertAdjacentHTML('afterend', html);
+  return true;
 }
 
 // --------------------------------------------------------------------------

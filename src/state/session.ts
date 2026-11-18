@@ -9,6 +9,8 @@ import {
   addToHistory,
   updatePR,
   getPR,
+  getHistory,
+  saveHistory,
 } from '@/utils/storage';
 import { calculateVolume, calculateVolumenPorGrupo } from '@/utils/calculations';
 
@@ -110,9 +112,8 @@ export function updateExercise(
 
   updateSessionVolume();
   markAsChanged();
-
-  // Check for PR
-  checkAndUpdatePR(ejercicio);
+  // El record NO se toca aqui: se fija al guardar. Teclear "450" por "45" y
+  // corregirlo dejaba el 450 de record para siempre.
 }
 
 export function toggleExerciseCompleted(index: number, completed: boolean): void {
@@ -288,6 +289,8 @@ export function saveCurrentSession(rpe?: RPEData): 'new' | 'updated' | 'error' {
   const isUpdate =
     sessionSaved && lastSavedData !== null && sessionId !== null;
   if (!addToHistory(sessionCopy)) return 'error';
+  // Los records se fijan ahora que la sesion SI quedo escrita.
+  sessionCopy.ejercicios.forEach(checkAndUpdatePR);
   // `gymmate_session` duplicaba la sesion entera y NADIE la leia (getSession no
   // tiene llamadores): solo gastaba cuota. Se libera la copia que dejo la
   // version anterior.
@@ -306,6 +309,21 @@ export function saveCurrentSession(rpe?: RPEData): 'new' | 'updated' | 'error' {
   return isUpdate ? 'updated' : 'new';
 }
 
+/**
+ * El RPE de la sesion cuando la sesion YA estaba guardada y no hay cambios que
+ * guardar: sin esto el valor elegido en la hoja de cierre se perdia (solo
+ * `saveCurrentSession` lo escribia). Devuelve false si no hay sesion guardada
+ * que anotar o la escritura fallo.
+ */
+export function registrarRPEDeSesionGuardada(rpe: RPEData): boolean {
+  if (!sessionId) return false;
+  const historial = getHistory();
+  const sesion = historial.find((h) => h.sessionId === sessionId);
+  if (!sesion) return false;
+  (sesion as { rpe?: RPEData }).rpe = rpe;
+  return saveHistory(historial);
+}
+
 export function endSession(): void {
   clearDraft();
   resetSession();
@@ -316,7 +334,7 @@ export function endSession(): void {
 // ==========================================
 
 function checkAndUpdatePR(ejercicioData: ExerciseData): void {
-  if (ejercicioData.volumen === 0) return;
+  if (!(ejercicioData.volumen > 0) || ejercicioData.excluido) return;
 
   const currentPR = getPR(ejercicioData.nombre);
 

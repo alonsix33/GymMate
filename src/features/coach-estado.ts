@@ -212,6 +212,16 @@ export function pesoSospechoso(
   return { sospechoso: mejor > 0 && peso > mejor * FACTOR_SOSPECHOSO, mejorAnterior: mejor };
 }
 
+export const FACTOR_MEDIANA = 2.5;
+export const MIN_REGISTROS_MEDIANA = 5;
+
+function medianaDe(valores: number[]): number {
+  if (valores.length === 0) return 0;
+  const o = [...valores].sort((x, y) => x - y);
+  const m = o.length >> 1;
+  return o.length % 2 ? o[m] : (o[m - 1] + o[m]) / 2;
+}
+
 export interface OutlierDetectado {
   ejercicio: string;
   fecha: string;
@@ -237,7 +247,15 @@ export function detectarOutliers(historial: HistorySession[], anioActual?: numbe
     const otros = filas.filter((o) => o.nombre === f.nombre && o !== f).map((o) => o.peso);
     const mejorOtro = otros.length ? Math.max(...otros) : 0;
     const k = `${f.nombre}|${f.fecha}|${f.peso}`;
-    if (mejorOtro > 0 && f.peso > mejorOtro * FACTOR_SOSPECHOSO && !vistos.has(k)) {
+    // Dos reglas. (1) mas de 3x el mejor de las demas; (2) mas de 2.5x la
+    // MEDIANA de las demas, con al menos 5 registros del ejercicio: dos "60"
+    // seguidos en un ejercicio de 15 kg se tapaban entre si en la regla (1)
+    // porque cada uno era el "mejor otro" del otro.
+    const mediana = medianaDe(otros);
+    const sospechosa =
+      (mejorOtro > 0 && f.peso > mejorOtro * FACTOR_SOSPECHOSO) ||
+      (otros.length >= MIN_REGISTROS_MEDIANA - 1 && mediana > 0 && f.peso > mediana * FACTOR_MEDIANA);
+    if (sospechosa && !vistos.has(k)) {
       vistos.add(k);
       salida.push({
         ejercicio: f.nombre,
@@ -453,8 +471,59 @@ function resumir(d: DiaEntrenado): ResumenDeDia {
 // EL ESTADO ENTERO
 // ==========================================
 
+export interface RevisionDeEjercicio {
+  ejercicio: string;
+  hoy: { sets: number; reps: number; peso: number };
+  antes: { etiqueta: string; sets: number; reps: number; peso: number } | null;
+  cambio: 'subió' | 'igual' | 'bajó' | 'primera vez';
+  /** kg de hoy menos kg de la vez anterior (null si es la primera vez). */
+  difKg: number | null;
+}
+
+export interface RevisionDeHoy {
+  ejercicios: RevisionDeEjercicio[];
+  /** Ejercicios de la rutina de hoy que no se hicieron. */
+  faltan: string[];
+}
+
+/**
+ * Hoy contra la vez anterior de cada ejercicio, ya comparado. El modelo
+ * comparaba la fecha de hoy con la de la bitacora y decia "no esta" y "si esta"
+ * en el mismo mensaje: esa aritmetica es del codigo.
+ */
+export function revisionDeHoy(
+  dias: DiaEntrenado[],
+  hoy: string,
+  plantillas: PlantillaDeGrupo[],
+  anio: number
+): RevisionDeHoy | null {
+  const dia = dias.find((d) => d.fecha === hoy);
+  if (!dia || dia.series.length === 0) return null;
+  const anteriores = dias.filter((d) => d.fecha < hoy); // el mas reciente primero
+  const ejercicios: RevisionDeEjercicio[] = dia.series.map((s) => {
+    const previo = anteriores.find((d) => d.series.some((x) => x.nombre === s.nombre));
+    const antes = previo?.series.find((x) => x.nombre === s.nombre) ?? null;
+    const dif = antes ? Math.round((s.peso - antes.peso) * 100) / 100 : null;
+    return {
+      ejercicio: s.nombre,
+      hoy: { sets: s.sets, reps: s.reps, peso: s.peso },
+      antes: antes && previo ? { etiqueta: etiquetaDia(previo.fecha, anio), sets: antes.sets, reps: antes.reps, peso: antes.peso } : null,
+      cambio: dif === null ? 'primera vez' : dif > 0 ? 'subió' : dif < 0 ? 'bajó' : 'igual',
+      difKg: dif,
+    };
+  });
+  const hechos = new Set(dia.series.map((s) => s.nombre));
+  const faltan: string[] = [];
+  for (const p of plantillas) {
+    if (!dia.grupos.includes(p.nombre)) continue;
+    for (const nombre of p.ejercicios) if (!hechos.has(nombre) && !faltan.includes(nombre)) faltan.push(nombre);
+  }
+  return { ejercicios, faltan };
+}
+
 export interface EstadoCoach {
   datosAl: string;
+  revisionDeHoy: RevisionDeHoy | null;
   hoy: { fecha: string; etiqueta: string; entrenado: boolean; grupos: string[]; sesion: ResumenDeDia | null };
   ayer: { fecha: string; etiqueta: string; sesion: ResumenDeDia | null };
   ultimaSesion: { fecha: string; etiqueta: string; diasDesde: number } | null;
@@ -485,6 +554,7 @@ export function construirEstado(
 
   return {
     datosAl: ahoraLimaTexto(opciones.ahora),
+    revisionDeHoy: revisionDeHoy(dias, hoy, opciones.plantillas ?? [], anio),
     hoy: {
       fecha: hoy,
       etiqueta: etiquetaDia(hoy, anio),

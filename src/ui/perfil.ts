@@ -16,6 +16,7 @@ import { getBodyMeasurements, getHistory, getProfile, saveProfile } from '@/util
 import type { BodyMeasurement, ProfileData } from '@/types';
 import { calculate1RM, calculateCalories, calculateProgressive } from '@/utils/calculations';
 import { cifra, escapar } from '@/utils/formato';
+import { esSerieValida } from '@/utils/series';
 import { abrirHoja } from '@/ui/session-screens';
 import { mostrarToast, confirmarDestructivo } from '@/ui/feedback';
 import {
@@ -68,7 +69,7 @@ function ejerciciosConPeso(): string[] {
   const set = new Set<string>();
   for (const sesion of getHistory()) {
     for (const ej of sesion.ejercicios ?? []) {
-      if (ej.peso > 0) set.add(ej.nombre);
+      if (ej.peso > 0 && esSerieValida(ej)) set.add(ej.nombre);
     }
   }
   return [...set].sort((a, b) => a.localeCompare(b, 'es'));

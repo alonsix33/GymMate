@@ -5363,6 +5363,8 @@ body:has(#medidasTab:not(.hidden)) {
 .f-coach__grafico-punto--pico { fill: var(--text-primary); }
 .f-coach__grafico-punto--ultimo { fill: var(--accent); }
 .f-coach__grafico-txt { fill: var(--text-secondary); font-size: 10px; font-family: inherit; }
+.f-coach__atajos { display: grid; grid-template-columns: 1fr; gap: 8px; margin-top: 12px; width: 100%; }
+.f-coach__atajos .f-btn { box-sizing: border-box; width: 100%; min-height: 44px; }
 .f-coach__opciones { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 /* Dos columnas: con seis botones en una fila los nombres largos se pisaban. */
 .f-coach__opciones .f-btn { box-sizing: border-box; width: 100%; min-width: 0; height: auto; min-height: 44px; padding: 8px 10px; line-height: 1.2; overflow-wrap: anywhere; }

@@ -23,6 +23,8 @@ import {
 } from '@/utils/zonas';
 import { estimateOneRM, getStreakInfo } from '@/features/gamification';
 import { unaRepMaxPromedio } from '@/utils/calculations';
+import { turnosDeHoy } from '@/features/coach-saludo';
+import { esSerieValida } from '@/utils/series';
 import { trainingGroups } from '@/data/training-groups';
 import {
   claveDiaDeSesion,
@@ -69,6 +71,11 @@ export interface TurnoCoach {
   grafico?: GraficoDelTurno | { ejercicio: string };
   /** Botones para elegir qué gráfico dibujar. Una cadena es un ejercicio (primera versión). */
   opciones?: Array<string | Opcion>;
+  /** 'app' = tarjeta que mostro la APP (la de Home), no algo que dijo el modelo.
+   *  El modelo la recibe como AVISO DE LA APP, con sus cifras. */
+  origen?: 'app';
+  /** Las cifras de las que salio el aviso (p. ej. "41,2k vs 36,5k kg"). */
+  cifras?: string;
   /** Un turno que no se pudo enviar y espera red. */
   pendiente?: boolean;
   error?: boolean;
@@ -214,7 +221,7 @@ export function datosDelEjercicio(
 function repsDeLaSerieActual(nombre: string, historial: HistorySession[], peso: number): number {
   for (const sesion of historial) {
     for (const ej of sesion.ejercicios ?? []) {
-      if (ej.nombre === nombre && ej.peso === peso) return ej.reps || 1;
+      if (ej.nombre === nombre && ej.peso === peso && esSerieValida(ej)) return ej.reps || 1;
     }
   }
   return 1;
@@ -435,7 +442,7 @@ function unaRepMaxDeLaMejorSerie(nombre: string, historial: HistorySession[]): n
   let mejorReps = 0;
   for (const s of historial) {
     for (const e of s.ejercicios ?? []) {
-      if (e.nombre !== nombre || !(e.peso > 0)) continue;
+      if (e.nombre !== nombre || !(e.peso > 0) || !esSerieValida(e)) continue;
       if (e.peso > mejorPeso || (e.peso === mejorPeso && e.reps > mejorReps)) {
         mejorPeso = e.peso;
         mejorReps = e.reps;
@@ -610,7 +617,13 @@ export class CoachRemoto implements AdaptadorCoach {
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${this.token}` },
       body: JSON.stringify({
         pregunta,
-        historial: historial.slice(-12).map((t) => ({ autor: t.autor, texto: t.texto })),
+        // Solo el hilo de HOY, y como mucho 6: lo de dias anteriores arrastraba
+        // su tono y sus afirmaciones a la respuesta de ahora.
+        historial: turnosDeHoy(historial, new Date()).enviados.map((t) => ({
+          autor: t.autor,
+          texto: t.texto,
+          ...(t.origen ? { origen: t.origen, cifras: t.cifras } : {}),
+        })),
         // El ejercicio de la pregunta, si lo hay: es el que se pinta como
         // tarjeta al lado de la respuesta.
         datos,

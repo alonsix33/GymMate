@@ -1,5 +1,6 @@
 import type { ExerciseData, HistorySession } from '@/types';
 import { getHistory, getPR } from '@/utils/storage';
+import { esSerieValida } from '@/utils/series';
 import { getStreakInfo, getCurrentLevelProgress } from '@/features/gamification';
 import { siguienteCarga, formatearPeso } from '@/utils/insights';
 
@@ -168,7 +169,7 @@ export function updateCoachOnExerciseUpdate(
     if (session.type === 'cardio' || !session.ejercicios) continue;
 
     const histExercise = session.ejercicios.find(
-      (e: ExerciseData) => e.nombre === ejercicio.nombre && e.volumen > 0
+      (e: ExerciseData) => e.nombre === ejercicio.nombre && esSerieValida(e)
     );
 
     if (histExercise) {

@@ -390,3 +390,88 @@ describe('armarMensajes — casos vacios', () => {
     expect(m[1].content).toBe('bien');
   });
 });
+
+describe('armarMensajes — avisos de la app (tarjetas que NO dijo el coach)', () => {
+  const AVISO = {
+    autor: 'coach', origen: 'app', texto: 'Tu volumen subió 13% esta semana',
+    cifras: '7 días: 41.200 kg · 7 anteriores: 36.500 kg',
+  };
+
+  it('un aviso de la app no viaja como si lo hubiera dicho el asistente', () => {
+    const m = pedir({ historial: [...CHARLA, AVISO] });
+    const comoAsistente = m.filter((x) => x.role === 'assistant').map((x) => x.content);
+    expect(comoAsistente.some((c) => c.includes('volumen subió'))).toBe(false);
+  });
+
+  it('va en la ultima pregunta, con sus cifras de origen, como AVISOS DE LA APP', () => {
+    const m = pedir({ historial: [...CHARLA, AVISO] });
+    const ultimo = m[m.length - 1].content;
+    expect(ultimo).toContain('AVISOS DE LA APP');
+    expect(ultimo).toContain('Tu volumen subió 13%');
+    expect(ultimo).toContain('41.200 kg');
+    expect(ultimo.startsWith('¿como voy?')).toBe(true);
+  });
+
+  it('sin avisos no cambia nada: el prefijo cacheable queda igual', () => {
+    const sin = pedir();
+    const con = pedir({ historial: [...CHARLA, AVISO] });
+    expect(prefijo(con).startsWith(prefijo(sin).slice(0, -1))).toBe(true);
+    expect(sin[sin.length - 1].content).toBe('¿como voy?');
+  });
+
+  it('un turno normal del coach sigue siendo del asistente', () => {
+    const m = pedir();
+    expect(m.some((x) => x.role === 'assistant' && x.content === 'dime')).toBe(true);
+  });
+});
+
+describe('armarMensajes — REVISION DE HOY ya comparada por la app', () => {
+  const estado = {
+    datosAl: 'vie 13 nov 2026 22:14 (America/Lima)',
+    hoy: { etiqueta: 'vie 13 nov', entrenado: true, sesion: { grupos: ['G4'], series: [] } },
+    revisionDeHoy: {
+      ejercicios: [
+        { ejercicio: 'Jalón al Pecho', hoy: { sets: 4, reps: 10, peso: 57.5 }, antes: { etiqueta: 'jue 5 nov', sets: 4, reps: 10, peso: 55 }, cambio: 'subió', difKg: 2.5 },
+        { ejercicio: 'Dominadas', hoy: { sets: 3, reps: 8, peso: 0 }, antes: null, cambio: 'primera vez', difKg: null },
+      ],
+      faltan: ['Curl Martillo'],
+    },
+  };
+  const texto = () => armarMensajes({ pregunta: 'x', contexto: { ...CONTEXTO, estado } })[1].content;
+
+  it('lista cada ejercicio con su cambio calculado', () => {
+    const t = texto();
+    expect(t).toContain('REVISION DE HOY');
+    expect(t).toContain('Jalón al Pecho: hoy 4x10@57.5 · antes (jue 5 nov) 4x10@55 · SUBIÓ 2.5 kg');
+    expect(t).toContain('Dominadas: hoy 3x8@0 · primera vez');
+  });
+  it('lo que faltaba de la rutina se dice, y se dice que no se compare por su cuenta', () => {
+    const t = texto();
+    expect(t).toContain('no se hizo hoy: Curl Martillo');
+    expect(t).toMatch(/no compares fechas/i);
+  });
+  it('sin revision no aparece el bloque', () => {
+    const t = armarMensajes({ pregunta: 'x', contexto: { ...CONTEXTO, estado: { ...estado, revisionDeHoy: null } } })[1].content;
+    expect(t).not.toContain('REVISION DE HOY');
+  });
+});
+
+describe('SISTEMA — voz en positivo, avisos y las palabras del panorama', () => {
+  it('describe como habla en positivo: reconoce con el dato y no reprocha', () => {
+    expect(SISTEMA).toMatch(/Estás de su lado, y se nota en el dato/);
+    expect(SISTEMA).toMatch(/son datos, no culpas/);
+  });
+  it('explica los AVISOS DE LA APP y la REVISION DE HOY', () => {
+    expect(SISTEMA).toMatch(/AVISOS DE LA APP/);
+    expect(SISTEMA).toMatch(/sin negarla\s+ni decir que "no es tuya"/);
+    expect(SISTEMA).toMatch(/REVISIÓN DE HOY/);
+  });
+  it('separa "pico" de "ahora" (el "venias en 40; es tu pico" que no era el pico)', () => {
+    expect(SISTEMA).toMatch(/"pico" es el mayor peso real/);
+    expect(SISTEMA).toMatch(/el peso de ahora NO es su pico/);
+  });
+  it('conserva la regla de responder primero y de ser corto', () => {
+    expect(SISTEMA).toMatch(/Responde PRIMERO/);
+    expect(SISTEMA).toMatch(/de dos a cinco frases/);
+  });
+});

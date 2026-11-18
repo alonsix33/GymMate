@@ -510,11 +510,11 @@ export function migratePRsToNormalizedNames(prs: Record<string, unknown>): Recor
 
     // Si ya existe un PR con el nombre normalizado, mantener el mejor
     if (migratedPRs[normalizedName]) {
-      const existingPR = migratedPRs[normalizedName] as { weight?: number };
-      const newPR = prData as { weight?: number };
+      const existingPR = migratedPRs[normalizedName] as { peso?: number };
+      const newPR = prData as { peso?: number };
 
-      // Mantener el PR con mayor peso
-      if ((newPR.weight || 0) > (existingPR.weight || 0)) {
+      // Mantener el PR con mayor peso (el campo real es `peso`)
+      if ((newPR.peso || 0) > (existingPR.peso || 0)) {
         migratedPRs[normalizedName] = prData;
       }
     } else {

@@ -2,6 +2,7 @@ import { claveDiaLocal, claveDiaLima } from '@/utils/fecha';
 import { fusionarDias, volumenSemanal } from '@/features/coach-estado';
 import type { HistorySession, ExerciseData } from '@/types';
 import { getHistory, getPRs } from '@/utils/storage';
+import { esSerieValida } from '@/utils/series';
 
 // ==========================================
 // INSIGHT TYPES
@@ -311,7 +312,7 @@ function analyzeNeglectedMuscles(history: HistorySession[]): Insight | null {
     const sessionDate = new Date(session.savedAt || session.date);
 
     session.ejercicios.forEach((ej: ExerciseData) => {
-      if (ej.volumen > 0) {
+      if (esSerieValida(ej)) {
         const muscle = ej.grupoMuscular;
         if (!muscleLastTrained[muscle] || sessionDate > muscleLastTrained[muscle]) {
           muscleLastTrained[muscle] = sessionDate;
@@ -359,7 +360,7 @@ function analyzePRProximity(
   for (const session of recentSessions) {
     for (const ejercicio of session.ejercicios || []) {
       const pr = prs[ejercicio.nombre];
-      if (!pr || ejercicio.peso === 0) continue;
+      if (!pr || ejercicio.peso === 0 || ejercicio.excluido) continue;
 
       const percentage = (ejercicio.peso / pr.peso) * 100;
 

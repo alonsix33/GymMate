@@ -23,6 +23,8 @@ import {
 } from '@/features/coach-ia';
 import { cifra, escapar, taparNavegacion } from '@/utils/formato';
 import { markdownBasico } from '@/utils/markdown';
+import { esSaludo, saludoDe, ATAJOS } from '@/features/coach-saludo';
+import { construirEstado } from '@/features/coach-estado';
 import { getHistory } from '@/utils/storage';
 import { detectarPedidoDeGrafico, dibujarGrafico, type GraficoDelTurno, type Opcion } from '@/features/coach-grafico';
 import { buscarSeries, excluirSeries, parsearMarcaDeExclusion } from '@/features/exclusiones';
@@ -159,7 +161,7 @@ function turnoHTML(t: TurnoCoach): string {
   // La marca [[excluir|...]] no se ve: se convierte en un boton, y solo si
   // coincide con una serie real del registro.
   const { limpio, criterio } = parsearMarcaDeExclusion(t.texto);
-  const sello = `COACH${
+  const sello = `${t.origen === 'app' ? 'AVISO DE LA APP' : 'COACH'}${
     esHoy
       ? ` · HOY ${String(hora.getHours()).padStart(2, '0')}:${String(hora.getMinutes()).padStart(2, '0')}`
       : ` · ${hora.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' }).replace('.', '').toUpperCase()}`
@@ -217,6 +219,15 @@ function render(): void {
       ? `<div class="f-vacio-bloque">
            <span class="f-vacio-bloque__titulo">Pregúntale a tus datos.</span>
            <span class="f-vacio-bloque__detalle">Todo lo que has registrado está aquí: pesos, rachas, volumen y récords.</span>
+         </div>`
+      : '',
+    // Los atajos salen mientras no hayas preguntado nada HOY (aunque el hilo
+    // traiga el aviso de la app o charla de otros dias).
+    estado === 'listo' && !hayError && !turnos.some((t) => t.autor === 'usuario' && new Date(t.fecha).toDateString() === new Date().toDateString())
+      ? `<div class="f-coach__atajos">
+           ${ATAJOS.map(
+             (a) => `<button type="button" class="f-btn f-btn--secundario f-btn--medida" data-coach="grafico" data-frase="${escapar(a.frase)}">${escapar(a.etiqueta)}</button>`
+           ).join('')}
          </div>`
       : '',
   ].join('');
@@ -277,7 +288,7 @@ function render(): void {
   });
 }
 
-export function abrirCoach(mensajeInicial?: string): void {
+export function abrirCoach(mensajeInicial?: string, cifras?: string): void {
   // Cancela cualquier stream que siguiera vivo de una apertura anterior.
   turnoActivo++;
   turnos = leerConversacion();
@@ -294,6 +305,9 @@ export function abrirCoach(mensajeInicial?: string): void {
       autor: 'coach',
       texto: mensajeInicial,
       fecha: new Date().toISOString(),
+      // Es una tarjeta de la APP, no algo que dijo el modelo.
+      origen: 'app',
+      ...(cifras ? { cifras } : {}),
       dato: ejercicio ? datosDelEjercicio(ejercicio) ?? undefined : undefined,
     });
     guardarConversacion(turnos);
@@ -350,6 +364,20 @@ async function preguntar(pregunta: string): Promise<void> {
   // "Muéstrame el gráfico": lo dibuja la app con los datos de la bitácora, sin
   // pasar por el modelo. El modelo no tiene gráficos y no hace falta que sepa
   // pedirlos: así sale siempre igual, al instante y sin inventar ningún punto.
+  // Un "Hola" se contesta con un saludo corto, sin pasar por el modelo ni
+  // auditar la bitacora.
+  if (esSaludo(pregunta)) {
+    turnos.push({
+      id: `c_${Date.now()}`,
+      autor: 'coach',
+      texto: saludoDe(construirEstado(getHistory(), { ahora: new Date() })),
+      fecha: new Date().toISOString(),
+    });
+    guardarConversacion(turnos);
+    render();
+    return;
+  }
+
   const pedido = detectarPedidoDeGrafico(pregunta, getHistory(), previos, new Date());
   if (pedido) {
     responderConGrafico(pedido);

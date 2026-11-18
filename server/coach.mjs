@@ -67,8 +67,12 @@ Tu trabajo:
 
 Cómo hablas:
 - Español de Perú, directo, como un entrenador con años encima.
-- Sin emojis, sin exclamaciones dobles, sin porras. Nada de "¡vamos!" ni "¡tú
-  puedes!". Sin mascota ni nombre propio: eres una función de la app.
+- Estás de su lado, y se nota en el dato: reconoce lo que sí hizo con su cifra
+  ("subiste a 57.5 en el jalón", "sostuviste las 4x10") y recién después
+  propones. Cálido y sereno, sin emojis, sin exclamaciones dobles y sin porras.
+  Sin mascota ni nombre propio: eres una función de la app.
+- Un retraso, una sesión floja o un peso que bajó son datos, no culpas: los
+  nombras sin reproche y propones la siguiente.
 - Di el peso objetivo, nunca la diferencia. "Levanta 50 kg y es PR nuevo", no
   "te faltan 2.5 kg".
 - Responde PRIMERO lo que te preguntó, en la primera frase. Si es de sí o no,
@@ -94,6 +98,15 @@ Lo que tienes delante:
 - RESUMEN y ESTADO AL MOMENTO: qué día es, qué se entrenó hoy y ayer, el grupo
   que toca hoy, el volumen comparable, la racha y los días sin tocar de cada
   grupo muscular. Todo lo calcula la app.
+- AVISOS DE LA APP (si vienen en la pregunta): tarjetas que la app mostró en
+  pantalla, con las cifras de las que salieron. No las escribiste tú, pero el
+  usuario las ve: si pregunta por una, la explicas con esas cifras, sin negarla
+  ni decir que "no es tuya".
+- REVISIÓN DE HOY: hoy contra la vez anterior de cada ejercicio, ya comparada.
+  Para "¿cómo me fue?" la copias, sin comparar tú.
+Dos palabras del PANORAMA y no se mezclan: "pico" es el mayor peso real que ha
+levantado en ese ejercicio; "ahora" es el último que usó. Si ahora es menor que
+el pico, el peso de ahora NO es su pico.
 Úsalo todo. Cruzar, comparar, ordenar, buscar patrones y sacar conclusiones es
 exactamente tu trabajo, no una licencia que tengas que pedir.
 
@@ -223,6 +236,20 @@ function textoDeEstado(e) {
       salida.push('hoy ya entrenó: resume lo hecho y NO propongas plan para hoy');
     }
   }
+  const rev = e.revisionDeHoy;
+  if (rev && Array.isArray(rev.ejercicios) && rev.ejercicios.length) {
+    salida.push('REVISION DE HOY — ya comparada por la app contra la vez anterior de cada ejercicio. No compares fechas ni pesos por tu cuenta; copia esto:');
+    for (const x of rev.ejercicios) {
+      const hoy = `${x.hoy.sets}x${x.hoy.reps}@${x.hoy.peso}`;
+      if (!x.antes) {
+        salida.push(`- ${x.ejercicio}: hoy ${hoy} · primera vez`);
+        continue;
+      }
+      const dif = x.cambio === 'subió' ? `SUBIÓ ${x.difKg} kg` : x.cambio === 'bajó' ? `BAJÓ ${Math.abs(x.difKg)} kg` : 'IGUAL';
+      salida.push(`- ${x.ejercicio}: hoy ${hoy} · antes (${x.antes.etiqueta}) ${x.antes.sets}x${x.antes.reps}@${x.antes.peso} · ${dif}`);
+    }
+    if (Array.isArray(rev.faltan) && rev.faltan.length) salida.push(`no se hizo hoy: ${rev.faltan.join(', ')}`);
+  }
   if (e.ayer) {
     salida.push(
       `ayer (${e.ayer.etiqueta}): ${sesionEnTexto(e.ayer.sesion) ?? 'sin registro cargado'}`
@@ -306,8 +333,16 @@ export function armarMensajes(cuerpo) {
   const datos = cuerpo?.datos ?? null;
   const contexto = cuerpo?.contexto ?? null;
 
-  const mensajes = historial
-    .filter((t) => t && (t.autor === 'coach' || t.autor === 'usuario') && typeof t.texto === 'string')
+  // Las tarjetas que la APP mostro (no el coach) no son turnos del asistente:
+  // viajan como AVISOS DE LA APP con las cifras de las que salieron, para que el
+  // modelo las explique en vez de negarlas ("no lo voy a repetir como si fuera
+  // mio") o inventarse el origen.
+  const validos = historial.filter(
+    (t) => t && (t.autor === 'coach' || t.autor === 'usuario') && typeof t.texto === 'string'
+  );
+  const avisos = validos.filter((t) => t.origen === 'app');
+  const mensajes = validos
+    .filter((t) => t.origen !== 'app')
     .map((t) => ({ role: t.autor === 'usuario' ? 'user' : 'assistant', content: t.texto.slice(0, 4000) }));
 
   if (contexto) {
@@ -325,7 +360,13 @@ export function armarMensajes(cuerpo) {
   const bloqueDatos = datos
     ? `\n\nDATOS DE ESTE EJERCICIO (los mismos que la tarjeta que se pinta al lado):\n${JSON.stringify(datos)}`
     : '';
-  mensajes.push({ role: 'user', content: pregunta + bloqueDatos });
+  const bloqueAvisos = avisos.length
+    ? `\n\nAVISOS DE LA APP (tarjetas que la app mostro en pantalla; no las escribiste tu, pero el usuario las ve y puede preguntar por ellas):\n` +
+      avisos
+        .map((a) => `- ${String(a.texto).slice(0, 300)}${a.cifras ? ` (cifras: ${String(a.cifras).slice(0, 300)})` : ''}`)
+        .join('\n')
+    : '';
+  mensajes.push({ role: 'user', content: pregunta + bloqueDatos + bloqueAvisos });
   return [{ role: 'system', content: SISTEMA }, ...mensajes];
 }
 

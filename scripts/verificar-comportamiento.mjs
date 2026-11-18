@@ -2647,8 +2647,10 @@ const borradorDePrueba = {
     mensajeBanner.length > 0 && primerTurno === mensajeBanner, `${primerTurno} | ${mensajeBanner}`);
 
   const sello = (await pagina.locator('#fierroCoach .f-coach__sello').first().innerText().catch(() => '')).trim();
-  chk('CO-01 · el sello del turno es "COACH · HOY HH:MM"',
-    /^COACH · HOY \d{2}:\d{2}$/.test(sello), sello);
+  // El primer turno es la tarjeta de la APP (la de la home), no algo que dijo
+  // el modelo: se rotula asi para que nadie la tome por una frase del coach.
+  chk('CO-01 · el sello del turno es "AVISO DE LA APP · HOY HH:MM" (tarjeta de la home)',
+    /^AVISO DE LA APP · HOY \d{2}:\d{2}$/.test(sello), sello);
 
   // La tab bar queda tapada por la superposicion: el mockup no la dibuja.
   const navInerte = await pagina.evaluate(() => document.querySelector('nav.f-tabbar')?.hasAttribute('inert'));

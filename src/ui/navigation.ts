@@ -141,7 +141,7 @@ function alTocarHome(evento: Event): void {
       break;
     case 'coach':
       void import('@/ui/coach-chat').then(({ abrirCoach }) =>
-        abrirCoach(objetivo.dataset.mensaje || undefined)
+        abrirCoach(objetivo.dataset.mensaje || undefined, objetivo.dataset.cifras || undefined)
       );
       break;
     case 'importar':

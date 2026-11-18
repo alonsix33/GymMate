@@ -1,4 +1,5 @@
-import { claveDiaDe, hoyLocal } from '@/utils/fecha';
+import { claveDiaDe, claveDiaLima, hoyLocal } from '@/utils/fecha';
+import { partirEnRegistros, partirCeldas, neutralizarFormula, quitarNeutralizacion, escaparCelda } from '@/utils/csv';
 import type { HistorySession } from '@/types';
 import { cifra } from '@/utils/formato';
 import { confirmarDestructivo, mostrarToast } from '@/ui/feedback';
@@ -172,26 +173,16 @@ async function corregirRecordConfirmado(ejercicio: string): Promise<void> {
 // EXPORTAR A CSV (reemplaza xlsx por seguridad)
 // ==========================================
 
-function escapeCSV(value: string | number): string {
-  const str = String(value);
-  // Escapar comillas dobles y envolver en comillas si contiene caracteres especiales
-  if (str.includes(',') || str.includes('"') || str.includes('\n')) {
-    return `"${str.replace(/"/g, '""')}"`;
-  }
-  return str;
+/** Texto libre (nombres, mensajes, perfil): neutraliza las formulas de hoja de calculo. */
+function texto(valor: string | number | undefined | null): string {
+  return neutralizarFormula(String(valor ?? ''));
 }
 
-export function exportToCSV(): void {
+/** El CSV completo como texto, o null si no hay nada que exportar. */
+export function construirCSV(): string | null {
   const history = getHistory();
 
-  if (history.length === 0) {
-    mostrarToast({
-      tipo: 'aviso',
-      titulo: 'Todavía no hay sesiones que exportar',
-      detalle: 'Guarda un entrenamiento y el CSV se genera solo.',
-    });
-    return;
-  }
+  if (history.length === 0) return null;
 
   // Separar sesiones por tipo
   const weightSessions = history.filter(s => s.type !== 'cardio' && s.ejercicios);
@@ -216,6 +207,14 @@ export function exportToCSV(): void {
       'Volumen',
       'Completado',
       'Volumen Total Sesión',
+      // Columnas AÑADIDAS al final: un CSV viejo no las trae y se lee igual; un
+      // lector antiguo ignora las que no conoce.
+      'Id Sesión',
+      'Guardada',
+      'RPE Sesión',
+      'Excluido',
+      'Motivo Exclusión',
+      'RPE Ejercicio',
     ]);
 
     weightSessions.forEach((session) => {
@@ -232,8 +231,8 @@ export function exportToCSV(): void {
         session.ejercicios.forEach((ej) => {
           rows.push([
             fecha,
-            grupo,
-            ej.nombre,
+            texto(grupo),
+            texto(ej.nombre),
             String(ej.sets),
             String(ej.reps),
             String(ej.peso),
@@ -242,6 +241,12 @@ export function exportToCSV(): void {
             String(ej.volumen),
             ej.completado ? 'Sí' : 'No',
             String(volumenTotalSesion),
+            session.sessionId ?? '',
+            session.savedAt ?? '',
+            session.rpe ? String(session.rpe.value) : '',
+            ej.excluido ? 'Sí' : '',
+            ej.motivoExclusion ?? '',
+            ej.rpe !== undefined ? String(ej.rpe) : '',
           ]);
         });
       }
@@ -305,7 +310,7 @@ export function exportToCSV(): void {
     rows.push(['Campo', 'Valor']);
     for (const [campo, valor] of Object.entries(perfil)) {
       if (valor === undefined || valor === null || valor === '') continue;
-      rows.push([campo, String(valor)]);
+      rows.push([campo, texto(String(valor))]);
     }
   }
 
@@ -342,7 +347,7 @@ export function exportToCSV(): void {
     for (const nombre of nombresPR) {
       const pr = records[nombre];
       rows.push([
-        nombre,
+        texto(nombre),
         String(pr.peso ?? 0),
         String(pr.sets ?? 0),
         String(pr.reps ?? 0),
@@ -371,9 +376,9 @@ export function exportToCSV(): void {
       for (const [ej, opcional] of filas) {
         rows.push([
           rutina.id,
-          rutina.nombre,
+          texto(rutina.nombre),
           rutina.createdAt ?? '',
-          ej.nombre,
+          texto(ej.nombre),
           ej.esMancuerna ? 'Sí' : 'No',
           ej.grupoMuscular,
           opcional ? 'Sí' : 'No',
@@ -393,7 +398,7 @@ export function exportToCSV(): void {
     rows.push(['=== EJERCICIOS PROPIOS ===']);
     rows.push(['Id', 'Ejercicio', 'Grupo Muscular', 'Es Mancuerna', 'Creado']);
     for (const e of propios) {
-      rows.push([e.id, e.nombre, e.grupoMuscular, e.esMancuerna ? 'Sí' : 'No', e.createdAt ?? '']);
+      rows.push([e.id, texto(e.nombre), e.grupoMuscular, e.esMancuerna ? 'Sí' : 'No', e.createdAt ?? '']);
     }
   }
 
@@ -431,14 +436,21 @@ export function exportToCSV(): void {
       rows.push(['=== CONVERSACIÓN DEL COACH ===']);
       rows.push(['Id', 'Autor', 'Fecha', 'Texto']);
       for (const t of turnos) {
-        rows.push([String(t.id ?? ''), String(t.autor ?? ''), String(t.fecha ?? ''), String(t.texto ?? '')]);
+        rows.push([String(t.id ?? ''), String(t.autor ?? ''), String(t.fecha ?? ''), texto(t.texto)]);
       }
     }
   } catch {
     // idem
   }
 
-  if (rows.length === 0) {
+  if (rows.length === 0) return null;
+
+  return rows.map((row) => row.map(escaparCelda).join(',')).join('\n');
+}
+
+export function exportToCSV(): void {
+  const cuerpo = construirCSV();
+  if (cuerpo === null) {
     mostrarToast({
       tipo: 'aviso',
       titulo: 'Todavía no hay sesiones que exportar',
@@ -448,8 +460,7 @@ export function exportToCSV(): void {
   }
 
   // Generar CSV con BOM para Excel
-  const BOM = '\uFEFF';
-  const csvContent = BOM + rows.map(row => row.map(escapeCSV).join(',')).join('\n');
+  const csvContent = '\uFEFF' + cuerpo;
 
   // Crear blob y descargar
   const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -483,33 +494,18 @@ interface ParsedCSVRow {
   volumen: number;
   completado: boolean;
   volumenTotalSesion: number;
+  // Columnas añadidas (vacias en un CSV antiguo).
+  idSesion: string;
+  guardada: string;
+  rpeSesion: number | null;
+  excluido: boolean;
+  motivo: 'no_hecho' | 'outlier' | null;
+  rpeEjercicio: number | null;
 }
 
-function parseCSVLine(line: string): string[] {
-  const result: string[] = [];
-  let current = '';
-  let inQuotes = false;
-
-  for (let i = 0; i < line.length; i++) {
-    const char = line[i];
-
-    if (char === '"') {
-      if (inQuotes && line[i + 1] === '"') {
-        current += '"';
-        i++;
-      } else {
-        inQuotes = !inQuotes;
-      }
-    } else if (char === ',' && !inQuotes) {
-      result.push(current.trim());
-      current = '';
-    } else {
-      current += char;
-    }
-  }
-  result.push(current.trim());
-
-  return result;
+/** Una fila -> celdas (las que traen texto libre vuelven sin la neutralizacion). */
+function parseCSVLine(linea: string): string[] {
+  return partirCeldas(linea).map(quitarNeutralizacion);
 }
 
 /** DD/MM/YYYY o D/M/YYYY -> ISO. `null` si la fecha no se puede leer. */
@@ -905,7 +901,8 @@ export function importFromCSV(
         const content = e.target?.result as string;
         // Remover BOM si existe
         const cleanContent = content.replace(/^\uFEFF/, '');
-        const lines = cleanContent.split(/\r?\n/).filter(line => line.trim());
+        // Respeta los saltos de linea dentro de comillas (mensajes del coach).
+        const lines = partirEnRegistros(cleanContent);
 
         if (lines.length < 2) {
           reject(new Error('El archivo CSV está vacío o no tiene datos'));
@@ -983,6 +980,13 @@ export function importFromCSV(
               volumen: parseFloat(values[8]) || 0,
               completado: values[9]?.toLowerCase() === 'sí' || values[9]?.toLowerCase() === 'si',
               volumenTotalSesion: parseFloat(values[10]) || 0,
+              idSesion: (values[11] ?? '').trim(),
+              guardada: (values[12] ?? '').trim(),
+              rpeSesion: values[13] && Number.isFinite(Number(values[13])) ? Number(values[13]) : null,
+              excluido: (values[14] ?? '').trim().toLowerCase() === 'sí',
+              motivo:
+                values[15] === 'no_hecho' || values[15] === 'outlier' ? values[15] : null,
+              rpeEjercicio: values[16] && Number.isFinite(Number(values[16])) ? Number(values[16]) : null,
             });
           }
         }
@@ -993,7 +997,7 @@ export function importFromCSV(
         rows.forEach(row => {
           const iso = parseSpanishDate(row.fecha);
           if (!iso) return;
-          const key = claveDeSesion(iso, row.grupo);
+          const key = row.idSesion ? `id:${row.idSesion}` : claveDeSesion(iso, row.grupo);
           if (!sessionMap.has(key)) {
             sessionMap.set(key, []);
           }
@@ -1003,7 +1007,10 @@ export function importFromCSV(
         // Construir sesiones
         const existingHistory = getHistory();
         const existingKeys = new Set(
-          existingHistory.map((s) => claveDeSesion(s.savedAt || s.date, s.grupo))
+          existingHistory.flatMap((s) => [
+            claveDeSesion(s.savedAt || s.date, s.grupo),
+            ...(s.sessionId ? [`id:${s.sessionId}`] : []),
+          ])
         );
 
         const newSessions: import('@/types').HistorySession[] = [];
@@ -1036,14 +1043,15 @@ export function importFromCSV(
           // Calcular volumen por grupo muscular
           const volumenPorGrupo: Record<string, number> = {};
           sessionRows.forEach(row => {
+            if (row.excluido) return; // una serie excluida no suma
             const grupo = row.grupoMuscular;
             volumenPorGrupo[grupo] = (volumenPorGrupo[grupo] || 0) + row.volumen;
           });
 
           const session: import('@/types').HistorySession = {
-            date: isoDate,
-            savedAt: isoDate,
-            sessionId: `imported_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+            date: firstRow.guardada && !Number.isNaN(new Date(firstRow.guardada).getTime()) ? claveDiaLima(new Date(firstRow.guardada)) : isoDate,
+            savedAt: firstRow.guardada && !Number.isNaN(new Date(firstRow.guardada).getTime()) ? firstRow.guardada : isoDate,
+            sessionId: firstRow.idSesion || `imported_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
             grupo: firstRow.grupo,
             type: 'weights',
             // La suma de las filas, SIEMPRE. `volumenTotalSesion` es el total
@@ -1051,7 +1059,7 @@ export function importFromCSV(
             // sesiones del mismo grupo el mismo dia caen en el mismo grupo y
             // la fusionada declaraba 4.000 kg donde el usuario levanto 8.800.
             // Esa es la cifra grande de HI-02 y la que alimenta el heatmap.
-            volumenTotal: sessionRows.reduce((sum, r) => sum + r.volumen, 0),
+            volumenTotal: sessionRows.reduce((sum, r) => sum + (r.excluido ? 0 : r.volumen), 0),
             volumenPorGrupo,
             ejercicios: sessionRows.map(row => ({
               nombre: row.ejercicio,
@@ -1062,7 +1070,10 @@ export function importFromCSV(
               grupoMuscular: row.grupoMuscular as import('@/types').MuscleGroup,
               volumen: row.volumen,
               completado: row.completado,
+              ...(row.excluido ? { excluido: true, ...(row.motivo ? { motivoExclusion: row.motivo } : {}) } : {}),
+              ...(row.rpeEjercicio !== null ? { rpe: row.rpeEjercicio } : {}),
             })),
+            ...(firstRow.rpeSesion !== null ? { rpe: { value: firstRow.rpeSesion, label: '' } } : {}),
           };
 
           newSessions.push(session);

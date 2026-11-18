@@ -37,7 +37,7 @@ import {
   updateCoachOnExerciseComplete,
 } from '@/features/coach';
 import { getPRs, getHistory, getDraft } from '@/utils/storage';
-import { setExerciseRPE, sessionId, registrarPRConfirmado } from '@/state/session';
+import { setExerciseRPE, sessionId, registrarPRConfirmado, registrarRPEDeSesionGuardada } from '@/state/session';
 import { pesoSospechoso } from '@/features/coach-estado';
 import { processCompletedSession } from '@/features/gamification';
 
@@ -680,6 +680,9 @@ async function preguntarRPEYCerrar(): Promise<void> {
       avisarGuardadoFallido();
       return;
     }
+  } else if (rpeData) {
+    // La sesion ya estaba guardada y sin cambios: el RPE se anota en ella.
+    registrarRPEDeSesionGuardada(rpeData);
   }
   if (hasSessionData) {
     await processAndShowGamification(rpeData);

@@ -9,6 +9,8 @@ import {
   addToHistory,
   updatePR,
   getPR,
+  getHistory,
+  saveHistory,
 } from '@/utils/storage';
 import { calculateVolume, calculateVolumenPorGrupo } from '@/utils/calculations';
 
@@ -305,6 +307,21 @@ export function saveCurrentSession(rpe?: RPEData): 'new' | 'updated' | 'error' {
   clearDraft();
 
   return isUpdate ? 'updated' : 'new';
+}
+
+/**
+ * El RPE de la sesion cuando la sesion YA estaba guardada y no hay cambios que
+ * guardar: sin esto el valor elegido en la hoja de cierre se perdia (solo
+ * `saveCurrentSession` lo escribia). Devuelve false si no hay sesion guardada
+ * que anotar o la escritura fallo.
+ */
+export function registrarRPEDeSesionGuardada(rpe: RPEData): boolean {
+  if (!sessionId) return false;
+  const historial = getHistory();
+  const sesion = historial.find((h) => h.sessionId === sessionId);
+  if (!sesion) return false;
+  (sesion as { rpe?: RPEData }).rpe = rpe;
+  return saveHistory(historial);
 }
 
 export function endSession(): void {

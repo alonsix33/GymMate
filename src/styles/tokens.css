@@ -21,6 +21,7 @@
   --carbon-500: #3e4552; /* bordes de botón secundario */
   --carbon-400: #5a6270; /* texto deshabilitado */
   --carbon-300: #7e8694; /* texto secundario */
+  --carbon-350: #77808e; /* texto apagado LEGIBLE: 4.7:1 sobre cards (carbon-400 da 3.0:1) */
   --carbon-200: #a8aeb9; /* texto terciario claro */
   --carbon-100: #cdd1d9;
   --carbon-50: #ebedf0; /* texto principal */
@@ -162,7 +163,10 @@
   --text-primary: var(--carbon-50);
   --text-secondary: var(--carbon-300);
   --text-tertiary: var(--carbon-200);
-  --text-disabled: var(--carbon-400);
+  /* El mockup pinta este texto con carbon-400 (3.0:1). Se sube a carbon-350
+     (4.7:1) porque es el color de las etiquetas inactivas, no solo de los
+     controles deshabilitados. */
+  --text-disabled: var(--carbon-350);
 
   --accent: var(--fragua-500);
   --accent-hover: var(--fragua-400);

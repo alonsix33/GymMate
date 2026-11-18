@@ -1,4 +1,4 @@
-import { claveDiaDe, hoyLocal } from '@/utils/fecha';
+import { claveDiaDe, claveDiaLima, hoyLocal } from '@/utils/fecha';
 import { partirEnRegistros, partirCeldas, neutralizarFormula, quitarNeutralizacion, escaparCelda } from '@/utils/csv';
 import type { HistorySession } from '@/types';
 import { cifra } from '@/utils/formato';
@@ -1049,7 +1049,7 @@ export function importFromCSV(
           });
 
           const session: import('@/types').HistorySession = {
-            date: firstRow.guardada ? firstRow.guardada.slice(0, 10) : isoDate,
+            date: firstRow.guardada && !Number.isNaN(new Date(firstRow.guardada).getTime()) ? claveDiaLima(new Date(firstRow.guardada)) : isoDate,
             savedAt: firstRow.guardada && !Number.isNaN(new Date(firstRow.guardada).getTime()) ? firstRow.guardada : isoDate,
             sessionId: firstRow.idSesion || `imported_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
             grupo: firstRow.grupo,

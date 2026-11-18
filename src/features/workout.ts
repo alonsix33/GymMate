@@ -13,6 +13,7 @@ import {
   hasUnsavedData,
   hasUnsavedChanges,
   setOnDraftSavedCallback,
+  setOnDraftFailedCallback,
   resetSession,
 } from '@/state/session';
 import {
@@ -498,6 +499,15 @@ function actualizarAutosave(): void {
   el.textContent = horaDelAutosave ? `CAMBIOS GUARDADOS · ${horaDelAutosave}` : '';
 }
 
+/** El autoguardado fallo: la marca de "CAMBIOS GUARDADOS · HH:MM" de un guardado
+ *  anterior ya NO es verdad para lo ultimo que se tecleo. */
+export function marcarAutosaveFallido(): void {
+  horaDelAutosave = null;
+  const el = document.getElementById('fierroAutosave');
+  if (el) el.textContent = 'NO SE PUDO GUARDAR';
+  updateUnsavedIndicator();
+}
+
 export function showSavedIndicator(): void {
   const ahora = new Date();
   horaDelAutosave = `${String(ahora.getHours()).padStart(2, '0')}:${String(
@@ -539,9 +549,28 @@ async function confirmarPesosSospechosos(): Promise<boolean> {
   return true;
 }
 
+/**
+ * El aviso de que NO se guardo. Tiene que ser imposible de confundir con el de
+ * exito, y decir que hacer: el almacenamiento del telefono esta lleno.
+ */
+export function avisarGuardadoFallido(): void {
+  mostrarToast({
+    tipo: 'aviso',
+    titulo: 'No se pudo guardar',
+    detalle:
+      'El almacenamiento del teléfono está lleno. Tu entrenamiento sigue aquí: exporta tu historial ' +
+      '(Perfil → Exportar todo) y libera espacio antes de salir.',
+    duracion: 12000,
+  });
+}
+
 export async function saveWorkout(): Promise<void> {
   if (!(await confirmarPesosSospechosos())) return;
   const result = saveCurrentSession();
+  if (result === 'error') {
+    avisarGuardadoFallido();
+    return;
+  }
   mostrarToast({
     tipo: 'exito',
     titulo: result === 'updated' ? 'Entrenamiento actualizado' : 'Entrenamiento guardado',
@@ -645,7 +674,12 @@ async function preguntarRPEYCerrar(): Promise<void> {
     elegido === null ? undefined : { value: elegido, label: RPE_LABELS[elegido] ?? '' };
 
   if (pendingSaveBeforeRPE) {
-    saveCurrentSession(rpeData);
+    // Si no se pudo guardar NO se cierra la sesion: `endSession` borra el
+    // borrador y la pagina se recarga, o sea que se perderia el entrenamiento.
+    if (saveCurrentSession(rpeData) === 'error') {
+      avisarGuardadoFallido();
+      return;
+    }
   }
   if (hasSessionData) {
     await processAndShowGamification(rpeData);
@@ -701,4 +735,15 @@ async function processAndShowGamification(rpe?: RPEData): Promise<void> {
 // Register callback to update indicator when draft is auto-saved
 setOnDraftSavedCallback(() => {
   showSavedIndicator();
+});
+
+// Y cuando NO se pudo: una vez por minuto como mucho (el autoguardado insiste
+// con cada cambio y el aviso no debe taparle la pantalla).
+let ultimoAvisoDeBorrador = 0;
+setOnDraftFailedCallback(() => {
+  marcarAutosaveFallido();
+  const ahora = Date.now();
+  if (ahora - ultimoAvisoDeBorrador < 60000) return;
+  ultimoAvisoDeBorrador = ahora;
+  avisarGuardadoFallido();
 });

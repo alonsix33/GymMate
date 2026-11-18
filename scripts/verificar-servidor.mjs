@@ -454,8 +454,53 @@ const cab = (r, n) => r.headers.get(n);
   }
 }
 
+// ==========================================================================
+// D. La copia: versiones y proteccion contra sobrescribir con una mas pequeña
+// ==========================================================================
+{
+  const s = await levantar(4734);
+  const cabeceras = { Authorization: `Bearer ${TOKEN}`, 'Content-Type': 'application/json' };
+  const subir = (datos, query = '') =>
+    fetch(`${s.base}/api/datos${query}`, { method: 'PUT', headers: cabeceras, body: JSON.stringify({ datos }) });
+  const copia = (n, p) => ({ gymmate_history: Array.from({ length: n }, (_, i) => ({ sessionId: `${p}${i}` })) });
+  try {
+    const primera = await subir(copia(12, 'a'));
+    chk('copia · la primera subida se guarda', primera.status === 200, `codigo ${primera.status}`);
+
+    const vacia = await subir({});
+    const cuerpo = await vacia.json().catch(() => ({}));
+    chk('copia · un telefono VACIO no pisa la copia buena (409)', vacia.status === 409, `codigo ${vacia.status}`);
+    chk('copia · y el 409 dice cuantas sesiones hay de cada lado',
+      cuerpo.actual?.sesiones === 12 && cuerpo.nueva?.sesiones === 0, JSON.stringify(cuerpo));
+
+    const intacta = await (await fetch(`${s.base}/api/datos`, { headers: cabeceras })).json();
+    chk('copia · la copia buena sigue intacta tras el rechazo', intacta.datos?.gymmate_history?.length === 12,
+      String(intacta.datos?.gymmate_history?.length));
+
+    const forzada = await subir({}, '?forzar=1');
+    chk('copia · con ?forzar=1 SI se sube', forzada.status === 200, `codigo ${forzada.status}`);
+
+    const lista = await (await fetch(`${s.base}/api/datos/versiones`, { headers: cabeceras })).json();
+    chk('copia · la sustituida queda archivada como version', lista.versiones?.length === 1 && lista.versiones[0].sesiones === 12,
+      JSON.stringify(lista.versiones));
+
+    const id = lista.versiones?.[0]?.id;
+    const vieja = await (await fetch(`${s.base}/api/datos/versiones/${id}`, { headers: cabeceras })).json();
+    chk('copia · la version se puede recuperar entera', vieja.datos?.gymmate_history?.length === 12,
+      String(vieja.datos?.gymmate_history?.length));
+
+    const sinToken = await fetch(`${s.base}/api/datos/versiones`);
+    chk('copia · las versiones exigen token', sinToken.status === 401, `codigo ${sinToken.status}`);
+
+    const raro = await fetch(`${s.base}/api/datos/versiones/..%2F..%2Fetc%2Fpasswd`, { headers: cabeceras });
+    chk('copia · un id de version raro no sale del directorio', raro.status === 404, `codigo ${raro.status}`);
+  } finally {
+    await s.cerrar();
+  }
+}
+
 console.log(`\n${ejecutados} chequeos de servidor ejecutados`);
-const CHEQUEOS_MINIMO = 54;
+const CHEQUEOS_MINIMO = 62;
 if (ejecutados < CHEQUEOS_MINIMO) {
   fallos++;
   console.log(

@@ -37,7 +37,8 @@ import {
   confirmRPE,
   skipRPE,
 } from '@/features/workout';
-import { initGamification, reinitGamification } from '@/features/gamification';
+import { initGamification, fusionarGamificacion } from '@/features/gamification';
+import { claveDiaLima } from '@/utils/fecha';
 import { guardarBorradorSiHayCambios } from '@/state/session';
 import { iniciarActualizaciones } from '@/pwa-update';
 import { abrirProgreso, cerrarProgreso } from '@/ui/progreso';
@@ -54,7 +55,7 @@ import {
   stopCardioWorkout,
   incrementAmrapRound,
 } from '@/features/cardio';
-import { saveCustomWorkouts, getCustomWorkouts, deleteCustomWorkout } from '@/utils/storage';
+import { saveCustomWorkouts, getCustomWorkouts, deleteCustomWorkout, rescatesPendientes, avisoDeHistorialGrande, getHistory as leerHistorial } from '@/utils/storage';
 
 // ==========================================
 // WORKOUT BUILDER STATE
@@ -190,12 +191,14 @@ window.hideGamificationModal = cerrarProgreso;
 window.recalculateXP = (): void => {
   void confirmarAccion({
     titulo: '¿Recalcular el XP?',
-    cuerpo: 'Se reconstruye desde tu historial completo. No se pierde nada; la app se recarga al terminar.',
+    cuerpo: 'Se actualiza desde tu historial completo. Ninguna cifra baja (XP, mejor racha, hitos); la app se recarga al terminar.',
     cancelar: 'Ahora no',
     confirmar: 'Recalcular',
   }).then((recalcular) => {
     if (!recalcular) return;
-    reinitGamification();
+    // `reinitGamification` rederiva SOLO del historial y baja XP, mejor racha e
+    // hitos si el historial no los respalda: decia "no se pierde nada" y perdia.
+    fusionarGamificacion();
     mostrarToast({ tipo: 'exito', titulo: 'XP recalculado', detalle: 'Recargando…' });
     window.setTimeout(() => window.location.reload(), 900);
   });
@@ -359,6 +362,28 @@ function exponerGanchosDeVerificacion(): void {
   w.__guiaDePrueba = { mostrarGuiaEjercicio };
 }
 
+function avisarHistorialGrande(): void {
+  const n = avisoDeHistorialGrande(claveDiaLima(new Date()));
+  if (n === null) return;
+  mostrarToast({
+    tipo: 'aviso',
+    titulo: `Tu historial ya tiene ${n} sesiones`,
+    detalle: 'Ocupa espacio en el teléfono. Exporta una copia por seguridad (Perfil → Exportar todo).',
+    duracion: 12000,
+  });
+}
+
+function avisarDatosRescatados(): void {
+  const r = rescatesPendientes();
+  if (r.length === 0) return;
+  mostrarToast({
+    tipo: 'aviso',
+    titulo: 'Había datos dañados',
+    detalle: `Se guardó una copia de ${r.map((x) => x.clave.replace('gymmate_', '')).join(', ')} antes de reemplazarlos. Exporta tu historial por seguridad.`,
+    duracion: 15000,
+  });
+}
+
 function init(): void {
   // Al ocultar la app (bloquear la pantalla, cambiar de app) se vuelca el
   // borrador sin esperar al autoguardado: iOS puede suspender la PWA ahi.
@@ -432,10 +457,17 @@ function init(): void {
 }
 
 // Inicializar cuando el DOM esté listo
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', init);
-} else {
+const arrancar = (): void => {
   init();
+  // Las lecturas del arranque ya pasaron: si alguna encontro un dato dañado, se avisa.
+  leerHistorial();
+  avisarDatosRescatados();
+  avisarHistorialGrande();
+};
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', arrancar);
+} else {
+  arrancar();
 }
 
 // El service worker lo registra src/pwa-update.ts: busca version nueva al abrir,

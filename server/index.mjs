@@ -9,7 +9,11 @@
  *   GET  /api/salud   estado del servicio: si hay clave del modelo y si el
  *                     almacenamiento es persistente de verdad.
  *   GET  /api/datos   la ultima copia guardada.
- *   PUT  /api/datos   guarda una copia (el mismo JSON que el CSV, entero).
+ *   PUT  /api/datos   guarda una copia (el mismo JSON que el CSV, entero). Archiva
+ *                     la anterior y RECHAZA (409) una copia con mucho menos
+ *                     contenido que la guardada, salvo ?forzar=1.
+ *   GET  /api/datos/versiones       las copias anteriores.
+ *   GET  /api/datos/versiones/:id   una copia anterior, entera.
  *   POST /api/coach   pregunta al modelo, respondiendo en streaming.
  *   /*                la PWA.
  *
@@ -22,7 +26,7 @@ import { createServer } from 'node:http';
 import { readFile, stat } from 'node:fs/promises';
 import { join, extname, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { iniciarAlmacen, modoAlmacen, leer, guardar } from './almacen.mjs';
+import { iniciarAlmacen, modoAlmacen, leer, guardar, listarVersiones, leerVersion } from './almacen.mjs';
 import { responderCoach, claveDelModelo } from './coach.mjs';
 
 const RAIZ = join(fileURLToPath(new URL('.', import.meta.url)), '..');
@@ -288,8 +292,17 @@ const servidor = createServer(async (req, res) => {
         if (!cuerpo || typeof cuerpo.datos !== 'object' || cuerpo.datos === null) {
           return json(res, 400, { error: 'se esperaba { datos: {...} }' });
         }
-        const r = await guardar(cuerpo.datos);
+        const forzar = new URL(req.url, 'http://x').searchParams.get('forzar') === '1';
+        const r = await guardar(cuerpo.datos, 'yo', { forzar });
         return json(res, 200, { ok: true, ...r });
+      }
+      if (ruta === '/api/datos/versiones' && req.method === 'GET') {
+        return json(res, 200, { versiones: await listarVersiones() });
+      }
+      const versionPedida = ruta.match(/^\/api\/datos\/versiones\/(\d+)$/);
+      if (versionPedida && req.method === 'GET') {
+        const v = await leerVersion(versionPedida[1]);
+        return v ? json(res, 200, v) : json(res, 404, { error: 'esa version no existe' });
       }
       if (ruta === '/api/coach' && req.method === 'POST') {
         return await responderCoach(req, res, await leerCuerpo(req));
@@ -298,7 +311,7 @@ const servidor = createServer(async (req, res) => {
     } catch (e) {
       // El cuerpo demasiado grande tiene su propio codigo: si sale como 500,
       // la app no puede distinguirlo de un fallo del servidor.
-      json(res, e.codigo ?? 500, { error: e.message });
+      json(res, e.codigo ?? 500, { error: e.message, ...(e.detalle ?? {}) });
       // Ya con la respuesta escrita, se corta lo que quede por llegar.
       if (e.cortarDespues) e.cortarDespues.destroy();
       return;

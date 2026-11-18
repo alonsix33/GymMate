@@ -6,7 +6,6 @@ import {
   saveDraft,
   clearDraft,
   getDraft,
-  saveSession,
   addToHistory,
   updatePR,
   getPR,
@@ -33,9 +32,15 @@ export let sessionId: string | null = null;
 
 let draftSaveTimeout: ReturnType<typeof setTimeout> | null = null;
 let onDraftSavedCallback: (() => void) | null = null;
+let onDraftFailedCallback: (() => void) | null = null;
 
 export function setOnDraftSavedCallback(callback: () => void): void {
   onDraftSavedCallback = callback;
+}
+
+/** Se llama cuando el borrador NO se pudo escribir (almacenamiento lleno). */
+export function setOnDraftFailedCallback(callback: () => void): void {
+  onDraftFailedCallback = callback;
 }
 
 // ==========================================
@@ -196,7 +201,13 @@ export function saveDraftNow(): void {
   if (sessionData.ejercicios.length > 0) {
     // Con el sessionId: sin el, reanudar el borrador y guardar creaba una
     // sesion nueva al lado de la ya guardada.
-    saveDraft({ ...sessionData, sessionId: sessionId ?? sessionData.sessionId });
+    const ok = saveDraft({ ...sessionData, sessionId: sessionId ?? sessionData.sessionId });
+    if (!ok) {
+      // Sigue habiendo cambios sin guardar, y la pantalla NO puede decir
+      // "CAMBIOS GUARDADOS": no lo estan.
+      if (onDraftFailedCallback) onDraftFailedCallback();
+      return;
+    }
     hasUnsavedChanges = false;
     // Notify UI to update indicator
     if (onDraftSavedCallback) {
@@ -251,7 +262,12 @@ export function restoreFromDraft(draft: SessionData): void {
 // GUARDAR SESIÓN
 // ==========================================
 
-export function saveCurrentSession(rpe?: RPEData): 'new' | 'updated' {
+/**
+ * 'error' = NO se pudo escribir en el historial (almacenamiento lleno). En ese
+ * caso la sesion NO se da por guardada y el borrador se CONSERVA: es la unica
+ * copia que queda.
+ */
+export function saveCurrentSession(rpe?: RPEData): 'new' | 'updated' | 'error' {
   // Generar sessionId único si no existe
   if (!sessionId) {
     sessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -271,8 +287,15 @@ export function saveCurrentSession(rpe?: RPEData): 'new' | 'updated' {
   // Guardar en history
   const isUpdate =
     sessionSaved && lastSavedData !== null && sessionId !== null;
-  addToHistory(sessionCopy);
-  saveSession(sessionCopy);
+  if (!addToHistory(sessionCopy)) return 'error';
+  // `gymmate_session` duplicaba la sesion entera y NADIE la leia (getSession no
+  // tiene llamadores): solo gastaba cuota. Se libera la copia que dejo la
+  // version anterior.
+  try {
+    localStorage.removeItem('gymmate_session');
+  } catch {
+    // Sin acceso al almacenamiento no hay nada que liberar.
+  }
 
   // Actualizar estado
   markAsSaved();

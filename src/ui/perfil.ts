@@ -1074,13 +1074,27 @@ function alTocarPerfil(el: HTMLElement, contenedor: HTMLElement): void {
     }
 
     case 'subir':
-      void subirCopia().then((r) =>
+      void subirCopia().then(async (r) => {
+        if (r.rechazada) {
+          // El servidor tiene MUCHO mas que este telefono: casi seguro este es el
+          // que esta vacio. Se dice con numeros y se pide confirmar.
+          const igual = await confirmarDestructivo({
+            titulo: 'La copia del servidor tiene más sesiones',
+            cuerpo:
+              `Servidor: ${r.rechazada.guardada} sesiones. Este teléfono: ${r.rechazada.esta}.\n\n` +
+              'Si subes igual, la del servidor no se pierde: queda guardada como versión anterior.',
+            cancelar: 'No subir',
+            confirmar: 'Subir igual',
+          });
+          if (!igual) return;
+          r = await subirCopia({ forzar: true });
+        }
         mostrarToast(
           r.ok
             ? { tipo: 'exito' as const, titulo: 'Copia subida' }
             : { tipo: 'aviso' as const, titulo: 'No se pudo subir la copia', detalle: r.error }
-        )
-      );
+        );
+      });
       break;
 
     case 'bajar':
@@ -1098,7 +1112,13 @@ function alTocarPerfil(el: HTMLElement, contenedor: HTMLElement): void {
         }
         const { fusionarGamificacion } = await import('@/features/gamification');
         fusionarGamificacion();
-        mostrarToast({ tipo: 'exito', titulo: `Restaurado · ${r.claves} bloques`, detalle: 'Recargando…' });
+        mostrarToast({
+          tipo: r.omitidas?.length ? 'aviso' : 'exito',
+          titulo: `Restaurado · ${r.claves} bloques`,
+          detalle: r.omitidas?.length
+            ? `Se omitieron ${r.omitidas.length} con formato inválido (${r.omitidas.join(', ')}). Recargando…`
+            : 'Recargando…',
+        });
         window.setTimeout(() => window.location.reload(), 900);
       });
       break;

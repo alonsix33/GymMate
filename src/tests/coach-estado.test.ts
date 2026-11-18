@@ -233,7 +233,7 @@ describe('corregir un record que es un error (el 450 que solo vivia en RECORDS)'
 });
 
 describe('la marca [[excluir|...]] del coach', () => {
-  beforeEach(() => saveHistory([ses('2026-11-13', 'G4', [ej('Abdominales en Máquina', 4, 15, 63, 'Core'), ej('Jalón al Pecho', 4, 10, 55)])]));
+  beforeEach(() => { saveHistory([ses('2026-11-13', 'G4', [ej('Abdominales en Máquina', 4, 15, 63, 'Core'), ej('Jalón al Pecho', 4, 10, 55)])]); });
   it('se oculta del texto y resuelve "vie 13 nov" contra el registro', () => {
     const r = parsearMarcaDeExclusion('Entendido, ¿lo marco como no hecho?\n[[excluir|Abdominales en Máquina|vie 13 nov]]');
     expect(r.limpio).toBe('Entendido, ¿lo marco como no hecho?');

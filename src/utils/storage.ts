@@ -1,5 +1,5 @@
 import { claveDiaDe, claveDiaDeSesion } from '@/utils/fecha';
-import { STORAGE_KEYS, MAX_HISTORY_ITEMS } from '@/constants';
+import { STORAGE_KEYS, AVISAR_HISTORIAL_EN } from '@/constants';
 import type {
   SessionData,
   PRData,
@@ -18,20 +18,118 @@ import {
 // WRAPPER PARA LOCALSTORAGE
 // ==========================================
 
-function getItem<T>(key: string, defaultValue: T): T {
+// ==========================================
+// FORMAS VALIDAS Y RESCATE DE DATOS DANADOS
+// ==========================================
+
+/** La forma que DEBE tener lo guardado en cada clave. */
+export type Forma = 'lista' | 'objeto' | 'objeto_o_nulo';
+
+export const FORMA_DE_CLAVE: Record<string, Forma> = {
+  gymmate_history: 'lista',
+  gymmate_prs: 'objeto',
+  gymmate_profile: 'objeto',
+  gymmate_draft: 'objeto_o_nulo',
+  gymmate_session: 'objeto_o_nulo',
+  gymmate_custom_workouts: 'lista',
+  gymmate_custom_exercises: 'lista',
+  gymmate_body_measurements: 'lista',
+  gymmate_gamification: 'objeto',
+  gymmate_coach_conversacion: 'lista',
+};
+
+export function formaValida(valor: unknown, forma: Forma): boolean {
+  if (forma === 'lista') return Array.isArray(valor);
+  const esObjeto = typeof valor === 'object' && valor !== null && !Array.isArray(valor);
+  return forma === 'objeto' ? esObjeto : esObjeto || valor === null;
+}
+
+export interface Rescate {
+  clave: string;
+  copia: string;
+  motivo: 'ilegible' | 'forma';
+}
+
+/** Lo que se rescato en esta sesion, para avisarle al usuario UNA vez. */
+const rescates: Rescate[] = [];
+
+export function rescatesPendientes(): Rescate[] {
+  return rescates.splice(0, rescates.length);
+}
+
+/** Cuantas copias de un mismo dato danado se conservan: no llenar la cuota. */
+const MAX_RESCATES_POR_CLAVE = 3;
+
+/**
+ * Antes de descartar un valor danado, se COPIA a `<clave>__corrupto_<marca>`.
+ *
+ * Sin esto el siguiente guardado sobrescribia la cadena ilegible, que a veces
+ * era recuperable (un JSON cortado a la mitad por una cuota llena), y un `"null"`
+ * guardado rompia `getHistory()` con "Cannot read properties of null".
+ */
+function rescatar(clave: string, crudo: string, motivo: Rescate['motivo']): void {
   try {
-    const item = localStorage.getItem(key);
-    return item ? JSON.parse(item) : defaultValue;
+    const prefijo = `${clave}__corrupto_`;
+    const previas: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k?.startsWith(prefijo)) previas.push(k);
+    }
+    // El mismo contenido ya rescatado: no se duplica en cada lectura.
+    if (previas.some((k) => localStorage.getItem(k) === crudo)) return;
+    previas.sort();
+    while (previas.length >= MAX_RESCATES_POR_CLAVE) localStorage.removeItem(previas.shift() as string);
+    const copia = `${prefijo}${Date.now()}`;
+    localStorage.setItem(copia, crudo);
+    rescates.push({ clave, copia, motivo });
   } catch {
-    return defaultValue;
+    // Sin sitio para la copia: aun asi se devuelve el valor por defecto; lo
+    // contrario seria romper la app por un dato que ya estaba roto.
   }
 }
 
-function setItem<T>(key: string, value: T): void {
+function getItem<T>(key: string, defaultValue: T): T {
+  let crudo: string | null = null;
+  try {
+    crudo = localStorage.getItem(key);
+  } catch {
+    return defaultValue;
+  }
+  if (crudo === null || crudo === '') return defaultValue;
+  let valor: unknown;
+  try {
+    valor = JSON.parse(crudo);
+  } catch {
+    rescatar(key, crudo, 'ilegible');
+    return defaultValue;
+  }
+  const forma = FORMA_DE_CLAVE[key];
+  if (forma && !formaValida(valor, forma)) {
+    // "null", "{}" donde va una lista, "[]" donde va un objeto...
+    if (!(forma === 'objeto_o_nulo' && valor === null)) {
+      rescatar(key, crudo, 'forma');
+      return defaultValue;
+    }
+  }
+  return (valor === null ? defaultValue : valor) as T;
+}
+
+/**
+ * Devuelve si de verdad se escribio.
+ *
+ * Tragarse el `QuotaExceededError` en silencio era la peor combinacion posible:
+ * el guardado fallaba y la pantalla decia "Entrenamiento guardado". Con el
+ * historial, los PRs, el borrador y la conversacion del coach, la cuota llena
+ * es el escenario normal de una PWA de uso diario. Quien guarda algo que el
+ * usuario no puede perder TIENE que mirar este valor.
+ */
+function setItem<T>(key: string, value: T): boolean {
   try {
     localStorage.setItem(key, JSON.stringify(value));
+    return true;
   } catch (error) {
     console.error(`Error saving to localStorage: ${key}`, error);
+    return false;
   }
 }
 
@@ -66,12 +164,26 @@ export function getHistory(): HistorySession[] {
   return history;
 }
 
-export function saveHistory(history: HistorySession[]): void {
-  // Mantener solo los últimos MAX_HISTORY_ITEMS
-  if (history.length > MAX_HISTORY_ITEMS) {
-    history.length = MAX_HISTORY_ITEMS;
+/** NO recorta ni toca el arreglo del llamador: lo que llega es lo que se guarda. */
+export function saveHistory(history: HistorySession[]): boolean {
+  return setItem(STORAGE_KEYS.HISTORY, history);
+}
+
+/**
+ * Cuantas sesiones hay si el historial ya esta grande, y solo UNA vez al dia.
+ * Sin tope no hay perdida silenciosa; esto da tiempo a exportar antes de que
+ * el teléfono se quede sin sitio.
+ */
+export function avisoDeHistorialGrande(hoy: string): number | null {
+  const n = getHistory().length;
+  if (n < AVISAR_HISTORIAL_EN) return null;
+  try {
+    if (localStorage.getItem('gymmate_aviso_historial') === hoy) return null;
+    localStorage.setItem('gymmate_aviso_historial', hoy);
+  } catch {
+    // Sin sitio para recordar el aviso: se da igual.
   }
-  setItem(STORAGE_KEYS.HISTORY, history);
+  return n;
 }
 
 /**
@@ -84,7 +196,9 @@ function soloLoConfirmado<T extends { volumen?: number; completado?: boolean }>(
   return ejercicios.filter((e) => (e.volumen ?? 0) > 0 || e.completado === true);
 }
 
-export function addToHistory(session: HistorySession): void {
+/** Devuelve false si NO se pudo escribir (almacenamiento lleno): el llamador
+ *  no debe dar la sesion por guardada ni borrar su borrador. */
+export function addToHistory(session: HistorySession): boolean {
   // Normalizar nombres de ejercicios antes de guardar
   const normalizedSession = {
     ...session,
@@ -126,7 +240,7 @@ export function addToHistory(session: HistorySession): void {
     history.unshift(normalizedSession);
   }
 
-  saveHistory(history);
+  return saveHistory(history);
 }
 
 export function deleteFromHistory(index: number): void {
@@ -158,15 +272,15 @@ export function getPRs(): Record<string, PRData> {
   return prs;
 }
 
-export function savePRs(prs: Record<string, PRData>): void {
-  setItem(STORAGE_KEYS.PRS, prs);
+export function savePRs(prs: Record<string, PRData>): boolean {
+  return setItem(STORAGE_KEYS.PRS, prs);
 }
 
-export function updatePR(exerciseName: string, prData: PRData): void {
+export function updatePR(exerciseName: string, prData: PRData): boolean {
   const normalizedName = normalizeExerciseName(exerciseName);
   const prs = getPRs();
   prs[normalizedName] = prData;
-  savePRs(prs);
+  return savePRs(prs);
 }
 
 export function getPR(exerciseName: string): PRData | null {
@@ -183,8 +297,8 @@ export function getProfile(): Partial<ProfileData> {
   return getItem<Partial<ProfileData>>(STORAGE_KEYS.PROFILE, {});
 }
 
-export function saveProfile(profile: ProfileData): void {
-  setItem(STORAGE_KEYS.PROFILE, profile);
+export function saveProfile(profile: ProfileData): boolean {
+  return setItem(STORAGE_KEYS.PROFILE, profile);
 }
 
 // ==========================================
@@ -200,13 +314,13 @@ export function getDraft(): DraftData | null {
   return getItem<DraftData | null>(STORAGE_KEYS.DRAFT, null);
 }
 
-export function saveDraft(session: SessionData): void {
+export function saveDraft(session: SessionData): boolean {
   const draft: DraftData = {
     ...session,
     draftSavedAt: new Date().toISOString(),
     draftTimestamp: Date.now(),
   };
-  setItem(STORAGE_KEYS.DRAFT, draft);
+  return setItem(STORAGE_KEYS.DRAFT, draft);
 }
 
 export function clearDraft(): void {
@@ -221,8 +335,8 @@ export function getSession(): SessionData | null {
   return getItem<SessionData | null>(STORAGE_KEYS.SESSION, null);
 }
 
-export function saveSession(session: SessionData): void {
-  setItem(STORAGE_KEYS.SESSION, session);
+export function saveSession(session: SessionData): boolean {
+  return setItem(STORAGE_KEYS.SESSION, session);
 }
 
 export function clearSession(): void {
@@ -243,8 +357,8 @@ export function getCustomWorkouts(): CustomWorkout[] {
   return getItem<CustomWorkout[]>(STORAGE_KEYS.CUSTOM_WORKOUTS, []);
 }
 
-export function saveCustomWorkouts(workouts: CustomWorkout[]): void {
-  setItem(STORAGE_KEYS.CUSTOM_WORKOUTS, workouts);
+export function saveCustomWorkouts(workouts: CustomWorkout[]): boolean {
+  return setItem(STORAGE_KEYS.CUSTOM_WORKOUTS, workouts);
 }
 
 export function addCustomWorkout(workout: CustomWorkout): void {
@@ -304,8 +418,8 @@ export function getBodyMeasurements(): BodyMeasurement[] {
   return getItem<BodyMeasurement[]>(BODY_MEASUREMENTS_KEY, []);
 }
 
-export function saveBodyMeasurements(measurements: BodyMeasurement[]): void {
-  setItem(BODY_MEASUREMENTS_KEY, measurements);
+export function saveBodyMeasurements(measurements: BodyMeasurement[]): boolean {
+  return setItem(BODY_MEASUREMENTS_KEY, measurements);
 }
 
 export function addBodyMeasurement(measurement: BodyMeasurement): void {

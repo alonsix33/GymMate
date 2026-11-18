@@ -328,12 +328,25 @@ export function initializeNavigation(): void {
     });
   });
 
-  // FAB button - open workout builder to create custom routine
+  // El "+" central: empezar a entrenar (o continuar), no solo crear una rutina.
+  // Crear una rutina sigue estando, al final de la hoja.
   const fabButton = document.getElementById('fabButton');
   fabButton?.addEventListener('click', () => {
-    // Use window to access the function from main.ts
-    if (typeof (window as any).openWorkoutBuilder === 'function') {
-      (window as any).openWorkoutBuilder();
-    }
+    void import('@/ui/inicio-rapido').then(({ abrirMas }) =>
+      abrirMas({
+        continuar: () => resumeDraft(),
+        empezar: (id) =>
+          void import('@/features/workout')
+            .then(({ loadTrainingGroup }) => loadTrainingGroup(id))
+            .then((cargada) => cargada && switchTab('workout')),
+        elegir: () => {
+          switchTab('home');
+          requestAnimationFrame(() =>
+            document.querySelector('[aria-label="Rutinas"]')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+          );
+        },
+        nueva: () => (window as any).openWorkoutBuilder?.(),
+      })
+    );
   });
 }

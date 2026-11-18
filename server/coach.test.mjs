@@ -455,3 +455,23 @@ describe('armarMensajes — REVISION DE HOY ya comparada por la app', () => {
     expect(t).not.toContain('REVISION DE HOY');
   });
 });
+
+describe('SISTEMA — voz en positivo, avisos y las palabras del panorama', () => {
+  it('describe como habla en positivo: reconoce con el dato y no reprocha', () => {
+    expect(SISTEMA).toMatch(/Estás de su lado, y se nota en el dato/);
+    expect(SISTEMA).toMatch(/son datos, no culpas/);
+  });
+  it('explica los AVISOS DE LA APP y la REVISION DE HOY', () => {
+    expect(SISTEMA).toMatch(/AVISOS DE LA APP/);
+    expect(SISTEMA).toMatch(/sin negarla\s+ni decir que "no es tuya"/);
+    expect(SISTEMA).toMatch(/REVISIÓN DE HOY/);
+  });
+  it('separa "pico" de "ahora" (el "venias en 40; es tu pico" que no era el pico)', () => {
+    expect(SISTEMA).toMatch(/"pico" es el mayor peso real/);
+    expect(SISTEMA).toMatch(/el peso de ahora NO es su pico/);
+  });
+  it('conserva la regla de responder primero y de ser corto', () => {
+    expect(SISTEMA).toMatch(/Responde PRIMERO/);
+    expect(SISTEMA).toMatch(/de dos a cinco frases/);
+  });
+});

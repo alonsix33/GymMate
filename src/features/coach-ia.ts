@@ -23,6 +23,7 @@ import {
 } from '@/utils/zonas';
 import { estimateOneRM, getStreakInfo } from '@/features/gamification';
 import { unaRepMaxPromedio } from '@/utils/calculations';
+import { esSerieValida } from '@/utils/series';
 import { trainingGroups } from '@/data/training-groups';
 import {
   claveDiaDeSesion,
@@ -214,7 +215,7 @@ export function datosDelEjercicio(
 function repsDeLaSerieActual(nombre: string, historial: HistorySession[], peso: number): number {
   for (const sesion of historial) {
     for (const ej of sesion.ejercicios ?? []) {
-      if (ej.nombre === nombre && ej.peso === peso) return ej.reps || 1;
+      if (ej.nombre === nombre && ej.peso === peso && esSerieValida(ej)) return ej.reps || 1;
     }
   }
   return 1;
@@ -435,7 +436,7 @@ function unaRepMaxDeLaMejorSerie(nombre: string, historial: HistorySession[]): n
   let mejorReps = 0;
   for (const s of historial) {
     for (const e of s.ejercicios ?? []) {
-      if (e.nombre !== nombre || !(e.peso > 0)) continue;
+      if (e.nombre !== nombre || !(e.peso > 0) || !esSerieValida(e)) continue;
       if (e.peso > mejorPeso || (e.peso === mejorPeso && e.reps > mejorReps)) {
         mejorPeso = e.peso;
         mejorReps = e.reps;

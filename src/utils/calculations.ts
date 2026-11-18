@@ -2,6 +2,7 @@ import { LOWER_BODY_KEYWORDS } from '@/constants';
 import type { ExerciseData, MuscleGroup, OneRMResult, ProgressiveResult } from '@/types';
 import { getHistory, getPR } from './storage';
 import { normalizeExerciseName, isSameExercise } from './exercise-normalizer';
+import { esSerieValida } from './series';
 import { getExerciseInfo, allExercises } from '@/data/exercises';
 
 // ==========================================
@@ -24,7 +25,7 @@ export function calculateVolumenPorGrupo(
   const volumenPorGrupo: Record<string, number> = {};
 
   ejercicios.forEach((ej) => {
-    if (ej.volumen > 0) {
+    if (esSerieValida(ej)) {
       const grupo = ej.grupoMuscular;
       if (!volumenPorGrupo[grupo]) {
         volumenPorGrupo[grupo] = 0;
@@ -54,7 +55,7 @@ export function calculate1RM(exerciseName: string): OneRMResult | null {
   history.forEach((session) => {
     if (session.ejercicios && Array.isArray(session.ejercicios)) {
       const exercise = session.ejercicios.find(
-        (ej) => isSameExercise(ej.nombre, normalizedName)
+        (ej) => esSerieValida(ej) && isSameExercise(ej.nombre, normalizedName)
       );
       if (exercise && exercise.peso > 0) {
         if (
@@ -194,7 +195,7 @@ function mejorPesoDelHistorial(exerciseName: string): number {
   let mejor = 0;
   for (const sesion of getHistory()) {
     for (const ej of sesion.ejercicios ?? []) {
-      if (isSameExercise(ej.nombre, normalizado) && ej.peso > mejor) mejor = ej.peso;
+      if (esSerieValida(ej) && isSameExercise(ej.nombre, normalizado) && ej.peso > mejor) mejor = ej.peso;
     }
   }
   return mejor;

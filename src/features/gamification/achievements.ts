@@ -10,6 +10,7 @@ import type {
 } from '@/types/gamification';
 import type { HistorySession, PRData } from '@/types';
 import { ACHIEVEMENT_DEFINITIONS, RANK_ORDER } from './constants';
+import { seriesValidas } from '@/utils/series';
 
 /**
  * Inicializa todos los logros como no desbloqueados
@@ -52,7 +53,7 @@ export function countUniqueExercises(history: HistorySession[]): number {
   const exercises = new Set<string>();
   for (const session of history) {
     if (session.ejercicios) {
-      for (const ej of session.ejercicios) {
+      for (const ej of seriesValidas(session.ejercicios)) {
         exercises.add(ej.nombre.toLowerCase());
       }
     }

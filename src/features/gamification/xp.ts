@@ -3,6 +3,7 @@
 // ==========================================
 
 import { claveDiaLocal, fechaDeClaveLocal } from '@/utils/fecha';
+import { esSerieValida } from '@/utils/series';
 import type {
   XPSource,
   XPTransaction,
@@ -322,7 +323,7 @@ export function createXPTransaction(
  */
 export function calculateSessionVolume(ejercicios: ExerciseData[]): number {
   return ejercicios.reduce((total, ej) => {
-    if (ej.completado && ej.peso > 0 && ej.sets > 0 && ej.reps > 0) {
+    if (esSerieValida(ej) && ej.completado && ej.peso > 0 && ej.sets > 0 && ej.reps > 0) {
       // Para mancuernas, el peso ya esta multiplicado por 2 en el sistema
       return total + ej.volumen;
     }

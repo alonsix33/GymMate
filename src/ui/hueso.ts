@@ -12,6 +12,7 @@ import { SIN_FECHA } from '@/utils/fecha';
 import { getHistory, getPRs } from '@/utils/storage';
 import { prsDescartados, prsVigentes } from '@/features/coach-estado';
 import { cifra, cifraDecimal, escapar } from '@/utils/formato';
+import { esSerieValida, seriesValidas } from '@/utils/series';
 import { formatearTiempo } from '@/utils/cardio-calc';
 import { calculate1RM, unaRepMaxPromedio } from '@/utils/calculations';
 import { getSessionXP, estimateOneRM } from '@/features/gamification';
@@ -138,7 +139,7 @@ function filaDeSesion(sesion: HistorySession, indice: number): string {
       </button>
     `;
   }
-  const cuantos = (sesion.ejercicios ?? []).filter((e) => e.volumen > 0).length;
+  const cuantos = seriesValidas(sesion.ejercicios).length;
   // "Piernas + Glúteos", no "GRUPO 1 - Piernas + Glúteos": el prefijo de
   // grupo no aporta nada en una lista y roba la mitad de la linea.
   const nombre = partirNombreDeGrupo(sesion.grupo || 'Sesión').titulo;
@@ -381,7 +382,7 @@ function renderDetalle(historial: HistorySession[], indice: number): string {
     anterior && (anterior.volumenTotal || 0) > 0
       ? Math.round(((volumen - anterior.volumenTotal) / anterior.volumenTotal) * 100)
       : null;
-  const sets = (sesion.ejercicios ?? []).reduce((t, e) => t + (e.sets || 0), 0);
+  const sets = seriesValidas(sesion.ejercicios).reduce((t, e) => t + (e.sets || 0), 0);
   const xp = getSessionXP(sesion.sessionId);
 
   const metricas = `
@@ -415,8 +416,7 @@ function renderDetalle(historial: HistorySession[], indice: number): string {
     </div>
   `;
 
-  const cards = (sesion.ejercicios ?? [])
-    .filter((e) => e.volumen > 0)
+  const cards = seriesValidas(sesion.ejercicios)
     .map((e) => cardDeEjercicio(e, historial, indice))
     .join('');
 
@@ -733,7 +733,7 @@ export function ejerciciosDelHistorial(historial: HistorySession[]): string[] {
   for (const sesion of historial) {
     if (sesion.type === 'cardio') continue;
     for (const e of sesion.ejercicios ?? []) {
-      if (e.volumen > 0 && !vistos.includes(e.nombre)) vistos.push(e.nombre);
+      if (esSerieValida(e) && !vistos.includes(e.nombre)) vistos.push(e.nombre);
     }
   }
   return vistos;

@@ -742,7 +742,8 @@ function importarRecords(filas: string[]): number {
     };
     entraron++;
   }
-  if (entraron > 0) savePRs(actuales);
+  // Si no se pudieron escribir, no se cuentan como importados.
+  if (entraron > 0 && !savePRs(actuales)) return 0;
   return entraron;
 }
 
@@ -1076,7 +1077,11 @@ export function importFromCSV(
             const dateB = new Date(b.savedAt || b.date).getTime();
             return dateB - dateA;
           });
-          saveHistory(updatedHistory);
+          // Si no cabe, el importador NO puede decir "importado": antes el
+          // toast de exito salia con el historial intacto.
+          if (!saveHistory(updatedHistory)) {
+            throw new Error('No se pudo guardar el historial importado: el almacenamiento del teléfono está lleno');
+          }
 
           // Actualizar PRs con los datos importados
           const currentPRs = getPRs();

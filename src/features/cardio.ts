@@ -14,7 +14,7 @@
  * lo que cambia es todo lo que se ve. La aritmetica vive en
  * src/utils/cardio-calc.ts, que se prueba sola.
  */
-import { confirmarDestructivo } from '@/ui/feedback';
+import { confirmarDestructivo, mostrarToast } from '@/ui/feedback';
 import { abrirHoja } from '@/ui/session-screens';
 import type { CardioMode, CardioConfig, CardioSessionStats } from '@/types';
 import { cardioState, resetCardioState } from '@/state/session';
@@ -1195,7 +1195,14 @@ function finishCardioWorkout(opciones: { abandonada?: boolean } = {}): void {
     volumenPorGrupo: {},
   };
 
-  addToHistory(sesion);
+  if (!addToHistory(sesion)) {
+    mostrarToast({
+      tipo: 'aviso',
+      titulo: 'No se pudo guardar el cardio',
+      detalle: 'El almacenamiento del teléfono está lleno. Exporta tu historial (Perfil → Exportar todo) y libera espacio.',
+      duracion: 12000,
+    });
+  }
 
   // El XP de cardio existia en el motor y no lo llamaba nadie: terminar un
   // Tabata no sumaba un solo punto. C-04 lo enseña.

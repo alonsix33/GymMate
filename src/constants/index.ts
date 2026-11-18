@@ -5,7 +5,14 @@
 // Auto-guardado
 export const DRAFT_SAVE_DELAY = 15000; // 15 segundos
 export const DRAFT_MAX_AGE = 24 * 60 * 60 * 1000; // 24 horas
-export const MAX_HISTORY_ITEMS = 200;
+/**
+ * El historial NO se recorta. Antes habia un tope de 200 sesiones (~10 meses a
+ * 4-5 por semana) que tiraba las mas viejas EN SILENCIO al guardar: el CSV solo
+ * exportaba lo que quedara y el XP rederivado bajaba. 200 sesiones pesan ~0.5 MB;
+ * el limite era arbitrario. Si algun dia no cabe, `setItem` falla y el guardado
+ * lo dice (1.1); aqui solo se AVISA con tiempo.
+ */
+export const AVISAR_HISTORIAL_EN = 800;
 
 // LocalStorage Keys
 export const STORAGE_KEYS = {

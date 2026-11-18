@@ -10,6 +10,8 @@
  * es una app de una persona, y una sesión de login seria mas superficie de la
  * que hace falta.
  */
+import { FORMA_DE_CLAVE, formaValida } from '@/utils/storage';
+
 const CLAVE_TOKEN = 'gymmate_backend_token';
 const CLAVE_URL = 'gymmate_backend_url';
 
@@ -140,10 +142,25 @@ export function instantanea(): Record<string, unknown> {
   return datos;
 }
 
-export async function subirCopia(): Promise<{ ok: boolean; error?: string }> {
+export interface ResultadoDeSubida {
+  ok: boolean;
+  error?: string;
+  /** El servidor la rechazo por tener mucho menos que la copia guardada. */
+  rechazada?: { guardada: number; esta: number };
+}
+
+/**
+ * Sube la copia.
+ *
+ * El servidor RECHAZA (409) una copia con mucho menos contenido que la que ya
+ * tiene: un telefono con el almacenamiento vacio no puede destruir la unica
+ * copia buena. Con `forzar` se sube igual, y la anterior queda archivada en el
+ * servidor como version recuperable.
+ */
+export async function subirCopia(opciones: { forzar?: boolean } = {}): Promise<ResultadoDeSubida> {
   if (!hayBackend()) return { ok: false, error: 'sin backend configurado' };
   try {
-    const r = await fetch(endpoint('/api/datos'), {
+    const r = await fetch(endpoint(`/api/datos${opciones.forzar ? '?forzar=1' : ''}`), {
       method: 'PUT',
       headers: cabeceras(),
       body: JSON.stringify({ datos: instantanea() }),
@@ -152,6 +169,18 @@ export async function subirCopia(): Promise<{ ok: boolean; error?: string }> {
       return { ok: false, error: 'La copia pesa más de lo que el servidor acepta (8 MB).' };
     }
     if (r.status === 401) return { ok: false, error: 'Token inválido: no coincide con el del servidor.' };
+    if (r.status === 409) {
+      const cuerpo = (await r.json().catch(() => ({}))) as {
+        error?: string;
+        actual?: { sesiones: number };
+        nueva?: { sesiones: number };
+      };
+      return {
+        ok: false,
+        error: cuerpo.error,
+        rechazada: { guardada: cuerpo.actual?.sesiones ?? 0, esta: cuerpo.nueva?.sesiones ?? 0 },
+      };
+    }
     if (!r.ok) return { ok: false, error: (await r.json().catch(() => ({}))).error ?? `HTTP ${r.status}` };
     return { ok: true };
   } catch (e) {
@@ -166,20 +195,73 @@ export async function subirCopia(): Promise<{ ok: boolean; error?: string }> {
  * tiene que preguntar antes. La gamificacion se recalcula despues por
  * `fusionarGamificacion`, que nunca baja ninguna cifra.
  */
-export async function bajarCopia(): Promise<{ ok: boolean; claves: number; error?: string }> {
+export async function bajarCopia(): Promise<{ ok: boolean; claves: number; omitidas?: string[]; error?: string }> {
   if (!hayBackend()) return { ok: false, claves: 0, error: 'sin backend configurado' };
   try {
     const r = await fetch(endpoint('/api/datos'), { headers: cabeceras(), cache: 'no-store' });
     if (!r.ok) return { ok: false, claves: 0, error: `HTTP ${r.status}` };
     const cuerpo = (await r.json()) as { datos: Record<string, unknown> | null };
     if (!cuerpo.datos) return { ok: false, claves: 0, error: 'el servidor no tiene ninguna copia' };
-    let claves = 0;
+
+    // 1. Solo entra lo que tiene la FORMA que la app espera: una copia con la
+    //    lista del historial convertida en `null` o en `{}` dejaba la app en
+    //    blanco al recargar ("Cannot read properties of null").
+    const candidatas: Array<[string, unknown]> = [];
+    const omitidas: string[] = [];
     for (const clave of CLAVES_QUE_VIAJAN) {
       if (!(clave in cuerpo.datos)) continue;
-      localStorage.setItem(clave, JSON.stringify(cuerpo.datos[clave]));
-      claves++;
+      const valor = cuerpo.datos[clave];
+      const forma = FORMA_DE_CLAVE[clave];
+      if (forma && !formaValida(valor, forma)) omitidas.push(clave);
+      else candidatas.push([clave, valor]);
     }
-    return { ok: true, claves };
+    if (candidatas.length === 0) {
+      return {
+        ok: false,
+        claves: 0,
+        omitidas,
+        error: omitidas.length ? 'la copia del servidor tiene un formato que la app no reconoce' : 'la copia está vacía',
+      };
+    }
+
+    // 2. Restaurar es DESTRUCTIVO: se guarda antes lo que hay ahora. Si no
+    //    cabe esa copia, no se restaura nada (antes que perder lo local).
+    const previo = new Map<string, string | null>();
+    for (const [clave] of candidatas) {
+      const actual = localStorage.getItem(clave);
+      previo.set(clave, actual);
+      if (actual === null) continue;
+      try {
+        localStorage.setItem(`${clave}__previo_restauracion`, actual);
+      } catch {
+        return {
+          ok: false,
+          claves: 0,
+          error: 'no hay espacio para guardar una copia de lo que tienes ahora; exporta tu historial (CSV) y libera espacio antes de restaurar',
+        };
+      }
+    }
+
+    // 3. Todo o nada: si una escritura falla a medias, se devuelve lo anterior.
+    const escritas: string[] = [];
+    try {
+      for (const [clave, valor] of candidatas) {
+        localStorage.setItem(clave, JSON.stringify(valor));
+        escritas.push(clave);
+      }
+    } catch (e) {
+      for (const clave of escritas) {
+        const antes = previo.get(clave);
+        try {
+          if (antes === null || antes === undefined) localStorage.removeItem(clave);
+          else localStorage.setItem(clave, antes);
+        } catch {
+          // Lo anterior sigue copiado en `<clave>__previo_restauracion`.
+        }
+      }
+      return { ok: false, claves: 0, omitidas, error: `no se pudo restaurar, tus datos siguen como estaban: ${(e as Error).message}` };
+    }
+    return { ok: true, claves: escritas.length, omitidas: omitidas.length ? omitidas : undefined };
   } catch (e) {
     return { ok: false, claves: 0, error: (e as Error).message };
   }

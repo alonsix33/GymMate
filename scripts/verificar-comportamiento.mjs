@@ -3153,7 +3153,11 @@ const borradorDePrueba = {
   await cerrador('el coach', () => pagina.locator('.f-home__coach').first().click(), '[data-coach="cerrar"]');
   await pagina.locator('[data-coach="cerrar"]').click();
   await pagina.waitForTimeout(400);
-  await cerrador('el builder', () => pagina.locator('#fabButton').click(), '[data-builder="cerrar"]');
+  // El "+" abre la hoja "¿Qué quieres hacer?"; el builder es su ultima opcion.
+  await cerrador('el builder', async () => {
+    await pagina.locator('#fabButton').click();
+    await pagina.locator('[data-mas="nueva"]').click();
+  }, '[data-builder="cerrar"]');
   await ctx.close();
 }
 

@@ -13,6 +13,7 @@ import { getHistory, getCustomWorkouts, getProfile } from '@/utils/storage';
 import { checkForExistingDraft } from '@/state/session';
 import { trainingGroups } from '@/data/training-groups';
 import { generateInsight, type Insight } from '@/utils/insights';
+import { bloqueEmpezar } from '@/ui/inicio-rapido';
 import {
   getCurrentLevel,
   getCurrentTitle,
@@ -454,9 +455,11 @@ export function renderHome(contenedor: HTMLElement, hoy: Date = new Date()): voi
   contenedor.innerHTML = [
     bloqueCabecera(hoy, racha.current),
     bloqueCoach(insight),
+    // Lo que mas se hace —empezar— va sobre el pliegue: la sesion en curso, o la
+    // rutina que toca hoy.
+    bloqueBorrador(hoy) || bloqueEmpezar(historial, new Date()),
     bloqueHeatmap(mapa),
     bloqueNivel(),
-    bloqueBorrador(hoy),
     bloqueRutinas(hoy),
     bloqueMisRutinas(),
     bloqueCardio(),

@@ -5448,3 +5448,28 @@ body:has(#medidasTab:not(.hidden)) {
   height: max(100%, var(--touch-min));
   transform: translate(-50%, -50%);
 }
+
+/* HOME · tarjeta EMPEZAR (la rutina que toca hoy) */
+.f-home__hero {
+  background: var(--bg-card);
+  border: 1px solid var(--accent);
+  border-radius: var(--r-hero);
+  padding: var(--pad-card-l);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.f-home__hero .f-label { font-size: var(--fs-10); }
+.f-home__hero-nombre {
+  font-family: var(--font-display);
+  font-weight: var(--w-900);
+  font-size: var(--fs-24);
+  line-height: var(--lh-1);
+  color: var(--text-primary);
+}
+.f-home__hero-motivo { font-size: var(--fs-13); color: var(--text-secondary); }
+.f-home__hero .f-btn { margin-top: 6px; }
+.f-mas { display: flex; flex-direction: column; gap: 8px; }
+.f-mas__op { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.f-mas__detalle { font-size: var(--fs-12); font-weight: var(--w-400); opacity: 0.85; }
+.f-home__hero-motivo::first-letter { text-transform: uppercase; }

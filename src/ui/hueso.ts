@@ -10,6 +10,7 @@ import { SIN_FECHA } from '@/utils/fecha';
  * Los graficos son SVG a mano, como en los mockups: nada de chart.js.
  */
 import { getHistory, getPRs } from '@/utils/storage';
+import { prsDescartados, prsVigentes } from '@/features/coach-estado';
 import { cifra, cifraDecimal, escapar } from '@/utils/formato';
 import { formatearTiempo } from '@/utils/cardio-calc';
 import { calculate1RM, unaRepMaxPromedio } from '@/utils/calculations';
@@ -61,7 +62,9 @@ const NOMBRE_MODO_CARDIO: Record<string, string> = {
 };
 
 function picoReal(nombre: string, historial: HistorySession[]): number {
-  return Math.max(picoDe(nombre, historial) ?? 0, getPRs()[nombre]?.peso ?? 0);
+  // Solo los records que siguen valiendo: el de 450 kg del Hip Thrust no tenia
+  // ninguna serie detras y dejaba la barra de zonas en el 12%.
+  return Math.max(picoDe(nombre, historial) ?? 0, prsVigentes(getPRs(), historial)[nombre]?.peso ?? 0);
 }
 
 
@@ -486,9 +489,19 @@ export function renderRecords(contenedor: HTMLElement): void {
     return;
   }
 
+  const sospechosos = new Map(prsDescartados(prs, historial).map((d) => [d.ejercicio, d]));
   const cards = nombres
     .map((nombre) => {
       const pr = prs[nombre];
+      const sospechoso = sospechosos.get(nombre);
+      // Un record que pasa 3 veces la mejor serie real: se avisa y se ofrece
+      // corregirlo (con confirmacion). No se cambia solo.
+      const aviso = sospechoso
+        ? `<div class="f-graf__nota">Este récord (${cifraDecimal(sospechoso.peso)} kg) pasa 3 veces tu mejor serie real
+             (${cifraDecimal(sospechoso.mejorSerieReal)} kg) y no cuenta para tu pico.
+             <button type="button" class="f-btn-hueso f-btn-hueso--secundario" data-hueso="corregir-record"
+               data-ejercicio="${escapar(nombre)}">Corregir récord</button></div>`
+        : '';
       // El pico es el mayor de los dos: el historial puede no tener la sesion
       // del record (un CSV importado guarda el PR y no la sesion), y el
       // record puede quedarse corto si la sesion es mas nueva.
@@ -524,6 +537,7 @@ export function renderRecords(contenedor: HTMLElement): void {
               <span class="f-pr__cifra">${cifraDecimal(estimado)} <span class="f-pr__unidad">kg</span></span>
             </div>
             <p class="f-graf__nota">Sin sesiones recientes de este ejercicio: complétalo una vez y estrena su barra de zonas.</p>
+            ${aviso}
           </article>
         `;
       }
@@ -538,6 +552,7 @@ export function renderRecords(contenedor: HTMLElement): void {
             <span class="f-pr__cifra">${cifraDecimal(estimado)} <span class="f-pr__unidad">kg</span></span>
           </div>
           ${barraDeZonas(posicion, estadoDeZona(nombre, historial, pico), pico)}
+          ${aviso}
         </article>
       `;
     })

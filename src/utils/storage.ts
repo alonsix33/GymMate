@@ -1,4 +1,4 @@
-import { claveDiaDe } from '@/utils/fecha';
+import { claveDiaDe, claveDiaDeSesion } from '@/utils/fecha';
 import { STORAGE_KEYS, MAX_HISTORY_ITEMS } from '@/constants';
 import type {
   SessionData,
@@ -74,20 +74,51 @@ export function saveHistory(history: HistorySession[]): void {
   setItem(STORAGE_KEYS.HISTORY, history);
 }
 
+/**
+ * Solo entran las series que el usuario CONFIRMO: con volumen, o marcadas como
+ * hechas. `loadTrainingGroup` carga la plantilla entera con 0x0@0 y el guardado
+ * la copiaba tal cual, asi que cada sesion arrastraba los ejercicios que no se
+ * hicieron (y la bitacora del coach los listaba como si lo fueran).
+ */
+function soloLoConfirmado<T extends { volumen?: number; completado?: boolean }>(ejercicios: T[]): T[] {
+  return ejercicios.filter((e) => (e.volumen ?? 0) > 0 || e.completado === true);
+}
+
 export function addToHistory(session: HistorySession): void {
   // Normalizar nombres de ejercicios antes de guardar
   const normalizedSession = {
     ...session,
-    ejercicios: session.ejercicios?.map(ej => ({
-      ...ej,
-      nombre: normalizeExerciseName(ej.nombre),
-    })) || [],
+    ejercicios: soloLoConfirmado(
+      session.ejercicios?.map(ej => ({
+        ...ej,
+        nombre: normalizeExerciseName(ej.nombre),
+      })) || []
+    ),
   };
 
   const history = getHistory();
-  const existingIndex = history.findIndex(
+  let existingIndex = history.findIndex(
     (s) => s.sessionId === normalizedSession.sessionId
   );
+
+  // Una sesion por dia (Lima) y por entrenamiento. Reanudar un borrador
+  // perdia el sessionId y el segundo guardado entraba como sesion NUEVA junto
+  // a la ya guardada: el 13-nov habia dos registros, y el volumen y las
+  // "sesiones sin subir" contaban el dia dos veces. El guardado mas reciente
+  // es el borrador completo, asi que sustituye al anterior (que conserva su
+  // sessionId, del que cuelga su XP).
+  if (existingIndex === -1 && normalizedSession.type !== 'cardio') {
+    const dia = claveDiaDeSesion(normalizedSession);
+    if (dia) {
+      existingIndex = history.findIndex(
+        (s) =>
+          s.type !== 'cardio' &&
+          s.grupo === normalizedSession.grupo &&
+          claveDiaDeSesion(s) === dia
+      );
+      if (existingIndex !== -1) normalizedSession.sessionId = history[existingIndex].sessionId;
+    }
+  }
 
   if (existingIndex !== -1) {
     history[existingIndex] = normalizedSession;

@@ -369,17 +369,29 @@ const cab = (r, n) => r.headers.get(n);
         !/NO calcules|prohibid/i.test(sistema.split('\n').slice(0, 4).join(' ')));
     chk('sistema · le manda opinar, proponer y explicar',
       /Forma una opinión y dila/.test(sistema) &&
-        /Ve un paso más allá/.test(sistema) &&
+        /Ve un paso más allá, con medida/.test(sistema) &&
         /Explica el porqué/.test(sistema));
     chk('sistema · le quita el tic de preguntar al cierre',
       /NO termines cada mensaje con una pregunta/.test(sistema) && /Propón y calla/.test(sistema));
-    chk('sistema · el limite va UNA vez y en la segunda mitad',
-      (sistema.match(/Un solo límite/g) ?? []).length === 1 &&
-        sistema.indexOf('Un solo límite') > sistema.length / 2);
-    chk('sistema · y sigue prohibiendo recalcular lo que la app enseña',
-      /las COPIAS de PANORAMA y RESUMEN/.test(sistema));
-    chk('sistema · con la frontera dicha en positivo',
-      /contar días/.test(sistema) && /es entrenar/.test(sistema));
+    chk('sistema · responde primero, corto, sin sermones y sin repetirse',
+      /Responde PRIMERO lo que te preguntó/.test(sistema) && /de dos a cinco frases/.test(sistema) &&
+        /Sin sermones, sin frases de efecto/.test(sistema) && /No repitas lo que ya dijiste/.test(sistema) &&
+        /Si te corrige, una línea y sigues/.test(sistema));
+    chk('sistema · los limites van UNA vez y despues del trabajo',
+      (sistema.match(/Dos límites/g) ?? []).length === 1 &&
+        sistema.indexOf('Dos límites') > sistema.length / 3);
+    chk('sistema · los numeros y las fechas los pone la app y el modelo los copia',
+      /los COPIAS/.test(sistema) && /No cuentas días/.test(sistema) &&
+        /no deduces el día de la semana/.test(sistema));
+    chk('sistema · un solo formato de fecha, y 12-11 prohibido por nombre',
+      /SOLO como "jue 12\s+nov"/.test(sistema) && /nunca 12-11 ni 2026-11-12/.test(sistema));
+    chk('sistema · el grupo de hoy lo decide la app, y si ya entreno no hay plan',
+      /SUGERENCIA DE HOY/.test(sistema) && /no lo cambias porque suene mejor/.test(sistema) &&
+        /no propones plan/.test(sistema));
+    chk('sistema · ante una contradiccion pregunta, y no cita lo que el usuario no dijo',
+      /¿lo marco como no hecho\?/.test(sistema) && /Solo le citas frases que estén en esta conversación/.test(sistema));
+    chk('sistema · y sigue siendo un coach (cruzar y opinar no es pedir permiso)',
+      /Cruzar, comparar, ordenar, buscar patrones/.test(sistema) && /no una licencia que tengas que pedir/.test(sistema));
   } finally {
     await s.cerrar();
     await new Promise((ok) => falso.close(ok));

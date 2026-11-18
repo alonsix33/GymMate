@@ -21,6 +21,7 @@ import {
 import type { CustomWorkout } from '@/utils/storage';
 import { renderHistorial, renderRecords, abrirDetalle, animarZonas } from '@/ui/hueso';
 import { normalizeExerciseName } from '@/utils/exercise-normalizer';
+import { previsualizarRecord, corregirRecord } from '@/features/exclusiones';
 
 // ==========================================
 // CARGAR HISTORIAL
@@ -132,9 +133,39 @@ export function loadPRs(): void {
     contenedor.addEventListener('click', (e) => {
       const objetivo = (e.target as HTMLElement)?.closest<HTMLElement>('[data-hueso="primera"]');
       if (objetivo) void import('@/ui/navigation').then(({ showHome }) => showHome());
+      const corregir = (e.target as HTMLElement)?.closest<HTMLElement>('[data-hueso="corregir-record"]');
+      if (corregir?.dataset.ejercicio) void corregirRecordConfirmado(corregir.dataset.ejercicio);
     });
     contenedor.dataset.enganchado = 'si';
   }
+}
+
+/**
+ * "Corregir récord": primero SE ENSEÑA que cambia (el record viejo y por cual
+ * se reemplaza), y solo si el usuario confirma se escribe. Las sesiones no se
+ * tocan: el record de 450 kg no tenia ninguna.
+ */
+async function corregirRecordConfirmado(ejercicio: string): Promise<void> {
+  const c = previsualizarRecord(ejercicio);
+  if (!c) {
+    mostrarToast({ tipo: 'aviso', titulo: 'Ese récord ya no necesita corrección' });
+    loadPRs();
+    return;
+  }
+  const nuevo = c.nuevo
+    ? `${c.nuevo.sets}×${c.nuevo.reps} · ${c.nuevo.peso} kg (tu mejor serie real)`
+    : 'se quita, porque no hay ninguna serie real de este ejercicio';
+  const ok = await confirmarDestructivo({
+    titulo: '¿Corregir este récord?',
+    cuerpo:
+      `${c.ejercicio}\nAhora: ${c.actual.sets}×${c.actual.reps} · ${c.actual.peso} kg\nDespués: ${nuevo}\n\n` +
+      'Tus sesiones no se tocan. Solo cambia el récord guardado.',
+    confirmar: 'Corregir',
+  });
+  if (!ok) return;
+  corregirRecord(ejercicio);
+  mostrarToast({ tipo: 'exito', titulo: 'Récord corregido' });
+  loadPRs();
 }
 
 // ==========================================

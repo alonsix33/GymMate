@@ -12,6 +12,7 @@
  * Sin DOM: se puede probar sola.
  */
 import type { ExerciseData, HistorySession } from '@/types';
+import { claveDiaDeSesion } from '@/utils/fecha';
 
 /** Fronteras de los segmentos, en fraccion del pico. */
 export const ZONA_ROJA_HASTA = 0.7;
@@ -42,18 +43,45 @@ export function posicionEnZonas(ratio: number): number {
   return Math.max(0, Math.min(100, ratio * 100));
 }
 
-/** Sesiones de pesas que contienen ese ejercicio, de la mas reciente atras. */
+/**
+ * Sesiones de pesas que contienen ese ejercicio, de la mas reciente atras.
+ *
+ * UNA POR DIA (Lima). Dos guardados el mismo dia —un borrador reanudado, o dos
+ * rutinas que tocan el mismo ejercicio— son un solo dia de entrenamiento:
+ * contarlos por separado hacia que "sesiones sin subir" cambiara de 22 a 23
+ * sin que pasara un dia. Del dia se queda la mejor serie (mas peso; a igual
+ * peso, mas repeticiones). Las series excluidas no cuentan.
+ */
 export function sesionesCon(nombre: string, historial: HistorySession[]): Array<{
   sesion: HistorySession;
   ejercicio: ExerciseData;
 }> {
-  const encontradas: Array<{ sesion: HistorySession; ejercicio: ExerciseData }> = [];
-  for (const sesion of historial) {
-    if (sesion.type === 'cardio') continue;
-    const ejercicio = (sesion.ejercicios ?? []).find((e) => e.nombre === nombre && e.volumen > 0);
-    if (ejercicio) encontradas.push({ sesion, ejercicio });
-  }
-  return encontradas;
+  const encontradas: Array<{ sesion: HistorySession; ejercicio: ExerciseData; clave: string }> = [];
+  const porDia = new Map<string, number>();
+  historial.forEach((sesion, i) => {
+    if (sesion.type === 'cardio') return;
+    const ejercicio = (sesion.ejercicios ?? [])
+      .filter((e) => e.nombre === nombre && e.volumen > 0 && !e.excluido)
+      .reduce<ExerciseData | null>(
+        (mejor, e) =>
+          !mejor || e.peso > mejor.peso || (e.peso === mejor.peso && e.reps > mejor.reps) ? e : mejor,
+        null
+      );
+    if (!ejercicio) return;
+    // Sin fecha legible no hay con que fusionar: cada una es su propio dia.
+    const clave = claveDiaDeSesion(sesion) ?? `sin-fecha-${i}`;
+    const previa = porDia.get(clave);
+    if (previa === undefined) {
+      porDia.set(clave, encontradas.length);
+      encontradas.push({ sesion, ejercicio, clave });
+      return;
+    }
+    const actual = encontradas[previa].ejercicio;
+    if (ejercicio.peso > actual.peso || (ejercicio.peso === actual.peso && ejercicio.reps > actual.reps)) {
+      encontradas[previa] = { sesion: encontradas[previa].sesion, ejercicio, clave };
+    }
+  });
+  return encontradas.map(({ sesion, ejercicio }) => ({ sesion, ejercicio }));
 }
 
 /** Mejor peso de las ultimas SESIONES_ACTUAL sesiones con ese ejercicio. */

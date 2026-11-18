@@ -19,11 +19,27 @@
  */
 import { getHistory, getPRs, getBodyMeasurements } from '@/utils/storage';
 import {
-  pesoActual, picoDe, sesionesSinSubir, posicionEnZonas, zonaDe, fechaDe, distribucionMuscular,
+  pesoActual, picoDe, sesionesSinSubir, posicionEnZonas, zonaDe, fechaDe,
 } from '@/utils/zonas';
 import { estimateOneRM, getStreakInfo } from '@/features/gamification';
 import { unaRepMaxPromedio } from '@/utils/calculations';
-import type { HistorySession } from '@/types';
+import { trainingGroups } from '@/data/training-groups';
+import {
+  claveDiaDeSesion,
+  claveDiaLima,
+  diasEntre,
+  etiquetaDia,
+} from '@/utils/fecha';
+import {
+  construirEstado,
+  fusionarDias,
+  idDe,
+  prsVigentes,
+  type DiaEntrenado,
+  type EstadoCoach,
+  type PlantillaDeGrupo,
+} from '@/features/coach-estado';
+import type { HistorySession, PRData } from '@/types';
 
 export interface DatoDeEjercicio {
   ejercicio: string;
@@ -147,8 +163,14 @@ export function guardarCola(preguntas: string[]): boolean {
  * Devuelve null cuando no hay con que calcularla: sin sesiones no hay pico, y
  * un componente de datos con ceros se leeria como "tu 1RM es 0".
  */
-export function datosDelEjercicio(nombre: string, historial: HistorySession[] = getHistory()): DatoDeEjercicio | null {
-  const pico = Math.max(picoDe(nombre, historial) ?? 0, getPRs()[nombre]?.peso ?? 0);
+export function datosDelEjercicio(
+  nombre: string,
+  historial: HistorySession[] = getHistory(),
+  prs: Record<string, PRData> = prsVigentes(getPRs(), historial)
+): DatoDeEjercicio | null {
+  // El record guardado SOLO si sigue valiendo: un PR de 450 kg cuya unica serie
+  // esta excluida no puede seguir siendo el pico.
+  const pico = Math.max(picoDe(nombre, historial) ?? 0, prs[nombre]?.peso ?? 0);
   const actual = pesoActual(nombre, historial) ?? 0;
   if (pico <= 0 || actual <= 0) return null;
 
@@ -218,7 +240,11 @@ function repsDeLaSerieActual(nombre: string, historial: HistorySession[], peso: 
  *     formulas. Ese defecto ya ocurrio con 168 kg contra 165.
  */
 export interface PanoramaEjercicio extends DatoDeEjercicio {
-  /** Fecha de la ultima sesion en que aparece, para saber si esta vigente. */
+  /** Un id por maquina: "Aductora" y "Abductora" son dos ejercicios. */
+  id: string;
+  /** Dias desde la ultima vez, calculados aqui. */
+  diasSinTocar: number;
+  /** Fecha de la ultima sesion en que aparece, ya escrita: "jue 12 nov". */
   ultimaVez: string;
   sesiones: number;
   /**
@@ -271,61 +297,77 @@ export interface ContextoCoach {
     grasaCorporal: number | null;
   };
   bitacora: string;
+  /** Todo lo que es fecha, cuenta o regla, calculado en codigo. */
+  estado: EstadoCoach;
 }
 
 /** Cuantos meses de historial viajan. Un año: mas atras el dato ya no dice
  *  nada de la forma actual, y la bitacora crece sin darle nada al modelo. */
 export const MESES_DE_CONTEXTO = 12;
 
-function desdeHaceMeses(meses: number): Date {
-  // Se construye por componentes locales, nunca desde una cadena: en Lima
-  // (UTC-5) `new Date('2026-08-22')` se interpreta como UTC y cae en el dia
-  // anterior.
-  //
-  // A las 00:00, no a mediodia. Con el corte a mediodia, en el dia limite lo
-  // entrenado por la mañana quedaba FUERA y lo de la tarde dentro. Y no era
-  // teorico: `parseSpanishDate` guarda toda sesion importada de CSV como
-  // `T12:00:00.000Z`, que en Lima son las 07:00, asi que toda sesion
-  // importada que cayera en el dia limite desaparecia del contexto, siempre.
-  // El dia limite entra entero o no entra.
-  const hoy = new Date();
-  return new Date(hoy.getFullYear(), hoy.getMonth() - meses, hoy.getDate(), 0, 0, 0, 0);
+/** El dia (Lima) a partir del cual entra el historial: hoy menos N meses. El
+ *  dia limite entra ENTERO, sea la hora que sea, y se calcula sobre claves de
+ *  dia, nunca desde una cadena 'YYYY-MM-DD' parseada como UTC. */
+function corteDeMeses(hoy: string, meses: number): string {
+  const [a, m, d] = hoy.split('-').map(Number);
+  const f = new Date(Date.UTC(a, m - 1 - meses, d));
+  return `${f.getUTCFullYear()}-${String(f.getUTCMonth() + 1).padStart(2, '0')}-${String(f.getUTCDate()).padStart(2, '0')}`;
+}
+
+function plantillasDeGrupo(): PlantillaDeGrupo[] {
+  return Object.values(trainingGroups).map((g) => ({
+    nombre: g.nombre,
+    ejercicios: g.ejercicios.map((e) => e.nombre),
+  }));
 }
 
 /**
- * El contexto entero, calculado en el dispositivo.
+ * El contexto entero, calculado en el dispositivo y RECONSTRUIDO en cada
+ * mensaje (nunca cacheado): lo que el coach ve es lo que hay en la bitacora en
+ * ese instante.
  *
  * Devuelve null si no hay ni una sesion en la ventana: un contexto de ceros
  * se leeria como "tu 1RM es 0" y es peor que no mandar nada.
  */
 export function contextoCompleto(
   historial: HistorySession[] = getHistory(),
-  meses = MESES_DE_CONTEXTO
+  meses = MESES_DE_CONTEXTO,
+  ahora: Date = new Date()
 ): ContextoCoach | null {
-  const corte = desdeHaceMeses(meses);
+  const hoy = claveDiaLima(ahora);
+  const anio = Number(hoy.slice(0, 4));
+  const corte = corteDeMeses(hoy, meses);
   const dentro = historial.filter((s) => {
-    const f = new Date(fechaDe(s));
-    return !Number.isNaN(f.getTime()) && f >= corte;
+    const dia = claveDiaDeSesion(s);
+    return dia !== null && dia >= corte;
   });
   if (dentro.length === 0) return null;
 
   // Ordenadas de mas nueva a mas vieja: es lo que asumen `pesoActual` y
   // `repsDeLaSerieActual`, que leen "la primera que encuentran".
-  const orden = [...dentro].sort((a, b) => fechaDe(b).getTime() - fechaDe(a).getTime());
+  const orden = [...dentro].sort((a, b) =>
+    (claveDiaDeSesion(b) ?? '') === (claveDiaDeSesion(a) ?? '')
+      ? fechaDe(b).getTime() - fechaDe(a).getTime()
+      : (claveDiaDeSesion(b) ?? '') > (claveDiaDeSesion(a) ?? '') ? 1 : -1
+  );
+  const dias = fusionarDias(orden, anio);
+  const prs = prsVigentes(getPRs(), historial);
 
   const nombres = new Set<string>();
-  for (const s of orden) for (const e of s.ejercicios ?? []) if (e.nombre) nombres.add(e.nombre);
+  for (const s of orden) for (const e of s.ejercicios ?? []) if (e.nombre && !e.excluido && e.volumen > 0) nombres.add(e.nombre);
 
   const panorama: PanoramaEjercicio[] = [];
   for (const nombre of nombres) {
-    const dato = datosDelEjercicio(nombre, orden);
+    const dato = datosDelEjercicio(nombre, orden, prs);
     if (!dato) continue;
-    const suyas = orden.filter((s) => (s.ejercicios ?? []).some((e) => e.nombre === nombre));
+    const suyos = dias.filter((d) => d.series.some((x) => x.nombre === nombre));
     panorama.push({
       ...dato,
       ejercicio: limpio(dato.ejercicio),
-      sesiones: suyas.length,
-      ultimaVez: suyas[0] ? diaDe(suyas[0]) : '',
+      id: idDe(nombre),
+      sesiones: suyos.length,
+      ultimaVez: suyos[0] ? etiquetaDia(suyos[0].fecha, anio) : '',
+      diasSinTocar: suyos[0] ? diasEntre(suyos[0].fecha, hoy) : 0,
       unaRepMaxHistorico: unaRepMaxDeLaMejorSerie(nombre, orden),
     });
   }
@@ -337,47 +379,42 @@ export function contextoCompleto(
     .sort((a, b) => (a.date < b.date ? 1 : -1));
   const ultima = medidas[0];
 
+  // El volumen por grupo sale de los dias YA fusionados y sin series
+  // excluidas: la suma por sesion contaba dos veces lo guardado dos veces.
   const volumenPorGrupo: Record<string, number> = {};
-  for (const { musculo, volumen } of distribucionMuscular(orden)) {
-    // El grupo tambien lo escribe el usuario y tambien viaja, ademas como
-    // CLAVE dentro del bloque que el prompt llama "ya calculado".
-    volumenPorGrupo[limpio(musculo) || 'sin grupo'] = Math.round(volumen);
+  for (const d of dias) {
+    for (const x of d.series) {
+      const g = limpio(x.grupoMuscular) || 'sin grupo';
+      volumenPorGrupo[g] = (volumenPorGrupo[g] ?? 0) + Math.round(x.volumen);
+    }
   }
 
-  // Las cuentas de calendario, en dias LOCALES completos: comparar instantes
-  // daria 0 dias para algo entrenado anoche a las 23:00.
-  const hoyMedianoche = new Date();
-  hoyMedianoche.setHours(0, 0, 0, 0);
-  const diasHasta = (s: HistorySession): number => {
-    const d = fechaDe(s);
-    d.setHours(0, 0, 0, 0);
-    return Math.round((hoyMedianoche.getTime() - d.getTime()) / 86400000);
-  };
-  const dentroDe = (n: number) => orden.filter((s) => diasHasta(s) < n).length;
-  const mesActual = `${hoyMedianoche.getFullYear()}-${String(hoyMedianoche.getMonth() + 1).padStart(2, '0')}`;
+  // Las cuentas de calendario, en dias de LIMA completos.
+  const dentroDe = (n: number) => dias.filter((d) => diasEntre(d.fecha, hoy) < n).length;
+  const mesActual = hoy.slice(0, 7);
 
   return {
     panorama,
     resumen: {
-      hoy: diaLocalDe(hoyMedianoche),
-      sesiones: orden.length,
-      hasta: orden[0] ? diaDe(orden[0]) : null,
-      desde: orden[orden.length - 1] ? diaDe(orden[orden.length - 1]) : null,
-      diasDesdeUltima: orden[0] ? diasHasta(orden[0]) : null,
+      hoy,
+      sesiones: dias.length,
+      hasta: dias[0] ? dias[0].fecha : null,
+      desde: dias[dias.length - 1] ? dias[dias.length - 1].fecha : null,
+      diasDesdeUltima: dias[0] ? diasEntre(dias[0].fecha, hoy) : null,
       sesionesUltimos7: dentroDe(7),
       sesionesUltimos30: dentroDe(30),
-      sesionesEsteMes: orden.filter((s) => diaDe(s).startsWith(mesActual)).length,
+      sesionesEsteMes: dias.filter((d) => d.fecha.startsWith(mesActual)).length,
       racha: racha.current,
       mejorRacha: racha.best,
       volumenPorGrupo,
       volumenUltimos30: Math.round(
-        orden.filter((s) => diasHasta(s) < 30 && s.type !== 'cardio')
-          .reduce((t, s) => t + (s.volumenTotal ?? 0), 0)
+        dias.filter((d) => diasEntre(d.fecha, hoy) < 30).reduce((t, d) => t + d.volumen, 0)
       ),
       pesoCorporal: typeof ultima?.weight === 'number' ? ultima.weight : null,
       grasaCorporal: typeof ultima?.bodyFat === 'number' ? Math.round(ultima.bodyFat * 10) / 10 : null,
     },
-    bitacora: bitacoraDe(orden),
+    bitacora: bitacoraDe(dias),
+    estado: construirEstado(historial, { ahora, plantillas: plantillasDeGrupo(), prs: getPRs() }),
   };
 }
 
@@ -403,18 +440,6 @@ function unaRepMaxDeLaMejorSerie(nombre: string, historial: HistorySession[]): n
   return p === null ? null : Math.round(p);
 }
 
-/** Una fecha en ISO corto, con los componentes LOCALES. `toISOString()` daria
- *  el dia anterior en Lima para cualquier hora antes de las 19:00. */
-function diaLocalDe(f: Date): string {
-  const p = (n: number) => String(n).padStart(2, '0');
-  return `${f.getFullYear()}-${p(f.getMonth() + 1)}-${p(f.getDate())}`;
-}
-
-/** El dia local de una sesion, en ISO corto. */
-function diaDe(sesion: HistorySession): string {
-  return diaLocalDe(fechaDe(sesion));
-}
-
 /**
  * Limpia un texto que escribio el usuario antes de meterlo en la bitacora.
  *
@@ -434,32 +459,28 @@ function limpio(bruto: unknown): string {
 }
 
 /**
- * El historial en texto, una linea por sesion.
+ * El historial en texto, una linea por DIA, del mas RECIENTE al mas antiguo:
  *
- *   2026-08-18 Pecho · Press Banca 4x8@100; Aperturas 3x12@22
- *   2026-08-16 cardio · carrera 32 min
+ *   jue 12 nov · GRUPO 1 - Piernas + Glúteos · Prensa 4x10@180; Extensión 4x10@48
+ *   mié 11 nov · cardio
  *
- * Este formato pesa 7,6 veces menos que el mismo historial en JSON y dice lo
- * mismo. Va de la sesion mas ANTIGUA a la mas reciente porque asi se lee una
- * progresion.
+ * Antes iba del mas antiguo al mas reciente y con la fecha ISO pelada: el
+ * modelo leia la ultima linea de ARRIBA, decia que la ultima sesion era la del
+ * 10 y "el miercoles 12-11" (fue jueves). Ahora la primera linea es la mas
+ * nueva, el dia de la semana ya viene escrito y no hay otro formato de fecha.
+ * Solo salen series reales: ni las excluidas ni las de plantilla sin hacer.
  */
-function bitacoraDe(sesionesNuevaPrimero: HistorySession[]): string {
+function bitacoraDe(dias: DiaEntrenado[]): string {
   const lineas: string[] = [];
-  for (let i = sesionesNuevaPrimero.length - 1; i >= 0; i--) {
-    const s = sesionesNuevaPrimero[i];
-    if (s.type === 'cardio') {
-      // `totalTime` esta en SEGUNDOS —lo confirma `hueso.ts:125`, que lo
-      // llama `segundos` y lo pasa a `formatearTiempo`—.
-      const min = s.stats?.totalTime ? Math.round(s.stats.totalTime / 60) : null;
-      lineas.push(`${diaDe(s)} cardio${s.mode ? ' ' + limpio(s.mode) : ''}${min ? ` ${min} min` : ''}`);
-      continue;
+  for (const d of dias) {
+    const cardio = d.cardioDetalle.map((c) => `cardio${c ? ' ' + limpio(c) : ''}`).join(' + ');
+    if (d.series.length > 0) {
+      const grupos = d.grupos.filter((g) => g !== 'Cardio').map(limpio).filter(Boolean);
+      const ejs = d.series.map((e) => `${limpio(e.nombre)} ${e.sets}x${e.reps}@${e.peso}`).join('; ');
+      lineas.push(`${d.etiqueta} · ${grupos.join(' + ') || 'sesion'} · ${ejs}${cardio ? ` · ${cardio}` : ''}`);
+    } else if (d.cardio) {
+      lineas.push(`${d.etiqueta} · ${cardio}`);
     }
-    const ejs = (s.ejercicios ?? [])
-      .filter((e) => e.nombre)
-      .map((e) => `${limpio(e.nombre)} ${e.sets}x${e.reps}@${e.peso}`)
-      .join('; ');
-    if (!ejs) continue;
-    lineas.push(`${diaDe(s)} ${limpio(s.grupo) || 'sesion'} · ${ejs}`);
   }
   return lineas.join('\n');
 }

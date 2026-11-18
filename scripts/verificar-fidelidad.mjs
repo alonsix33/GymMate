@@ -1643,11 +1643,16 @@ console.log('\n--- Fases 7-9 en su pagina real ---');
   await medirPantalla('CO-01', '#fierroCoach');
   const co = await paginaF.evaluate(() => {
     const pista = document.querySelector('#fierroCoach .f-zonas__pista');
-    const tramos = [...document.querySelectorAll('#fierroCoach .f-zonas__pista > div:not(.f-zonas__marcador)')];
+    // CADA barra de la pantalla, no "los tramos de la pantalla": el coach abre
+    // con una tarjeta y la respuesta trae otra, y las dos llevan su barra.
+    const barras = [...document.querySelectorAll('#fierroCoach .f-zonas__pista')].map((p) =>
+      [...p.querySelectorAll(':scope > div:not(.f-zonas__marcador)')].map((t) =>
+        +t.getBoundingClientRect().height.toFixed(1))
+    );
     const marca = document.querySelector('#fierroCoach .f-zonas__marcador');
     return {
       hayPista: !!pista,
-      altoTramos: tramos.map((t) => +t.getBoundingClientRect().height.toFixed(1)),
+      barras,
       anchoMarca: marca ? +marca.getBoundingClientRect().width.toFixed(1) : 0,
       colorMarca: marca ? getComputedStyle(marca).backgroundColor : null,
     };
@@ -1655,8 +1660,9 @@ console.log('\n--- Fases 7-9 en su pagina real ---');
   // La barra de zonas del coach tenia clases que NO existian en el CSS: los
   // tres tramos median 0px de alto y el marcador 0x0.
   chk('CO-01 · el componente de datos dibuja su barra de zonas', co.hayPista);
-  chk('CO-01 · y los tres tramos tienen alto', co.altoTramos.length === 3 && co.altoTramos.every((h) => h > 0),
-    co.altoTramos.join(','));
+  chk('CO-01 · y los tres tramos de CADA barra tienen alto',
+    co.barras.length > 0 && co.barras.every((b) => b.length === 3 && b.every((h) => h > 0)),
+    co.barras.map((b) => b.join(',')).join(' | '));
   chk('CO-01 · el marcador es visible y claro sobre Carbon',
     co.anchoMarca > 1 && co.colorMarca === 'rgb(235, 237, 240)',
     `${co.anchoMarca}px ${co.colorMarca}`);

@@ -22,6 +22,8 @@ import {
   type TurnoCoach,
 } from '@/features/coach-ia';
 import { cifra, escapar, taparNavegacion } from '@/utils/formato';
+import { markdownBasico } from '@/utils/markdown';
+import { buscarSeries, excluirSeries, parsearMarcaDeExclusion } from '@/features/exclusiones';
 import { confirmarDestructivo, mostrarToast } from '@/ui/feedback';
 
 
@@ -109,6 +111,15 @@ function bloqueDeDatos(d: DatoDeEjercicio): string {
   `;
 }
 
+function botonDeExclusion(c: { ejercicio: string; fecha?: string; peso?: number }): string {
+  const series = buscarSeries(c).filter((x) => !x.excluida);
+  const que = series.map((x) => `${x.ejercicio} ${x.sets}x${x.reps}@${x.peso}`).join(' · ');
+  return `<button type="button" class="f-btn f-btn--secundario f-btn--medida" data-coach="excluir"
+      data-ejercicio="${escapar(c.ejercicio)}" data-fecha="${escapar(c.fecha ?? '')}" data-peso="${escapar(
+        c.peso === undefined ? '' : String(c.peso)
+      )}">Marcar como no hecho · ${escapar(que)}</button>`;
+}
+
 function turnoHTML(t: TurnoCoach): string {
   if (t.autor === 'usuario') {
     return `<div class="f-coach__usuario${t.pendiente ? ' f-coach__usuario--pendiente' : ''}">${escapar(
@@ -118,6 +129,9 @@ function turnoHTML(t: TurnoCoach): string {
   const hora = new Date(t.fecha);
   const hoy = new Date();
   const esHoy = hora.toDateString() === hoy.toDateString();
+  // La marca [[excluir|...]] no se ve: se convierte en un boton, y solo si
+  // coincide con una serie real del registro.
+  const { limpio, criterio } = parsearMarcaDeExclusion(t.texto);
   const sello = `COACH${
     esHoy
       ? ` · HOY ${String(hora.getHours()).padStart(2, '0')}:${String(hora.getMinutes()).padStart(2, '0')}`
@@ -127,7 +141,8 @@ function turnoHTML(t: TurnoCoach): string {
     <div class="f-coach__turno">
       <span class="f-coach__sello">${escapar(sello)}</span>
       <div class="f-coach__card">
-        <span class="f-coach__texto">${escapar(t.texto)}</span>
+        <div class="f-coach__texto f-coach__md">${markdownBasico(limpio)}</div>
+        ${criterio ? botonDeExclusion(criterio) : ''}
         ${t.dato ? bloqueDeDatos(t.dato) : ''}
       </div>
     </div>
@@ -150,7 +165,7 @@ function render(): void {
       ? `<div class="f-coach__turno">
            <span class="f-coach__sello">COACH</span>
            <div class="f-coach__card">
-             <span class="f-coach__texto" id="coachParcial">${escapar(parcial)}<span class="f-coach__cursor" aria-hidden="true"></span></span>
+             <div class="f-coach__texto f-coach__md" id="coachParcial">${markdownBasico(parsearMarcaDeExclusion(parcial).limpio)}<span class="f-coach__cursor" aria-hidden="true"></span></div>
            </div>
          </div>`
       : '',
@@ -327,8 +342,9 @@ async function preguntar(pregunta: string): Promise<void> {
       // elemento (span), no la clase, y cogia el primer turno del hilo.
       const nodo = document.getElementById('coachParcial');
       if (nodo) {
-        nodo.textContent = texto;
-        nodo.insertAdjacentHTML('beforeend', '<span class="f-coach__cursor" aria-hidden="true"></span>');
+        nodo.innerHTML =
+          markdownBasico(parsearMarcaDeExclusion(texto).limpio) +
+          '<span class="f-coach__cursor" aria-hidden="true"></span>';
       }
       await new Promise((r) => setTimeout(r, 18));
       if (mio !== turnoActivo) return;
@@ -383,6 +399,33 @@ async function alTocar(el: HTMLElement): Promise<void> {
       parcial = '';
       render();
       break;
+    case 'excluir': {
+      // Primero SE ENSEÑA que cambia, y no se toca nada hasta que confirme: el
+      // coach pregunta, el usuario decide, y los datos solo cambian despues.
+      const criterio = {
+        ejercicio: el.dataset.ejercicio ?? '',
+        fecha: el.dataset.fecha || undefined,
+        peso: el.dataset.peso ? Number(el.dataset.peso) : undefined,
+      };
+      const series = buscarSeries(criterio).filter((x) => !x.excluida);
+      if (series.length === 0) {
+        render();
+        return;
+      }
+      const lista = series.map((x) => `${x.etiqueta} · ${x.ejercicio} ${x.sets}x${x.reps}@${x.peso}`).join('\n');
+      const ok = await confirmarDestructivo({
+        titulo: criterio.peso !== undefined ? '¿Excluir este peso?' : '¿Marcar como no hecho?',
+        cuerpo:
+          `Se marcará:\n${lista}\n\n` +
+          'No se borra: deja de contar para el pico, el volumen y el estado, y lo puedes restaurar.',
+        confirmar: 'Marcar',
+      });
+      if (!ok) return;
+      excluirSeries(criterio, criterio.peso !== undefined ? 'outlier' : 'no_hecho');
+      mostrarToast({ tipo: 'exito', titulo: 'Listo, ya no cuenta' });
+      render();
+      break;
+    }
     case 'nueva': {
       // El hilo se pierde de verdad, asi que se pregunta. Y se dice lo que NO
       // se lleva por delante: el historial de entrenamiento no se toca, que es

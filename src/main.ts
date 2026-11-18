@@ -328,7 +328,7 @@ function manejarAccionDeSesion(el: HTMLElement): void {
       reabrirRPE(indice);
       break;
     case 'guardar':
-      saveWorkout();
+      void saveWorkout();
       break;
     case 'terminar':
       void finishWorkout();

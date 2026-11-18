@@ -139,6 +139,10 @@ export default defineConfig({
     fierroTokensToHtml(),
     VitePWA({
       registerType: 'autoUpdate',
+      // El registro lo hace src/pwa-update.ts (busca version nueva al volver a
+      // primer plano y recarga sin perder el entrenamiento en curso). El
+      // registerSW.js inyectado solo registraba una vez y no volvia a mirar.
+      injectRegister: null,
       // globPatterns ya cubre png/svg/ico: repetirlos aqui duplicaba 6 entradas
       // del manifiesto de precache e inflaba el total reportado.
       includeAssets: [],

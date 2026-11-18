@@ -39,6 +39,7 @@ import {
 } from '@/features/workout';
 import { initGamification, reinitGamification } from '@/features/gamification';
 import { guardarBorradorSiHayCambios } from '@/state/session';
+import { iniciarActualizaciones } from '@/pwa-update';
 import { abrirProgreso, cerrarProgreso } from '@/ui/progreso';
 import { abrirBuilder, cerrarBuilder } from '@/ui/builder';
 import {
@@ -437,8 +438,10 @@ if (document.readyState === 'loading') {
   init();
 }
 
-// El service worker lo registra vite-plugin-pwa (registerSW.js inyectado en
-// index.html). Registrarlo tambien a mano era un duplicado sin dueno claro.
+// El service worker lo registra src/pwa-update.ts: busca version nueva al abrir,
+// al volver a primer plano y cada 30 min, y recarga sin perder el entrenamiento.
+// (vite-plugin-pwa ya no inyecta registerSW.js: `injectRegister: null`.)
+iniciarActualizaciones();
 
 // Limpieza de una sola vez: los caches de runtime de Google Fonts que dejo la
 // version anterior. cleanupOutdatedCaches solo borra precaches viejos de

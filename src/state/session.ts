@@ -110,9 +110,8 @@ export function updateExercise(
 
   updateSessionVolume();
   markAsChanged();
-
-  // Check for PR
-  checkAndUpdatePR(ejercicio);
+  // El record NO se toca aqui: se fija al guardar. Teclear "450" por "45" y
+  // corregirlo dejaba el 450 de record para siempre.
 }
 
 export function toggleExerciseCompleted(index: number, completed: boolean): void {
@@ -288,6 +287,8 @@ export function saveCurrentSession(rpe?: RPEData): 'new' | 'updated' | 'error' {
   const isUpdate =
     sessionSaved && lastSavedData !== null && sessionId !== null;
   if (!addToHistory(sessionCopy)) return 'error';
+  // Los records se fijan ahora que la sesion SI quedo escrita.
+  sessionCopy.ejercicios.forEach(checkAndUpdatePR);
   // `gymmate_session` duplicaba la sesion entera y NADIE la leia (getSession no
   // tiene llamadores): solo gastaba cuota. Se libera la copia que dejo la
   // version anterior.
@@ -316,7 +317,7 @@ export function endSession(): void {
 // ==========================================
 
 function checkAndUpdatePR(ejercicioData: ExerciseData): void {
-  if (ejercicioData.volumen === 0) return;
+  if (!(ejercicioData.volumen > 0) || ejercicioData.excluido) return;
 
   const currentPR = getPR(ejercicioData.nombre);
 

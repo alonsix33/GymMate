@@ -257,6 +257,38 @@ const MUTANTES = [
     a: "'Falta GYMMATE_TOKEN: la API está abierta a cualquiera.',",
     minimo: 1,
   },
+  {
+    nombre: '/api/salud vuelve a contar donde guarda a cualquiera',
+    porque: 'Sin token no se debe saber si hay Postgres, volumen o disco efimero: es un mapa para quien ataca.',
+    archivo: 'server/index.mjs',
+    de: 'if (TOKEN && !autorizado(req)) {',
+    a: 'if (false && TOKEN && !autorizado(req)) {',
+    minimo: 1,
+  },
+  {
+    nombre: 'las respuestas dejan de llevar la CSP',
+    porque: 'Sin CSP, un script inyectado (un CSV ajeno, un nombre de ejercicio) corre con acceso al historial.',
+    archivo: 'server/index.mjs',
+    de: "res.setHeader('Content-Security-Policy', CSP);",
+    a: '',
+    minimo: 1,
+  },
+  {
+    nombre: 'el token se puede probar sin limite',
+    porque: 'Sin tope de intentos el token se adivina a velocidad de red.',
+    archivo: 'server/index.mjs',
+    de: "return f.n >= MAX_FALLOS ? Math.ceil(restante / 1000) : 0;",
+    a: 'return 0;',
+    minimo: 1,
+  },
+  {
+    nombre: 'el modelo mudo deja la peticion colgada',
+    porque: 'Un modelo que no contesta mantendria abierta la conexion (y la pantalla del coach pensando) indefinidamente.',
+    archivo: 'server/coach.mjs',
+    de: 'let reloj = setTimeout(() => { vencido = true; cancelar.abort(); }, TIMEOUT_MODELO_MS);',
+    a: 'let reloj = null;',
+    minimo: 1,
+  },
 ];
 
 let fallos = 0;
@@ -294,7 +326,7 @@ for (const m of MUTANTES) {
 }
 
 // Que la lista no se vacie por el mismo camino que este script vino a cerrar.
-const MUTANTES_MINIMO = 25;
+const MUTANTES_MINIMO = 32;
 if (MUTANTES.length < MUTANTES_MINIMO) {
   fallos++;
   console.log(`\nFALLA solo hay ${MUTANTES.length} mutantes (minimo ${MUTANTES_MINIMO}).`);

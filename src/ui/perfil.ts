@@ -504,6 +504,13 @@ export function renderPerfil(contenedor: HTMLElement): void {
         </div>
       </section>
       ${tarjetaDeServidor()}
+      <section class="f-card-perfil" aria-label="Versión de la app">
+        <span class="f-card-perfil__titulo">Versión de la app</span>
+        <span class="f-card-perfil__cuerpo">GymMate ${escapar(__APP_VERSION__)}. La app busca sola una versión nueva al abrirla.</span>
+        <div class="f-card-perfil__acciones">
+          <button type="button" class="f-btn f-btn--secundario f-btn--medida" data-perfil="actualizar">Buscar actualización</button>
+        </div>
+      </section>
       <div class="f-perfil__puente" role="group" aria-label="Otras secciones">
         <button type="button" class="f-btn f-btn--secundario f-btn--medida" data-perfil="records">Récords</button>
         <button type="button" class="f-btn f-btn--secundario f-btn--medida" data-perfil="graficos">Gráficos</button>
@@ -1010,6 +1017,19 @@ function perfilDesdeLaPantalla(raiz: HTMLElement): ProfileData {
 function alTocarPerfil(el: HTMLElement, contenedor: HTMLElement): void {
   const accion = el.dataset.perfil;
   switch (accion) {
+    case 'actualizar': {
+      // Si hay version nueva, el worker toma el control y la app se recarga sola
+      // (o avisa si hay un entrenamiento en curso). Si no, se dice.
+      void import('@/pwa-update').then(async ({ buscarActualizacion }) => {
+        const pudo = await buscarActualizacion();
+        mostrarToast({
+          tipo: pudo ? 'exito' : 'aviso',
+          titulo: pudo ? 'Revisado: estás en la última versión' : 'No se pudo buscar',
+          detalle: pudo ? undefined : 'Revisa tu conexión e inténtalo otra vez.',
+        });
+      });
+      break;
+    }
     case 'conectar': {
       const token = (document.getElementById('perfilBackendToken') as HTMLInputElement | null)?.value ?? '';
       const url = (document.getElementById('perfilBackendUrl') as HTMLInputElement | null)?.value ?? '';

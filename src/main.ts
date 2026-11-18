@@ -27,6 +27,7 @@ import {
   incrementInput,
   decrementInput,
   toggleCompletado,
+  ajustarCampo,
   saveWorkout,
   finishWorkout,
   activarEjercicioOpcional,
@@ -37,6 +38,8 @@ import {
   skipRPE,
 } from '@/features/workout';
 import { initGamification, reinitGamification } from '@/features/gamification';
+import { guardarBorradorSiHayCambios } from '@/state/session';
+import { iniciarActualizaciones } from '@/pwa-update';
 import { abrirProgreso, cerrarProgreso } from '@/ui/progreso';
 import { abrirBuilder, cerrarBuilder } from '@/ui/builder';
 import {
@@ -287,8 +290,6 @@ function initializeEventDelegation(): void {
   });
 }
 
-const PASO_STEPPER: Record<string, number> = { sets: 1, reps: 1, peso: 1 };
-
 function manejarAccionDeSesion(el: HTMLElement): void {
   const indice = Number(el.dataset.indice);
   switch (el.dataset.sesion) {
@@ -299,16 +300,9 @@ function manejarAccionDeSesion(el: HTMLElement): void {
       openRestTimerModal();
       break;
     case 'menos':
-    case 'mas': {
-      const campo = el.dataset.campo ?? 'sets';
-      const input = document.getElementById(`${campo}-${indice}`) as HTMLInputElement | null;
-      if (!input) break;
-      const paso = PASO_STEPPER[campo] ?? 1;
-      const actual = parseFloat(input.value) || 0;
-      input.value = String(Math.max(0, el.dataset.sesion === 'mas' ? actual + paso : actual - paso));
-      updateEjercicio(indice);
+    case 'mas':
+      ajustarCampo(indice, (el.dataset.campo ?? 'sets') as 'sets' | 'reps' | 'peso', el.dataset.sesion as 'mas' | 'menos');
       break;
-    }
     case 'completar':
       toggleCompletado(indice);
       break;
@@ -366,6 +360,13 @@ function exponerGanchosDeVerificacion(): void {
 }
 
 function init(): void {
+  // Al ocultar la app (bloquear la pantalla, cambiar de app) se vuelca el
+  // borrador sin esperar al autoguardado: iOS puede suspender la PWA ahi.
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') guardarBorradorSiHayCambios();
+  });
+  window.addEventListener('pagehide', guardarBorradorSiHayCambios);
+
   // FIERRO: toasts y confirmaciones. Va primero para que cualquier fallo
   // posterior tenga como reportarse sin recurrir a alert().
   inicializarFeedback();
@@ -437,8 +438,10 @@ if (document.readyState === 'loading') {
   init();
 }
 
-// El service worker lo registra vite-plugin-pwa (registerSW.js inyectado en
-// index.html). Registrarlo tambien a mano era un duplicado sin dueno claro.
+// El service worker lo registra src/pwa-update.ts: busca version nueva al abrir,
+// al volver a primer plano y cada 30 min, y recarga sin perder el entrenamiento.
+// (vite-plugin-pwa ya no inyecta registerSW.js: `injectRegister: null`.)
+iniciarActualizaciones();
 
 // Limpieza de una sola vez: los caches de runtime de Google Fonts que dejo la
 // version anterior. cleanupOutdatedCaches solo borra precaches viejos de

@@ -16,6 +16,7 @@ import {
   resetSession,
 } from '@/state/session';
 import {
+  ultimaVezDe,
   renderSesion,
   fijarObligatorios,
   activarOpcional,
@@ -34,7 +35,7 @@ import {
   updateCoachOnExerciseUpdate,
   updateCoachOnExerciseComplete,
 } from '@/features/coach';
-import { getPRs, getHistory } from '@/utils/storage';
+import { getPRs, getHistory, getDraft } from '@/utils/storage';
 import { setExerciseRPE, sessionId, registrarPRConfirmado } from '@/state/session';
 import { pesoSospechoso } from '@/features/coach-estado';
 import { processCompletedSession } from '@/features/gamification';
@@ -64,6 +65,24 @@ export async function loadTrainingGroup(grupoId: string): Promise<boolean> {
       confirmar: 'Cambiar',
     });
     if (!cambiar) return false;
+  } else {
+    // Tras reiniciar la app `hasUnsavedData()` mira solo la memoria y es
+    // false, pero el borrador SIGUE en el almacenamiento y el primer
+    // autoguardado de esta rutina lo pisaria (solo hay un slot).
+    const borrador = getDraft();
+    if (borrador && (borrador.volumenTotal ?? 0) > 0) {
+      const cuantos = borrador.ejercicios.filter((e) => e.volumen > 0).length;
+      const empezar = await confirmarDestructivo({
+        titulo: '¿Empezar otra rutina?',
+        cuerpo:
+          `Tienes ${borrador.grupo || 'un entrenamiento'} sin terminar (${cuantos} ` +
+          `${cuantos === 1 ? 'ejercicio' : 'ejercicios'} con series). ` +
+          'Si empiezas otra, se pierde: solo se guarda un borrador a la vez.',
+        cancelar: 'Volver',
+        confirmar: 'Empezar otra',
+      });
+      if (!empezar) return false;
+    }
   }
 
   // Una rutina nueva es una sesion NUEVA. `sessionId`, `sessionSaved` y
@@ -269,9 +288,82 @@ function validateDecimalInput(input: HTMLInputElement): boolean {
 // TOGGLE COMPLETADO
 // ==========================================
 
+/**
+ * Lo que se hizo la ultima vez en este ejercicio, o null si nunca.
+ *
+ * Es una SUGERENCIA derivada del historial: no se guarda en la sesion. Se ve
+ * atenuada en cada campo y solo se vuelve dato cuando el usuario la acepta (✓)
+ * o empieza a ajustarla (+/−). Precargarla como dato habria guardado como
+ * "hechos" ejercicios que el usuario no toco, que es el defecto que ya se
+ * corrigio en el historial.
+ */
+export function sugeridoDe(index: number): { sets: number; reps: number; peso: number } | null {
+  const ejercicio = sessionData.ejercicios[index];
+  if (!ejercicio) return null;
+  return ultimaVezDe(ejercicio.nombre, getHistory());
+}
+
+/** Paso del peso: 2.5 kg en barra y maquina; 1 kg en mancuerna, donde los
+ *  discos son de 6, 7, 10, 12... (Elevacion Lateral 6 kg, Frontal 7 kg). */
+export function pasoDePeso(index: number): number {
+  return sessionData.ejercicios[index]?.esMancuerna ? 1 : 2.5;
+}
+
+/**
+ * Rellena con lo de la ultima vez los campos que estan VACIOS (nunca pisa lo
+ * que el usuario ya puso) y lo registra. Devuelve true si cambio algo.
+ */
+export function aplicarSugerido(index: number, soloSiIntacto = false): boolean {
+  const sug = sugeridoDe(index);
+  if (!sug) return false;
+  // Para los botones +/−: solo si el ejercicio esta INTACTO. Si el usuario ya
+  // puso algo (o bajo las reps hasta 0 a proposito), un 0 es su decision y no
+  // se vuelve a rellenar.
+  if (soloSiIntacto) {
+    const tocado = (['sets', 'reps', 'peso'] as const).some((c) => {
+      const el = document.getElementById(`${c}-${index}`) as HTMLInputElement | null;
+      return !!el && parseFloat(el.value) > 0;
+    });
+    if (tocado) return false;
+  }
+  let cambio = false;
+  for (const campo of ['sets', 'reps', 'peso'] as const) {
+    const input = document.getElementById(`${campo}-${index}`) as HTMLInputElement | null;
+    if (input && !(parseFloat(input.value) > 0) && sug[campo] > 0) {
+      input.value = String(sug[campo]);
+      cambio = true;
+    }
+  }
+  if (cambio) updateEjercicio(index);
+  return cambio;
+}
+
+/**
+ * Un toque en + o − de un campo.
+ *
+ * El primer toque sobre un ejercicio vacio parte de lo de la ultima vez (en los
+ * tres campos). Rellenar repinta la tarjeta, asi que el <input> se busca
+ * DESPUES: el de antes ya no esta en el documento y el toque se perdia (el
+ * primer "+" solo rellenaba: 55 → 55 → 57.5).
+ */
+export function ajustarCampo(index: number, campo: 'sets' | 'reps' | 'peso', sentido: 'mas' | 'menos'): void {
+  aplicarSugerido(index, true);
+  const input = document.getElementById(`${campo}-${index}`) as HTMLInputElement | null;
+  if (!input) return;
+  const paso = campo === 'peso' ? pasoDePeso(index) : 1;
+  const actual = parseFloat(input.value) || 0;
+  const siguiente = sentido === 'mas' ? actual + paso : actual - paso;
+  // Redondeo a 2 decimales: 57.5 - 2.5 no debe dejar 54.99999.
+  input.value = String(Math.max(0, Math.round(siguiente * 100) / 100));
+  updateEjercicio(index);
+}
+
 export function toggleCompletado(index: number): void {
   const ejercicio = sessionData.ejercicios[index];
   if (!ejercicio) return;
+
+  // ✓ sobre un ejercicio vacio = "lo mismo que la ultima vez" (un solo toque).
+  if (!ejercicio.completado && (!ejercicio.sets || !ejercicio.reps)) aplicarSugerido(index);
 
   const nuevoEstado = !ejercicio.completado;
   // Marcar ✓ sin datos dejaba la fila en "0×0 · 0 kg · 0 kg" y sumaba en

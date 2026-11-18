@@ -83,7 +83,7 @@ export function ultimaVezDe(
 ): { sets: number; reps: number; peso: number } | null {
   for (const sesion of historial) {
     if (sesion.type === 'cardio') continue;
-    const ej = (sesion.ejercicios ?? []).find((e) => e.nombre === nombre && e.volumen > 0);
+    const ej = (sesion.ejercicios ?? []).find((e) => e.nombre === nombre && e.volumen > 0 && !e.excluido);
     if (ej) return { sets: ej.sets, reps: ej.reps, peso: ej.peso };
   }
   return null;
@@ -188,13 +188,21 @@ export function anchoDelCampo(valor: number): number {
   return Math.max(1, String(valor || '').length);
 }
 
-function stepper(campo: 'sets' | 'reps' | 'peso', etiqueta: string, indice: number, valor: number): string {
+function stepper(
+  campo: 'sets' | 'reps' | 'peso',
+  etiqueta: string,
+  indice: number,
+  valor: number,
+  /** Lo que se hizo la ultima vez: se ve ATENUADO en el hueco (placeholder),
+   *  sin ser un dato. Solo se vuelve dato al tocar ✓ o los botones. */
+  sugerido = 0
+): string {
   const id = `${campo}-${indice}`;
   const paso = campo === 'peso' ? '0.5' : '1';
   const modo = campo === 'peso' ? 'decimal' : 'numeric';
   // El hueco del numero se dimensiona con los digitos que tiene dentro: en
   // `ch`, que en una fuente tabular es exactamente el ancho de un digito.
-  const ancho = anchoDelCampo(valor);
+  const ancho = anchoDelCampo(valor || sugerido);
   return `
     <div class="f-stepper-campo">
       <label class="f-stepper-campo__label" for="${id}">${etiqueta}</label>
@@ -209,7 +217,7 @@ function stepper(campo: 'sets' | 'reps' | 'peso', etiqueta: string, indice: numb
           min="0"
           value="${valor || ''}"
           style="min-width:${ancho}ch"
-          placeholder="0"
+          placeholder="${sugerido > 0 ? sugerido : 0}"
           data-sesion="valor"
           data-campo="${campo}"
           data-indice="${indice}"
@@ -278,9 +286,9 @@ function cardActiva(ejercicio: ExerciseData, indice: number, historial: HistoryS
           )} como completado"></button>
         </div>
         <div class="f-steppers">
-          ${stepper('sets', 'SETS', indice, ejercicio.sets)}
-          ${stepper('reps', 'REPS', indice, ejercicio.reps)}
-          ${stepper('peso', etiquetaPeso, indice, ejercicio.peso)}
+          ${stepper('sets', 'SETS', indice, ejercicio.sets, ultima?.sets)}
+          ${stepper('reps', 'REPS', indice, ejercicio.reps, ultima?.reps)}
+          ${stepper('peso', etiquetaPeso, indice, ejercicio.peso, ultima?.peso)}
         </div>
         <div class="f-ejercicio__pie">
           <span class="f-ejercicio__pie-label">Volumen del ejercicio</span>

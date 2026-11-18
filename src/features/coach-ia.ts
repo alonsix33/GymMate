@@ -23,6 +23,7 @@ import {
 } from '@/utils/zonas';
 import { estimateOneRM, getStreakInfo } from '@/features/gamification';
 import { unaRepMaxPromedio } from '@/utils/calculations';
+import { turnosDeHoy } from '@/features/coach-saludo';
 import { esSerieValida } from '@/utils/series';
 import { trainingGroups } from '@/data/training-groups';
 import {
@@ -616,7 +617,9 @@ export class CoachRemoto implements AdaptadorCoach {
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${this.token}` },
       body: JSON.stringify({
         pregunta,
-        historial: historial.slice(-12).map((t) => ({
+        // Solo el hilo de HOY, y como mucho 6: lo de dias anteriores arrastraba
+        // su tono y sus afirmaciones a la respuesta de ahora.
+        historial: turnosDeHoy(historial, new Date()).enviados.map((t) => ({
           autor: t.autor,
           texto: t.texto,
           ...(t.origen ? { origen: t.origen, cifras: t.cifras } : {}),

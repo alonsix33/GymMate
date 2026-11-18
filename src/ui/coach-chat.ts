@@ -23,6 +23,8 @@ import {
 } from '@/features/coach-ia';
 import { cifra, escapar, taparNavegacion } from '@/utils/formato';
 import { markdownBasico } from '@/utils/markdown';
+import { getHistory } from '@/utils/storage';
+import { detectarPedidoDeGrafico, graficoSVG, resumenDeSerie, serieDeEjercicio } from '@/features/coach-grafico';
 import { buscarSeries, excluirSeries, parsearMarcaDeExclusion } from '@/features/exclusiones';
 import { confirmarDestructivo, mostrarToast } from '@/ui/feedback';
 
@@ -120,6 +122,22 @@ function botonDeExclusion(c: { ejercicio: string; fecha?: string; peso?: number 
       )}">Marcar como no hecho · ${escapar(que)}</button>`;
 }
 
+/** El gráfico se dibuja AL PINTAR, con la bitácora de ese momento. */
+function bloqueDeGrafico(ejercicio: string): string {
+  const puntos = serieDeEjercicio(ejercicio, getHistory(), new Date());
+  if (puntos.length === 0) return '';
+  return `<div class="f-coach__grafico">${graficoSVG(ejercicio, puntos)}</div>`;
+}
+
+function opcionesDeGrafico(opciones: string[]): string {
+  return `<div class="f-coach__opciones" role="group" aria-label="Elegir ejercicio">${opciones
+    .map(
+      (o) =>
+        `<button type="button" class="f-btn f-btn--secundario f-btn--medida" data-coach="grafico" data-ejercicio="${escapar(o)}">${escapar(o)}</button>`
+    )
+    .join('')}</div>`;
+}
+
 function turnoHTML(t: TurnoCoach): string {
   if (t.autor === 'usuario') {
     return `<div class="f-coach__usuario${t.pendiente ? ' f-coach__usuario--pendiente' : ''}">${escapar(
@@ -143,6 +161,8 @@ function turnoHTML(t: TurnoCoach): string {
       <div class="f-coach__card">
         <div class="f-coach__texto f-coach__md">${markdownBasico(limpio)}</div>
         ${criterio ? botonDeExclusion(criterio) : ''}
+        ${t.grafico ? bloqueDeGrafico(t.grafico.ejercicio) : ''}
+        ${t.opciones?.length ? opcionesDeGrafico(t.opciones) : ''}
         ${t.dato ? bloqueDeDatos(t.dato) : ''}
       </div>
     </div>
@@ -296,11 +316,35 @@ async function enviar(): Promise<void> {
   await preguntar(pregunta);
 }
 
+function responderConGrafico(pedido: NonNullable<ReturnType<typeof detectarPedidoDeGrafico>>): void {
+  const base = { id: `c_${Date.now()}`, autor: 'coach' as const, fecha: new Date().toISOString() };
+  if (pedido.tipo === 'ejercicio') {
+    const puntos = serieDeEjercicio(pedido.ejercicio, getHistory(), new Date());
+    turnos.push({ ...base, texto: resumenDeSerie(pedido.ejercicio, puntos), grafico: { ejercicio: pedido.ejercicio } });
+  } else {
+    turnos.push({ ...base, texto: '¿De cuál ejercicio quieres el gráfico?', opciones: pedido.opciones });
+  }
+  guardarConversacion(turnos);
+  estado = 'listo';
+  hayError = false;
+  render();
+}
+
 async function preguntar(pregunta: string): Promise<void> {
   hayError = false;
   colaFallo = false;
+  const previos = turnos.map((t) => ({ autor: t.autor, texto: t.texto }));
   turnos.push({ id: `u_${Date.now()}`, autor: 'usuario', texto: pregunta, fecha: new Date().toISOString() });
   guardarConversacion(turnos);
+
+  // "Muéstrame el gráfico": lo dibuja la app con los datos de la bitácora, sin
+  // pasar por el modelo. El modelo no tiene gráficos y no hace falta que sepa
+  // pedirlos: así sale siempre igual, al instante y sin inventar ningún punto.
+  const pedido = detectarPedidoDeGrafico(pregunta, getHistory(), previos, new Date());
+  if (pedido) {
+    responderConGrafico(pedido);
+    return;
+  }
 
   // Token de este turno: cualquier stream anterior que siga vivo se descarta
   // en su siguiente `await` en vez de seguir escribiendo sobre `parcial`.
@@ -398,6 +442,10 @@ async function alTocar(el: HTMLElement): Promise<void> {
       estado = 'listo';
       parcial = '';
       render();
+      break;
+    case 'grafico':
+      // Tocar un ejercicio es pedirlo con su nombre entero.
+      if (estado === 'listo' && el.dataset.ejercicio) await preguntar(`Gráfico de ${el.dataset.ejercicio}`);
       break;
     case 'excluir': {
       // Primero SE ENSEÑA que cambia, y no se toca nada hasta que confirme: el

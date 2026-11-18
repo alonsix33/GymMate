@@ -5353,3 +5353,14 @@ body:has(#medidasTab:not(.hidden)) {
 
 /* Las hojas de confirmacion con varias lineas (lista de lo que va a cambiar). */
 .f-sheet__cuerpo { white-space: pre-line; }
+
+/* Coach · gráfico que dibuja la app. */
+.f-coach__grafico { background: var(--bg-app); border: 1px solid var(--border-subtle); border-radius: var(--r-10); padding: 10px 8px 4px; }
+.f-coach__grafico-svg { display: block; width: 100%; height: auto; }
+.f-coach__grafico-eje { stroke: var(--border-subtle); stroke-width: 1; stroke-dasharray: 3 3; }
+.f-coach__grafico-linea { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.f-coach__grafico-punto { fill: var(--bg-app); stroke: var(--accent); stroke-width: 2; }
+.f-coach__grafico-punto--pico { fill: var(--text-primary); }
+.f-coach__grafico-punto--ultimo { fill: var(--accent); }
+.f-coach__grafico-txt { fill: var(--text-secondary); font-size: 10px; font-family: inherit; }
+.f-coach__opciones { display: flex; flex-wrap: wrap; gap: 8px; }

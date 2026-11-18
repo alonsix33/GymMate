@@ -424,3 +424,34 @@ describe('armarMensajes — avisos de la app (tarjetas que NO dijo el coach)', (
     expect(m.some((x) => x.role === 'assistant' && x.content === 'dime')).toBe(true);
   });
 });
+
+describe('armarMensajes — REVISION DE HOY ya comparada por la app', () => {
+  const estado = {
+    datosAl: 'vie 13 nov 2026 22:14 (America/Lima)',
+    hoy: { etiqueta: 'vie 13 nov', entrenado: true, sesion: { grupos: ['G4'], series: [] } },
+    revisionDeHoy: {
+      ejercicios: [
+        { ejercicio: 'Jalón al Pecho', hoy: { sets: 4, reps: 10, peso: 57.5 }, antes: { etiqueta: 'jue 5 nov', sets: 4, reps: 10, peso: 55 }, cambio: 'subió', difKg: 2.5 },
+        { ejercicio: 'Dominadas', hoy: { sets: 3, reps: 8, peso: 0 }, antes: null, cambio: 'primera vez', difKg: null },
+      ],
+      faltan: ['Curl Martillo'],
+    },
+  };
+  const texto = () => armarMensajes({ pregunta: 'x', contexto: { ...CONTEXTO, estado } })[1].content;
+
+  it('lista cada ejercicio con su cambio calculado', () => {
+    const t = texto();
+    expect(t).toContain('REVISION DE HOY');
+    expect(t).toContain('Jalón al Pecho: hoy 4x10@57.5 · antes (jue 5 nov) 4x10@55 · SUBIÓ 2.5 kg');
+    expect(t).toContain('Dominadas: hoy 3x8@0 · primera vez');
+  });
+  it('lo que faltaba de la rutina se dice, y se dice que no se compare por su cuenta', () => {
+    const t = texto();
+    expect(t).toContain('no se hizo hoy: Curl Martillo');
+    expect(t).toMatch(/no compares fechas/i);
+  });
+  it('sin revision no aparece el bloque', () => {
+    const t = armarMensajes({ pregunta: 'x', contexto: { ...CONTEXTO, estado: { ...estado, revisionDeHoy: null } } })[1].content;
+    expect(t).not.toContain('REVISION DE HOY');
+  });
+});

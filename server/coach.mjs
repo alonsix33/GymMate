@@ -223,6 +223,20 @@ function textoDeEstado(e) {
       salida.push('hoy ya entrenó: resume lo hecho y NO propongas plan para hoy');
     }
   }
+  const rev = e.revisionDeHoy;
+  if (rev && Array.isArray(rev.ejercicios) && rev.ejercicios.length) {
+    salida.push('REVISION DE HOY — ya comparada por la app contra la vez anterior de cada ejercicio. No compares fechas ni pesos por tu cuenta; copia esto:');
+    for (const x of rev.ejercicios) {
+      const hoy = `${x.hoy.sets}x${x.hoy.reps}@${x.hoy.peso}`;
+      if (!x.antes) {
+        salida.push(`- ${x.ejercicio}: hoy ${hoy} · primera vez`);
+        continue;
+      }
+      const dif = x.cambio === 'subió' ? `SUBIÓ ${x.difKg} kg` : x.cambio === 'bajó' ? `BAJÓ ${Math.abs(x.difKg)} kg` : 'IGUAL';
+      salida.push(`- ${x.ejercicio}: hoy ${hoy} · antes (${x.antes.etiqueta}) ${x.antes.sets}x${x.antes.reps}@${x.antes.peso} · ${dif}`);
+    }
+    if (Array.isArray(rev.faltan) && rev.faltan.length) salida.push(`no se hizo hoy: ${rev.faltan.join(', ')}`);
+  }
   if (e.ayer) {
     salida.push(
       `ayer (${e.ayer.etiqueta}): ${sesionEnTexto(e.ayer.sesion) ?? 'sin registro cargado'}`

@@ -41,6 +41,78 @@ function pintarBarraFierro(): void {
 let restTimer: ReturnType<typeof setInterval> | null = null;
 let restTimeRemaining = 0;
 let isPaused = false;
+/** Instante (ms de reloj) en que acaba el descanso. El tiempo que falta se
+ *  CALCULA contra el reloj de pared: con un contador de ticks, iOS congelaba el
+ *  descanso al bloquear la pantalla y al volver seguia donde lo dejo. */
+let finDelDescanso = 0;
+
+const CLAVE_ULTIMO_DESCANSO = 'gymmate_ultimo_descanso';
+const DESCANSO_POR_DEFECTO = 90;
+
+/** Cuanto falta, en segundos (0 si no hay descanso). */
+export function descansoRestante(): number {
+  return restTimeRemaining;
+}
+
+/** El ultimo tiempo de descanso que elegiste (90 s la primera vez). */
+export function ultimoDescanso(): number {
+  try {
+    const v = Number(localStorage.getItem(CLAVE_ULTIMO_DESCANSO));
+    if (Number.isFinite(v) && v >= 10 && v <= 900) return v;
+  } catch {
+    // sin almacenamiento: el de por defecto
+  }
+  return DESCANSO_POR_DEFECTO;
+}
+
+/** Recalcula lo que falta contra el reloj. Si ya paso, termina. */
+function sincronizar(): void {
+  if (isPaused || finDelDescanso === 0) return;
+  restTimeRemaining = Math.max(0, Math.ceil((finDelDescanso - Date.now()) / 1000));
+  updateTimerDisplay();
+  if (restTimeRemaining <= 0) {
+    if (restTimer) {
+      clearInterval(restTimer);
+      restTimer = null;
+    }
+    finDelDescanso = 0;
+    soltarPantalla();
+    onTimerComplete();
+  }
+}
+
+// La pantalla se mantiene encendida SOLO mientras corre un descanso: un
+// entrenamiento entero con la pantalla forzada gasta bateria sin necesidad.
+let candado: { release: () => Promise<void> } | null = null;
+function mantenerPantalla(): void {
+  try {
+    const wl = (navigator as unknown as { wakeLock?: { request: (t: 'screen') => Promise<{ release: () => Promise<void> }> } }).wakeLock;
+    if (!wl || candado) return;
+    void wl.request('screen').then((l) => { candado = l; }).catch(() => {});
+  } catch {
+    // sin soporte: no pasa nada
+  }
+}
+function soltarPantalla(): void {
+  const l = candado;
+  candado = null;
+  void l?.release().catch(() => {});
+}
+
+if (typeof document !== 'undefined') {
+  // Al volver a la app (desbloquear, cambiar de pestaña) se recalcula YA y,
+  // si el descanso sigue en marcha, se vuelve a pedir la pantalla.
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') return;
+    sincronizar();
+    if (finDelDescanso !== 0 && !isPaused) mantenerPantalla();
+  });
+}
+
+/** Al marcar el check de un ejercicio: el descanso arranca solo con el ultimo tiempo. */
+export function iniciarDescansoAutomatico(): void {
+  initializeTimer(ultimoDescanso());
+}
 
 // ==========================================
 // HOJA DE ELECCION DEL DESCANSO
@@ -111,6 +183,16 @@ export function closeRestTimerModal(): void {
 export function initializeTimer(seconds: number): void {
   restTimeRemaining = seconds;
   isPaused = false;
+  finDelDescanso = Date.now() + seconds * 1000;
+  try {
+    localStorage.setItem(CLAVE_ULTIMO_DESCANSO, String(seconds));
+  } catch {
+    // no es critico
+  }
+  // El permiso de avisos se pide AQUI, que viene de un toque, y no al abrir la
+  // app: sin gesto el navegador lo ignora o lo penaliza.
+  pedirPermisoDeAvisos();
+  mantenerPantalla();
 
   // Cerrar modal de selección, abrir banner
   closeRestTimerModal();
@@ -132,18 +214,7 @@ export function initializeTimer(seconds: number): void {
     clearInterval(restTimer);
   }
 
-  restTimer = setInterval(() => {
-    if (!isPaused) {
-      restTimeRemaining--;
-      updateTimerDisplay();
-
-      if (restTimeRemaining <= 0) {
-        clearInterval(restTimer!);
-        restTimer = null;
-        onTimerComplete();
-      }
-    }
-  }, 1000);
+  restTimer = setInterval(sincronizar, 1000);
 }
 
 // ==========================================
@@ -175,7 +246,14 @@ function updatePauseButtonText(): void {
 // ==========================================
 
 export function pauseTimer(): void {
-  isPaused = !isPaused;
+  if (!isPaused) {
+    // Se congela lo que falta; al reanudar se recalcula el fin.
+    sincronizar();
+    isPaused = true;
+  } else {
+    isPaused = false;
+    finDelDescanso = Date.now() + restTimeRemaining * 1000;
+  }
   updatePauseButtonText();
   const boton = document.getElementById('fierroDescansoPausa');
   if (boton) boton.textContent = isPaused ? 'Reanudar' : 'Pausar';
@@ -193,6 +271,8 @@ export function stopTimer(): void {
   }
 
   restTimeRemaining = 0;
+  finDelDescanso = 0;
+  soltarPantalla();
   pintarBarraFierro();
 }
 
@@ -284,8 +364,16 @@ export function initializeTimerListeners(): void {
 
 
 
-  // Pedir permiso de notificaciones
-  if ('Notification' in window && Notification.permission === 'default') {
-    Notification.requestPermission();
+  // El permiso de notificaciones ya NO se pide al arrancar: se pide al empezar
+  // un descanso (ver `initializeTimer`), que es un gesto del usuario.
+}
+
+function pedirPermisoDeAvisos(): void {
+  try {
+    if ('Notification' in window && Notification.permission === 'default') {
+      void Notification.requestPermission();
+    }
+  } catch {
+    // iOS fuera de la PWA instalada no tiene Notification
   }
 }

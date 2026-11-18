@@ -390,6 +390,11 @@ export function toggleCompletado(index: number): void {
   if (nuevoEstado) {
     const completados = sessionData.ejercicios.filter((e) => e.completado).length;
     updateCoachOnExerciseComplete(ejercicio, completados, sessionData.ejercicios.length);
+    // El descanso arranca solo al marcar ✓ (con el ultimo tiempo que elegiste),
+    // salvo en el ultimo ejercicio: ahi no hay nada que esperar.
+    if (completados < sessionData.ejercicios.length) {
+      void import('@/features/timer').then(({ iniciarDescansoAutomatico }) => iniciarDescansoAutomatico());
+    }
   }
 }
 

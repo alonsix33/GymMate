@@ -21,3 +21,14 @@ describe('area tactil minima de 44 px', () => {
     expect(css).toMatch(/\[data-sesion='mas'\]::after\s*\{\s*right:\s*-\d+px/);
   });
 });
+
+describe('la barra de descanso de la sesion se ve', () => {
+  it('ninguna regla global `.f-descanso` la oculta (solo el banner #restTimerBanner)', () => {
+    const globales = [...css.matchAll(/(^|\n)\.f-descanso\s*\{([^}]*)\}/g)].map((m) => m[2]);
+    expect(globales.some((r) => /display:\s*none/.test(r))).toBe(false);
+    expect(css).toMatch(/#restTimerBanner\.f-descanso\s*\{[^}]*display:\s*none/);
+  });
+  it('queda a la vista: sticky sobre la barra de navegacion', () => {
+    expect(css).toMatch(/#fierroDescanso\s*\{\s*position:\s*sticky/);
+  });
+});

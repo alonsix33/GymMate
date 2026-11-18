@@ -14,7 +14,7 @@ import { getHistory, getPR } from '@/utils/storage';
 import { getExerciseInfo } from '@/data/exercises';
 import { getMuscleRank, RANK_DISPLAY_NAMES } from '@/features/gamification';
 import { colorDeRango } from '@/ui/gamification/muscle-map';
-import { cifra, escapar } from '@/utils/formato';
+import { cifra, cifraDecimal, escapar } from '@/utils/formato';
 import { ultimaVezDe, reloj, partirNombreDeGrupo } from '@/ui/workout-view';
 import type { SessionXPSummary, GamificationMuscleGroup } from '@/types/gamification';
 
@@ -97,14 +97,14 @@ export function mostrarGuiaEjercicio(nombre: string): void {
   if (pr) {
     const fecha = fechaPR(pr.date);
     filas.push(
-      `<div class="f-guia__fila"><span class="f-guia__label">Tu PR</span><span class="f-guia__valor f-guia__valor--pr">${cifra(
+      `<div class="f-guia__fila"><span class="f-guia__label">Tu PR</span><span class="f-guia__valor f-guia__valor--pr">${cifraDecimal(
         pr.peso
       )} kg${fecha ? ` · ${fecha}` : ''}</span></div>`
     );
   }
   if (ultima) {
     filas.push(
-      `<div class="f-guia__fila"><span class="f-guia__label">Última vez</span><span class="f-guia__valor">${ultima.sets}×${ultima.reps} · ${cifra(
+      `<div class="f-guia__fila"><span class="f-guia__label">Última vez</span><span class="f-guia__valor">${ultima.sets}×${ultima.reps} · ${cifraDecimal(
         ultima.peso
       )} kg</span></div>`
     );

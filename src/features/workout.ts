@@ -19,6 +19,7 @@ import {
 import {
   ultimaVezDe,
   renderSesion,
+  repintarVolumenPorMusculo,
   fijarObligatorios,
   activarOpcional,
   reiniciarOpcionales,
@@ -439,7 +440,9 @@ export function updateVolumeDisplay(): void {
 
   const pintadas = bloque ? bloque.querySelectorAll('.f-volumen__fila').length : 0;
   if (filas.length !== pintadas) {
-    pintarSesion();
+    // Solo ese bloque: repintar la sesion entera reemplazaba los campos y el
+    // foco se perdia al pasar de uno a otro.
+    if (!repintarVolumenPorMusculo()) pintarSesion();
     return;
   }
   if (!bloque || filas.length === 0) return;

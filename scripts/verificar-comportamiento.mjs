@@ -2535,8 +2535,9 @@ const borradorDePrueba = {
     logros: document.querySelector('[data-prog="logros"]')?.textContent?.replace(/\s+/g, ' ').trim() ?? '',
     navInerte: document.querySelector('nav.f-tabbar')?.hasAttribute('inert') ?? false,
   }));
-  chk('GM-01 · la pestaña PROGRESO abre la superposicion', gm01.abierto === true);
-  chk('GM-01 · el titulo es PROGRESO', gm01.titulo === 'PROGRESO', gm01.titulo);
+  chk('GM-01 · la pestaña NIVEL abre la superposicion', gm01.abierto === true);
+  // Se llamaba PROGRESO, pero es nivel y logros (no cargas): se renombro a NIVEL.
+  chk('GM-01 · el titulo es NIVEL', gm01.titulo === 'NIVEL', gm01.titulo);
   chk('GM-01 · la fila de logros cuenta X DE 25, no una cadena fija',
     /^LOGROS · \d+ DE 25 ›$/.test(gm01.logros), gm01.logros);
   chk('GM-01 · la tab bar tapada queda inerte', gm01.navInerte === true);

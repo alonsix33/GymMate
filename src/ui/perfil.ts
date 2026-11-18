@@ -460,6 +460,12 @@ export function renderPerfil(contenedor: HTMLElement): void {
   contenedor.innerHTML = `
     <div class="f-perfil f-root">
       <span class="f-perfil__titulo">PERFIL</span>
+      <div class="f-perfil__puente" role="group" aria-label="Otras secciones">
+        <button type="button" class="f-btn f-btn--secundario f-btn--medida" data-perfil="records">Récords</button>
+        <button type="button" class="f-btn f-btn--secundario f-btn--medida" data-perfil="graficos">Gráficos</button>
+        <button type="button" class="f-btn f-btn--secundario f-btn--medida" data-perfil="calculadoras">Calculadoras</button>
+      </div>
+      <span class="f-perfil__grupo">CUENTA</span>
       <div class="f-perfil__rejilla">
         ${campos
           .map(
@@ -496,6 +502,7 @@ export function renderPerfil(contenedor: HTMLElement): void {
       </div>
       <button type="button" class="f-btn f-btn--primario f-btn--bloque" data-perfil="guardar">Guardar perfil</button>
       ${tarjetaDeMedidas()}
+      <span class="f-perfil__grupo">DATOS Y COPIA</span>
       <section class="f-card-perfil">
         <span class="f-card-perfil__titulo">Copia de seguridad</span>
         <span class="f-card-perfil__cuerpo">El CSV se lleva todo: historial, cardio, perfil, medidas, récords, rutinas, ejercicios propios, tu progresión y la conversación del coach.</span>
@@ -505,6 +512,7 @@ export function renderPerfil(contenedor: HTMLElement): void {
         </div>
       </section>
       ${tarjetaDeServidor()}
+      <span class="f-perfil__grupo">AVANZADO</span>
       <section class="f-card-perfil" aria-label="Versión de la app">
         <span class="f-card-perfil__titulo">Versión de la app</span>
         <span class="f-card-perfil__cuerpo">GymMate ${escapar(__APP_VERSION__)}. La app busca sola una versión nueva al abrirla.</span>
@@ -512,11 +520,6 @@ export function renderPerfil(contenedor: HTMLElement): void {
           <button type="button" class="f-btn f-btn--secundario f-btn--medida" data-perfil="actualizar">Buscar actualización</button>
         </div>
       </section>
-      <div class="f-perfil__puente" role="group" aria-label="Otras secciones">
-        <button type="button" class="f-btn f-btn--secundario f-btn--medida" data-perfil="records">Récords</button>
-        <button type="button" class="f-btn f-btn--secundario f-btn--medida" data-perfil="graficos">Gráficos</button>
-        <button type="button" class="f-btn f-btn--secundario f-btn--medida" data-perfil="calculadoras">Calculadoras</button>
-      </div>
     </div>
   `;
   enganchar(contenedor, (el) => alTocarPerfil(el, contenedor));

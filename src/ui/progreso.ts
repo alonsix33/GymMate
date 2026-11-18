@@ -140,7 +140,7 @@ function vistaProgreso(): string {
 
   return `
     <div class="f-prog__cabecera">
-      <span class="f-prog__titulo">PROGRESO</span>
+      <span class="f-prog__titulo">NIVEL</span>
       <button type="button" class="f-prog__cerrar" data-prog="cerrar" aria-label="Cerrar">✕</button>
     </div>
 
@@ -474,7 +474,7 @@ function contenedor(): HTMLElement {
     el.id = ID_OVERLAY;
     el.className = 'f-prog f-root hidden';
     el.setAttribute('role', 'region');
-    el.setAttribute('aria-label', 'Progreso');
+    el.setAttribute('aria-label', 'Nivel y logros');
     document.body.appendChild(el);
     el.addEventListener('click', (e) => {
       const objetivo = (e.target as HTMLElement)?.closest<HTMLElement>('[data-prog]');

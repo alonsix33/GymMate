@@ -62,6 +62,11 @@ export interface TurnoCoach {
   fecha: string;
   /** El componente de datos que acompaña al turno del coach, si lo hay. */
   dato?: DatoDeEjercicio;
+  /** Gráfico que dibuja la app (no el modelo): solo el ejercicio; los puntos
+   *  se recalculan al pintar, así que nunca quedan viejos ni inventados. */
+  grafico?: { ejercicio: string };
+  /** Botones para elegir de qué ejercicio dibujar el gráfico. */
+  opciones?: string[];
   /** Un turno que no se pudo enviar y espera red. */
   pendiente?: boolean;
   error?: boolean;

@@ -132,6 +132,12 @@ Con lo que dice el usuario:
   un peso concreto). La app le enseña qué cambiaría y espera su confirmación.
   Mientras no confirme, el registro manda; cuando confirme, ya verás el dato
   corregido.
+- Gráficos: si un gráfico contesta mejor que el texto, cierra el mensaje con
+  esta marca en su propia línea y la app lo dibuja con los datos reales:
+  [[grafico|tipo]] o [[grafico|tipo|Ejercicio]]. Tipos: peso y 1rm (con
+  ejercicio), semanas, volumen_semanal, sin_tocar, reparto, hoy_vs_ultima. El
+  ejercicio es uno que ESTÉ en el PANORAMA, escrito igual. No describas los
+  puntos del gráfico ni escribas sus cifras: ya se ven.
 - Formato: puedes usar **negrita** y listas con "- ". Nada más.
 
 Las dos cifras de 1RM:
@@ -370,6 +376,10 @@ export function armarMensajes(cuerpo) {
   return [{ role: 'system', content: SISTEMA }, ...mensajes];
 }
 
+/** Cuanto se espera al modelo, tanto para que empiece a contestar como entre
+ *  trozos del stream. Un modelo mudo no puede dejar la peticion colgada. */
+const TIMEOUT_MODELO_MS = Number(process.env.COACH_TIMEOUT_MS) || 45000;
+
 export async function responderCoach(req, res, cuerpo) {
   const clave = claveDelModelo();
   if (!clave) {
@@ -387,9 +397,21 @@ export async function responderCoach(req, res, cuerpo) {
 
   const mensajes = armarMensajes(cuerpo);
 
+  // Se cancela al llegar al limite o si el telefono corta: no se sigue pagando
+  // una respuesta que nadie va a leer.
+  const cancelar = new AbortController();
+  let vencido = false;
+  let reloj = setTimeout(() => { vencido = true; cancelar.abort(); }, TIMEOUT_MODELO_MS);
+  const rearmar = () => {
+    clearTimeout(reloj);
+    reloj = setTimeout(() => { vencido = true; cancelar.abort(); }, TIMEOUT_MODELO_MS);
+  };
+  res.on('close', () => { clearTimeout(reloj); cancelar.abort(); });
+
   let upstream;
   try {
     upstream = await fetch(UPSTREAM, {
+      signal: cancelar.signal,
       method: 'POST',
       headers: {
         'content-type': 'application/json',
@@ -411,8 +433,10 @@ export async function responderCoach(req, res, cuerpo) {
       }),
     });
   } catch (e) {
-    res.writeHead(502, { 'Content-Type': 'application/json' });
-    return res.end(JSON.stringify({ error: 'no se pudo hablar con el modelo: ' + e.message }));
+    clearTimeout(reloj);
+    if (res.headersSent || res.writableEnded) return;
+    res.writeHead(vencido ? 504 : 502, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify({ error: vencido ? 'el modelo no contestó a tiempo' : 'no se pudo hablar con el modelo: ' + e.message }));
   }
 
   if (!upstream.ok || !upstream.body) {
@@ -435,6 +459,7 @@ export async function responderCoach(req, res, cuerpo) {
   try {
     for (;;) {
       const { done, value } = await lector.read();
+      rearmar();
       if (done) break;
       resto += dec.decode(value, { stream: true });
       const lineas = resto.split('\n');
@@ -461,5 +486,6 @@ export async function responderCoach(req, res, cuerpo) {
     // Se corta el stream: la app lo trata como error de red y guarda la
     // pregunta en su cola, que es exactamente CO-03.
   }
+  clearTimeout(reloj);
   res.end();
 }

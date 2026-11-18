@@ -630,3 +630,42 @@ export function dibujarGrafico(g: GraficoDelTurno, historial: HistorySession[], 
     }
   }
 }
+
+// ==========================================
+// MARCA DEL MODELO: [[grafico|tipo|ejercicio]]
+// ==========================================
+
+/** Plan B de "el modelo llama herramientas": sin llamadas con esquema, el modelo
+ *  cierra con una marca y la APP la valida contra una lista cerrada (tipos +
+ *  ejercicios que de verdad estan en el historial) y dibuja con los datos
+ *  reales. El modelo nunca manda cifras ni puntos. */
+const TIPOS_SIN_EJERCICIO: TipoDeGrafico[] = ['semanas', 'volumen_semanal', 'sin_tocar', 'reparto', 'hoy_vs_ultima'];
+
+export function quitarMarcaDeGrafico(texto: string): string {
+  return texto
+    .replace(/\[\[grafico\|[^\]]*\]\]/g, '')
+    .replace(/\[\[grafico[^\]]*$/, '')
+    .replace(/\[\[g?r?a?f?i?c?o?$/, '')
+    .trimEnd();
+}
+
+export function parsearMarcaDeGrafico(
+  texto: string,
+  historial: HistorySession[]
+): { limpio: string; grafico: GraficoDelTurno | null } {
+  const limpio = quitarMarcaDeGrafico(texto);
+  const m = texto.match(/\[\[grafico\|([a-z0-9_]+)(?:\|([^\]|]*))?\]\]/);
+  if (!m) return { limpio, grafico: null };
+  const tipo = m[1] as TipoDeGrafico;
+  if ((TIPOS_SIN_EJERCICIO as string[]).includes(tipo)) return { limpio, grafico: { tipo } };
+  if (tipo !== 'peso' && tipo !== '1rm') return { limpio, grafico: null };
+  const pedido = (m[2] ?? '').trim();
+  if (!pedido) return { limpio, grafico: null };
+  const existentes = new Set<string>();
+  for (const s of historial) {
+    if (s.type === 'cardio') continue;
+    for (const e of s.ejercicios ?? []) if (e.volumen > 0 && !e.excluido && e.nombre) existentes.add(e.nombre);
+  }
+  const nombre = [...existentes].find((n) => n.toLowerCase() === pedido.toLowerCase());
+  return { limpio, grafico: nombre ? { tipo, ejercicio: nombre } : null };
+}

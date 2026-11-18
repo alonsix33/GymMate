@@ -1,99 +1,67 @@
-# Plan de mejora de GymMate
+# Plan de mejora de GymMate · estado real
 
-Salió de cuatro revisiones en paralelo (bugs y código, UX con el historial real, service worker, coach de IA) y de lo que ya se arregló en el PR #75. Cada punto dice **de dónde sale** y si **lo verifiqué yo en el código** (✔) o es un hallazgo de un revisor que falta comprobar (◻).
+Última actualización: 18-nov-2026. Todo lo marcado ✔ está mergeado en `main` (PR #75 a #84) y pasó las puertas (`npm run verificar`) y el CI de GitHub. Lo marcado ◻ no se pudo comprobar aquí y dice por qué.
 
-Esfuerzo: **S** = horas · **M** = un día o dos · **L** = una semana.
+## Hecho
 
-## 0. Dónde estamos
+### Fase 0 · que lo nuevo llegue a tu teléfono
+| | |
+|---|---|
+| ✔ Actualización automática de la PWA | Busca al abrir, al volver a primer plano y cada 30 min; recarga solo si no hay entrenamiento en curso. Versión visible en Perfil. |
+| ✔ CI en cada PR | `rapido` (tipos, tests con Postgres real, build, servidor) y `navegador` (runtime, fidelidad, comportamiento). |
 
-- **Hecho en el PR #75** (aún sin mergear ni desplegar): fechas en Lima, sesiones fusionadas por día, cálculos en código en vez de en el modelo, récords falsos fuera del pico, botón "Marcar como no hecho" y "Corregir récord" con confirmación, markdown en el chat, prompt reescrito, y una rutina nueva ya no pisa la anterior.
-- **Tu teléfono sigue en la versión vieja.** La captura del 17-nov lo prueba (asteriscos sin renderizar). Nada de lo hecho llega hasta que se mergee, se redespliegue el servidor y el service worker se actualice.
+### Fase 1 · datos que no se pierden
+| | |
+|---|---|
+| ✔ 1.1 Guardado honesto | Con la cuota llena ya no dice "guardado": el borrador se conserva y se avisa. |
+| ✔ 1.2 Datos dañados | Se copian a `<clave>__corrupto_<ts>` antes de descartarse; restaurar valida y es todo o nada. |
+| ✔ 1.3 Sin recorte silencioso | Se quitó el tope de 200 sesiones; aviso desde 800. |
+| ✔ 1.4 Copia del servidor | 10 versiones, rechazo (409) de una copia con menos de la mitad de sesiones, escritura atómica. |
+| ✔ 1.5 Récords | Se fijan al guardar, no al teclear; el normalizador elige el mejor. |
+| ✔ 1.6 "No hecho" | Un solo criterio (`seriesValidas`) en todos los cálculos. |
+| ✔ 1.7 RPE de sesión | Llega al historial aunque ya estuviera guardada. |
+| ✔ 1.8 CSV | Ida y vuelta sin pérdidas (92 sesiones / 280 ejercicios de tu CSV real), fórmulas neutralizadas, columnas añadidas al final. |
+| ✔ 1.9 Valores raros | Regla de la mediana además del 3×: detecta los dos de tríceps en polea sin falsos positivos. **Tú confirmaste que fueron un error**: el coach te lo propone con botón; nada se reescribe solo. |
 
-## Fase 0 · Que lo nuevo llegue a tu teléfono (S)
+### Fase 2 · coach
+| | |
+|---|---|
+| ✔ 2.1 Avisos de la app | Las tarjetas de Home viajan como `AVISOS DE LA APP` con sus cifras y se rotulan "AVISO DE LA APP". |
+| ✔ 2.2 REVISIÓN DE HOY | Hoy contra la vez anterior de cada ejercicio, comparado por código. |
+| ✔ 2.3 Hilo, saludo y atajos | Solo viaja el hilo de hoy (≤6 turnos); "Hola" se contesta sin modelo; tres atajos. |
+| ✔ 2.4 Prompt | Voz en positivo, "pico" vs "ahora" definidos. |
+| ✔ 2.5 Evaluación | `server/eval-coach.mjs`: 18 diálogos con reglas comprobables. |
+| ✔ 5.1 Gráficos pedidos por el modelo (plan B) | Marca `[[grafico|…]]` que la app valida y dibuja. |
 
-1. Mergear el PR #75 y redesplegar el servidor (el prompt vive en `server/coach.mjs`).
-2. **Actualización automática de la PWA** (informe de PWA; diagnóstico reproducido en Chromium):
-   - Causa: `skipWaiting` activa el service worker nuevo, pero la ventana abierta sigue con el JS viejo y nadie la recarga. En iOS la app casi nunca se cierra del todo y no se llama a `update()` en ningún sitio. ✔ (no hay `visibilitychange` ni `update()` en `src/`).
-   - Solución recomendada: **buscar actualización al abrir, al volver a primer plano y cada 30 min; recargar solo si no hay un entrenamiento en curso; si lo hay, un aviso "Versión nueva · ACTUALIZAR"**. Más una línea "Versión X · Buscar actualización" en Perfil.
-   - Se prefiere esto a "recargar siempre" porque una recarga a media serie pierde lo tecleado.
-   - Los pasos de una sola vez en tu iPhone (sin borrar datos) están en el informe: cerrar la app del todo, abrir 15 s con red, cerrar y abrir otra vez.
+### Fases 3, 4, 7
+| | |
+|---|---|
+| ✔ 3.1 Táctil y contraste | Áreas de 44 px (± de la sesión: 40×48), contraste del texto apagado 4,7:1. |
+| ✔ 3.2 Un solo RPE | Si diste el de tus ejercicios, la sesión lleva el promedio. |
+| ✔ 3.3 Descanso | Automático al marcar ✓, por reloj de pared, Wake Lock, y **visible** (una regla antigua lo ocultaba). |
+| ✔ 3.4 Decimales y foco | 57.5 se ve como 57.5; el foco ya no se pierde al pasar de campo. |
+| ✔ 4.1 HOME | Tarjeta EMPEZAR sobre el pliegue y "+" que empieza a entrenar. |
+| ✔ 4.2 Navegación | Récords/Gráficos/Calculadoras arriba en Perfil, grupos, pestaña NIVEL. |
+| ✔ 4.3 Builder | Buscador y tus ejercicios usados primero. |
+| ✔ 7.2 Seguridad | CSP, intentos de token, `/api/salud` mínimo, límite al modelo, zoom permitido. |
+| ✔ 7.3 Deuda | Versión única, registro de errores, un solo lector de `localStorage`. |
 
-## Fase 1 · Datos que no se pueden perder (M)
+## Lo que NO se hizo, y por qué
+- **Series individuales (10-9-8)**: fuera de este plan por decisión tuya; versión siguiente. Cambia el formato de datos.
+- **Probar el coach con el modelo real** (`node server/eval-coach.mjs --modelo` y que sepa usar `[[grafico|…]]`): no hay clave de API en este entorno. Las respuestas del modelo real **no se evaluaron**; solo los comprobadores y la petición que se le arma.
+- **`window.*` (~40 globales)** y **memoizar `getHistory`**: riesgo mayor que el valor (el HTML y las puertas dependen de los globales; los llamadores mutan el arreglo que devuelve).
+- **Los dos botones "Guardar entrenamiento" / "Terminar sesión"** siguen: vienen del mockup W-01 y la puerta de fidelidad los fija. Con el autoguardado el primero es redundante; quitarlo es decisión de diseño.
+- **± de la sesión a 44 px**: quedan en 40×48; 44 obligaría a bajar el KG a otra fila.
 
-Orden por gravedad. Todo con test que falle antes y pase después.
+## Solo se puede comprobar en un iPhone real
+Nada de esto se probó en un iPhone; todo se probó en Chromium y jsdom.
+1. Que la PWA instalada toma la versión nueva sin borrar datos (cerrar del todo, abrir 15 s con red, cerrar y abrir).
+2. Wake Lock durante el descanso y que el descanso sigue bien tras bloquear la pantalla.
+3. Que el teclado no hace zoom al enfocar campos (ahora 16 px) y que la lupa de pellizco funciona.
+4. Permiso de notificaciones al empezar el primer descanso.
+5. Vibración y sonido al terminar el descanso (iOS los limita).
+6. Safe areas (notch y barra inferior) con la hoja del "+" y la barra de descanso fija.
+7. Que Netlify sirve la CSP sin romper nada (se verificó contra el servidor propio, no contra Netlify).
 
-| # | Qué | Origen | Verificado |
-|---|---|---|---|
-| 1.1 | Guardar el borrador al ocultar la app (`pagehide` / `visibilitychange`). Hoy hay 15 s de espera y iOS suspende al bloquear la pantalla: se pierden series. | bugs | ✔ |
-| 1.2 | Cargar una rutina con un borrador sin terminar no avisa y el primer autoguardado lo pisa (un solo slot). | bugs | ◻ |
-| 1.3 | `setItem` traga el error de cuota: el toast dice "guardado" aunque no se escribió nada. | bugs | ◻ |
-| 1.4 | JSON corrupto se sobrescribe en el siguiente guardado. Copiar el crudo a `<clave>__corrupto` antes de descartarlo y validar el tipo al restaurar. | bugs | ◻ |
-| 1.5 | El historial se recorta en silencio a 200 sesiones (≈10 meses). | bugs | ✔ |
-| 1.6 | Copia del servidor de un solo slot que se sobrescribe sin comparar: un teléfono vacío que suba destruye la copia buena. Guardar las últimas N versiones y rechazar una subida con mucho menos contenido. | bugs | ◻ |
-| 1.7 | `checkAndUpdatePR` fija el récord al teclear, aunque no se guarde. Un primer "450" por error queda de PR. | bugs | ◻ |
-| 1.8 | El normalizador de PRs compara `.weight` y el campo real es `.peso`: si dos nombres colapsan, gana el primero, no el mejor. | bugs | ✔ |
-| 1.9 | "Marcar como no hecho" solo lo respetan el coach y las zonas; calculadoras, gráficos, historial y XP siguen contando esa serie. Un helper único `seriesValidas`. | bugs | ◻ |
-| 1.10 | El RPE de sesión no llega al historial si guardas antes de terminar. | bugs | ◻ |
-| 1.11 | Importar CSV parte por línea, pero el exportador mete mensajes del coach con saltos de línea: la conversación se trunca al ir y volver. Parser CSV completo. | bugs | ✔ (lo vi en tu CSV) |
-
-## Fase 2 · Coach: que no te ignore ni te grite (M)
-
-Causas raíz, con las capturas delante (informe del coach):
-
-- **La tarjeta "Tu volumen subió 13%" no está en lo que ve el modelo**, pero se guarda como si el coach la hubiera dicho. Por eso responde "no lo voy a repetir como si fuera mío". Solución: sección `AVISOS DE LA APP` con la tarjeta y los kg de origen, y guardarla como aviso, no como turno del coach.
-- **"Dice que no está y en el mismo mensaje que sí"**: el modelo compara la fecha de hoy con la de la bitácora, que es aritmética. Solución: un bloque `REVISIÓN DE HOY` ya calculado, ejercicio por ejercicio contra la sesión anterior.
-- **Tono**: el prompt actual lista frases prohibidas ("es un techo", "dale un día fijo") y eso hace más probable que las copie. Pasar a describir en positivo cómo habla: compañero que conoce tus números, aliento concreto con el dato, "propone, no ordena", un retraso es un dato y no una culpa, corto. Hay un prompt completo propuesto en el informe.
-- **Historial de 12 turnos**: arrastra el tono duro de días anteriores. Mandar solo los 4–6 turnos del día y un resumen determinista de lo anterior. Botón "Olvidar lo anterior" en lugar del ✕ que borra todo.
-- **Atajos y saludo**: chips "¿Qué toca hoy?", "Revisar mi sesión", "¿Cómo voy esta semana?"; un "Hola" se contesta con un saludo corto, sin auditoría.
-- **Cómo medirlo**: 18 diálogos de prueba (los fallos reales incluidos) con reglas comprobables (sin fechas ISO, números solo del contexto, longitud, frases vetadas) y un script para correrlos con el modelo real cuando haya clave.
-
-## Fase 3 · Registrar una serie rápido (S–M)
-
-Es lo que más haces y hoy cuesta unos 8 gestos por ejercicio (informe de UX, medido en navegador).
-
-1. **Precargar la última vez** (sets/reps/kg). Solo el 31 % de tus ejercicios repite exacto, pero con valores precargados repetir cuesta 1 toque y cambiar cuesta 1–2. ✔ (la plantilla carga todo en 0).
-2. **Paso del kg a 2.5** (tus saltos reales: +5, +10, +2.5…) con pulsación larga. ✔ (`PASO_STEPPER.peso = 1`).
-3. **Botones de al menos 44 px** (hoy: stepper 32×48, check 34, "volver" 17×24) y subir el contraste del texto deshabilitado (3.0–3.2:1).
-4. **Un solo botón de cierre y un solo RPE** (hoy hay "Guardar" y "Terminar", y dos escalas de RPE).
-5. **Descanso automático** al marcar el check; el temporizador usa reloj de pared (hoy se congela con la pantalla bloqueada).
-6. Mostrar 57.5 kg como 57.5 (hoy sale 58) y arreglar el foco perdido al pasar de campo.
-
-## Fase 4 · HOME y navegación (M)
-
-- **HOME**: tarjeta grande **EMPEZAR** (o **CONTINUAR · 3/7** si hay borrador) con la rutina que toca, sobre el pliegue. Tus rutinas hoy quedan bajo el pliegue en 390×844. La rotación es la que calcula el coach (Piernas → Espalda+Bíceps → Upper Push). Heatmap y nivel plegados abajo.
-- **El "+" central** abre solo "Nueva rutina"; que inicie el entrenamiento.
-- **Récords y Gráficos** están al fondo de Perfil; subirlos. **"PROGRESO" es un modal de nivel y logros**, no de cargas: renombrar.
-- **Perfil** ordenado en Cuenta / Datos y copia / Avanzado; fecha de nacimiento en formato local.
-- Builder: buscador y tus ejercicios usados primero (hoy 92 filas sin buscar).
-
-## Fase 5 · Coach con herramientas y respuestas visuales (L)
-
-Lo que pides: que el coach muestre gráficos y datos en vez de texto plano, y que sepa llamarlos siempre igual.
-
-- Hoy hay **una sola herramienta**, el marcador `[[excluir|…]]` en texto libre, y el gráfico solo aparece si escribes el nombre exacto del ejercicio.
-- Pasar a **llamadas de herramientas** con esquema: `mostrar_ejercicio`, `mostrar_grafico(ejercicio, métrica, rango)`, `mostrar_sesion(fecha)`, `comparar_semanas`, `proponer_rutina`, `marcar_no_hecho`. El ejercicio es una lista cerrada armada con tus datos; la app **valida y dibuja con tus cifras reales**, nunca las que mande el modelo.
-- El servidor deja de mandar texto plano y pasa a eventos (texto / herramienta / fin).
-- ◻ Falta comprobar que la API de DeepSeek acepta `tools` con streaming; sin clave no lo pude probar. Plan B: bloques estructurados con el mismo validador.
-
-## Fase 6 · Modelo de datos por series reales (L)
-
-Hoy se guarda un único "4×10 @ 55" por ejercicio. No permite 10-9-8 reps ni bajar de peso, y el detalle de sesión **dibuja 4 barras inventadas** que parecen reales. Pasar a series individuales con "4×10 uniforme" como atajo, y ampliar el CSV (RPE, hora, ids).
-
-## Fase 7 · Calidad (M)
-
-- CI en GitHub: hoy Netlify solo corre `tsc && vite build`; un test o una puerta en rojo no frena un despliegue.
-- Tests de `storage`, importar/exportar CSV y `workout` (hoy solo los toca Playwright a mano).
-- CSP y límite de intentos del token; `/api/salud` público expone demasiado; quitar `user-scalable=no`.
-- Deuda: 40 `window.*`, 4 copias de `getItem/setItem`, versiones incoherentes (3.1.0, 3.2.0, "v4.0").
-
-## Decisiones que necesito de ti
-
-1. ¿Empiezo por **Fase 0 + 1** (que llegue a tu teléfono y proteger tus datos)? Es lo que recomiendo.
-2. **Registro por series reales (Fase 6)** cambia el formato de tus datos. ¿Lo quieres, o basta con precargar y el paso de 2.5?
-3. **Herramientas del coach (Fase 5)**: necesito una clave del modelo en este entorno para probarlas de verdad.
-
-## Lo que no se verificó
-
-- Nada de esto se probó en un iPhone real; el service worker se reprodujo en Chromium.
-- Del uso de cardio, medidas y calculadoras solo sé que **no aparecen** en tu CSV; no hay telemetría en la app.
-- Ninguna respuesta del coach se probó con el modelo real.
+## Cómo se verifica
+`npm run verificar` = tokens, tipos, tests (con `TZ=America/Lima`), build, runtime, fidelidad al mockup, comportamiento (352 chequeos), servidor (82) y mutantes (32/32). En CI corre lo mismo menos el navegador local. Para correrlo aquí hace falta `FIERRO_CHROME` apuntando a un Chromium.

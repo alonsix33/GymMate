@@ -499,8 +499,91 @@ const cab = (r, n) => r.headers.get(n);
   }
 }
 
+// ==========================================================================
+// E. Seguridad: salud minima, cabeceras, intentos de token y un modelo mudo
+// ==========================================================================
+{
+  const s = await levantar(4736);
+  const auth = { Authorization: `Bearer ${TOKEN}` };
+  try {
+    // --- /api/salud: lo justo para un desconocido, el detalle solo con token
+    const anonima = await (await fetch(`${s.base}/api/salud`)).json();
+    chk('salud · sin token solo dice ok, coach y protegido',
+      anonima.ok === true && 'coach' in anonima && 'protegido' in anonima, JSON.stringify(Object.keys(anonima)));
+    chk('salud · sin token NO cuenta donde ni como guarda (almacenamiento, persistente, avisos)',
+      !('almacenamiento' in anonima) && !('persistente' in anonima) && !('avisos' in anonima), JSON.stringify(anonima));
+    const completa = await (await fetch(`${s.base}/api/salud`, { headers: auth })).json();
+    chk('salud · con token si trae el detalle',
+      typeof completa.almacenamiento === 'string' && Array.isArray(completa.avisos), JSON.stringify(Object.keys(completa)));
+
+    // --- cabeceras de seguridad, en la pagina y en la API
+    const pagina = await fetch(`${s.base}/`);
+    const csp = cab(pagina, 'content-security-policy') ?? '';
+    chk('cabeceras · la pagina lleva CSP con default-src y frame-ancestors',
+      /default-src 'self'/.test(csp) && /frame-ancestors 'none'/.test(csp), csp.slice(0, 120));
+    chk('cabeceras · la CSP no permite scripts inline ni eval', !/script-src[^;]*('unsafe-inline'|'unsafe-eval')/.test(csp), csp);
+    chk('cabeceras · nosniff y referrer-policy en la pagina',
+      cab(pagina, 'x-content-type-options') === 'nosniff' && /no-referrer|same-origin|strict-origin/.test(cab(pagina, 'referrer-policy') ?? ''),
+      `${cab(pagina, 'x-content-type-options')} | ${cab(pagina, 'referrer-policy')}`);
+    chk('cabeceras · no se puede enmarcar (X-Frame-Options)', cab(pagina, 'x-frame-options') === 'DENY', String(cab(pagina, 'x-frame-options')));
+    const api = await fetch(`${s.base}/api/datos`, { headers: auth });
+    chk('cabeceras · la API tambien lleva nosniff', cab(api, 'x-content-type-options') === 'nosniff', String(cab(api, 'x-content-type-options')));
+  } finally {
+    await s.cerrar();
+  }
+}
+
+{
+  // --- intentos de token: a partir del decimo fallo, 429
+  const s = await levantar(4737);
+  try {
+    const intento = (t) => fetch(`${s.base}/api/datos`, { headers: { Authorization: `Bearer ${t}` } });
+    let ultimo = 0;
+    for (let i = 0; i < 10; i++) ultimo = (await intento('mal-' + i)).status;
+    chk('token · los primeros fallos son 401', ultimo === 401, `codigo ${ultimo}`);
+    const bloqueado = await intento('mal-otra-vez');
+    chk('token · tras 10 fallos, 429', bloqueado.status === 429, `codigo ${bloqueado.status}`);
+    chk('token · con Retry-After', Number(cab(bloqueado, 'retry-after')) > 0, String(cab(bloqueado, 'retry-after')));
+    const buena = await intento(TOKEN);
+    chk('token · ni el bueno entra mientras dura el bloqueo (si no, el bloqueo no frena nada)', buena.status === 429, `codigo ${buena.status}`);
+    const salud = await fetch(`${s.base}/api/salud`);
+    chk('token · /api/salud sigue respondiendo (no cuenta como intento)', salud.status === 200, `codigo ${salud.status}`);
+  } finally {
+    await s.cerrar();
+  }
+}
+
+{
+  // --- un modelo que no contesta no deja la peticion colgada para siempre
+  const mudo = createServer(() => {
+    // Acepta la conexion y no responde nunca.
+  });
+  await new Promise((ok) => mudo.listen(4738, '127.0.0.1', ok));
+  const s = await levantar(4739, {
+    COACH_API_KEY: 'clave-de-mentira',
+    COACH_URL: 'http://127.0.0.1:4738/v1/x',
+    COACH_TIMEOUT_MS: '600',
+  });
+  try {
+    const t0 = Date.now();
+    const r = await fetch(`${s.base}/api/coach`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${TOKEN}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pregunta: 'hola', contexto: null }),
+      signal: AbortSignal.timeout(8000),
+    }).catch((e) => ({ status: 0, error: String(e) }));
+    const ms = Date.now() - t0;
+    chk('modelo mudo · responde un error en vez de colgarse', r.status === 504 || r.status === 502, `codigo ${r.status} ${r.error ?? ''}`);
+    chk('modelo mudo · y lo hace dentro del limite configurado', ms < 4000, `${ms} ms`);
+  } finally {
+    await s.cerrar();
+    mudo.closeAllConnections?.();
+    await new Promise((ok) => mudo.close(ok));
+  }
+}
+
 console.log(`\n${ejecutados} chequeos de servidor ejecutados`);
-const CHEQUEOS_MINIMO = 62;
+const CHEQUEOS_MINIMO = 79;
 if (ejecutados < CHEQUEOS_MINIMO) {
   fallos++;
   console.log(

@@ -5487,3 +5487,12 @@ body:has(#medidasTab:not(.hidden)) {
 
 .f-builder__sin-resultados { display: block; padding: 16px 4px; font-size: var(--fs-13); color: var(--text-secondary); }
 .f-builder__grupo[hidden], .f-fila-ej[hidden] { display: none; }
+
+/* Los campos de texto miden 16 px como minimo: iOS hace zoom al enfocar un campo
+   de menos de 16 px, y eso solo se evitaba prohibiendo el zoom de la pagina
+   (user-scalable=no), que le quita la lupa a quien la necesita. */
+.f-campo__caja,
+.f-coach__entrada,
+.f-campo__caja--select {
+  font-size: var(--fs-16);
+}

@@ -3,8 +3,8 @@ import { VitePWA } from 'vite-plugin-pwa';
 import { resolve } from 'path';
 import { readFileSync } from 'fs';
 
-// Version for cache busting
-const APP_VERSION = '3.2.0';
+// Una sola version: la de package.json (antes 3.1.0 aqui y 3.2.0 alli).
+const APP_VERSION: string = JSON.parse(readFileSync(resolve(__dirname, 'package.json'), 'utf8')).version;
 
 // --------------------------------------------------------------------------
 // Tokens FIERRO -> HTML y manifest.

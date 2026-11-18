@@ -120,7 +120,8 @@ function cabeceras(): HeadersInit {
 /** Estado del servicio. Devuelve null si no responde: sin red no hay drama. */
 export async function estadoBackend(): Promise<EstadoBackend | null> {
   try {
-    const r = await fetch(endpoint('/api/salud'), { cache: 'no-store' });
+    // Con el token, el servidor cuenta tambien donde y como guarda; sin el, solo lo basico.
+    const r = await fetch(endpoint('/api/salud'), { cache: 'no-store', ...(hayBackend() ? { headers: cabeceras() } : {}) });
     return r.ok ? ((await r.json()) as EstadoBackend) : null;
   } catch {
     return null;

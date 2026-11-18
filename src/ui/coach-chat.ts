@@ -26,7 +26,7 @@ import { markdownBasico } from '@/utils/markdown';
 import { esSaludo, saludoDe, ATAJOS } from '@/features/coach-saludo';
 import { construirEstado } from '@/features/coach-estado';
 import { getHistory } from '@/utils/storage';
-import { detectarPedidoDeGrafico, dibujarGrafico, type GraficoDelTurno, type Opcion } from '@/features/coach-grafico';
+import { detectarPedidoDeGrafico, dibujarGrafico, parsearMarcaDeGrafico, quitarMarcaDeGrafico, type GraficoDelTurno, type Opcion } from '@/features/coach-grafico';
 import { buscarSeries, excluirSeries, parsearMarcaDeExclusion } from '@/features/exclusiones';
 import { confirmarDestructivo, mostrarToast } from '@/ui/feedback';
 
@@ -196,7 +196,7 @@ function render(): void {
       ? `<div class="f-coach__turno">
            <span class="f-coach__sello">COACH</span>
            <div class="f-coach__card">
-             <div class="f-coach__texto f-coach__md" id="coachParcial">${markdownBasico(parsearMarcaDeExclusion(parcial).limpio)}<span class="f-coach__cursor" aria-hidden="true"></span></div>
+             <div class="f-coach__texto f-coach__md" id="coachParcial">${markdownBasico(parsearMarcaDeExclusion(quitarMarcaDeGrafico(parcial)).limpio)}<span class="f-coach__cursor" aria-hidden="true"></span></div>
            </div>
          </div>`
       : '',
@@ -425,19 +425,23 @@ async function preguntar(pregunta: string): Promise<void> {
       const nodo = document.getElementById('coachParcial');
       if (nodo) {
         nodo.innerHTML =
-          markdownBasico(parsearMarcaDeExclusion(texto).limpio) +
+          markdownBasico(parsearMarcaDeExclusion(quitarMarcaDeGrafico(texto)).limpio) +
           '<span class="f-coach__cursor" aria-hidden="true"></span>';
       }
       await new Promise((r) => setTimeout(r, 18));
       if (mio !== turnoActivo) return;
     }
 
+    // Si el modelo cerro con [[grafico|...]], la APP valida la marca y dibuja
+    // con los datos de la bitacora; la marca no se queda en el texto.
+    const { limpio, grafico } = parsearMarcaDeGrafico(texto.trim(), getHistory());
     turnos.push({
       id: `c_${Date.now()}`,
       autor: 'coach',
-      texto: texto.trim(),
+      texto: limpio,
       fecha: new Date().toISOString(),
       dato,
+      ...(grafico ? { grafico } : {}),
     });
     guardarConversacion(turnos);
     estado = 'listo';

@@ -22,6 +22,7 @@
  * de Railway deja tu historial a la vista y tu clave del modelo al alcance de
  * cualquiera que quiera gastarla.
  */
+import { CSP } from './csp.mjs';
 import { createServer } from 'node:http';
 import { readFile, stat } from 'node:fs/promises';
 import { join, extname, normalize } from 'node:path';
@@ -76,6 +77,60 @@ const MIME = {
   '.woff2': 'font/woff2',
   '.txt': 'text/plain; charset=utf-8',
 };
+
+/**
+ * Cabeceras de seguridad, en TODA respuesta (pagina, estaticos y API).
+ *
+ * La CSP es de la PWA: scripts solo propios (no hay ninguno inline), estilos con
+ * 'unsafe-inline' porque la app pinta `style="..."` en su HTML, imagenes propias
+ * mas la base de fotos de ejercicios, y `connect-src https:` porque la URL del
+ * servidor la escribe el usuario en PERFIL (la PWA en Netlify habla con la API
+ * en Railway). Sin frames, sin objetos, sin <base>, formularios solo al propio
+ * origen. El texto vive en csp.mjs y un test lo compara con netlify.toml.
+ */
+function cabecerasDeSeguridad(res) {
+  res.setHeader('Content-Security-Policy', CSP);
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Referrer-Policy', 'no-referrer');
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=()');
+  res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
+}
+
+/**
+ * Intentos de token fallidos por IP. Sin esto, el token se podia probar a
+ * velocidad de red. A partir de MAX_FALLOS dentro de la ventana, todo `/api/*`
+ * (tambien con el token bueno: si no, el bloqueo no frenaria a nadie) responde
+ * 429 hasta que pase la ventana. En memoria: un reinicio lo borra, y para
+ * frenar un ataque de fuerza bruta basta.
+ */
+const MAX_FALLOS = Number(process.env.MAX_FALLOS_TOKEN) || 10;
+const VENTANA_MS = Number(process.env.VENTANA_FALLOS_MS) || 10 * 60 * 1000;
+const fallosPorIp = new Map();
+
+function ipDe(req) {
+  // Railway pone la IP real AL FINAL de X-Forwarded-For; lo anterior lo escribe
+  // el cliente y no vale.
+  const xff = String(req.headers['x-forwarded-for'] || '').split(',').map((x) => x.trim()).filter(Boolean);
+  return xff.length ? xff[xff.length - 1] : req.socket.remoteAddress || '?';
+}
+
+function segundosDeBloqueo(ip) {
+  const f = fallosPorIp.get(ip);
+  if (!f) return 0;
+  const restante = f.desde + VENTANA_MS - Date.now();
+  if (restante <= 0) {
+    fallosPorIp.delete(ip);
+    return 0;
+  }
+  return f.n >= MAX_FALLOS ? Math.ceil(restante / 1000) : 0;
+}
+
+function anotarFallo(ip) {
+  const f = fallosPorIp.get(ip);
+  if (!f || f.desde + VENTANA_MS <= Date.now()) fallosPorIp.set(ip, { n: 1, desde: Date.now() });
+  else f.n++;
+}
 
 const json = (res, codigo, cuerpo) => {
   res.writeHead(codigo, {
@@ -232,6 +287,7 @@ async function servirEstatico(req, res, ruta) {
 const servidor = createServer(async (req, res) => {
   const ruta = (req.url ?? '/').split('?')[0];
   const permitido = aplicarCors(req, res);
+  cabecerasDeSeguridad(res);
 
   if (esPreflight(req)) {
     if (!permitido) return json(res, 403, { error: 'origen no permitido' });
@@ -244,6 +300,13 @@ const servidor = createServer(async (req, res) => {
   }
 
   if (ruta === '/api/salud') {
+    // Publica: lo justo para que la app sepa si hay coach con modelo y si el
+    // servidor esta protegido. DONDE y COMO guarda (y los avisos de despliegue)
+    // solo se cuenta a quien trae el token; sin token configurado no hay nadie
+    // a quien ocultarselo y el aviso es lo unico que hay.
+    if (TOKEN && !autorizado(req)) {
+      return json(res, 200, { ok: true, coach: Boolean(claveDelModelo()), protegido: true });
+    }
     return json(res, 200, {
       ok: true,
       almacenamiento: modoAlmacen(),
@@ -277,7 +340,14 @@ const servidor = createServer(async (req, res) => {
   }
 
   if (ruta.startsWith('/api/')) {
+    const ip = ipDe(req);
+    const espera = segundosDeBloqueo(ip);
+    if (espera > 0) {
+      res.setHeader('Retry-After', String(espera));
+      return json(res, 429, { error: 'demasiados intentos con un token inválido; espera unos minutos' });
+    }
     if (!autorizado(req)) {
+      anotarFallo(ip);
       return json(res, 401, {
         error: TOKEN ? 'token inválido' : 'el servidor no tiene GYMMATE_TOKEN configurado',
       });

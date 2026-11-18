@@ -1,3 +1,4 @@
+import { instalarRegistroDeErrores } from '@/utils/errores';
 import './styles/fonts.css';
 import { registrarNavegacionDePerfil } from '@/ui/perfil';
 import './styles/tokens.css';
@@ -457,6 +458,9 @@ function init(): void {
 }
 
 // Inicializar cuando el DOM esté listo
+// Los errores sin capturar quedan registrados (se copian desde PERFIL).
+instalarRegistroDeErrores();
+
 const arrancar = (): void => {
   init();
   // Las lecturas del arranque ya pasaron: si alguna encontro un dato dañado, se avisa.

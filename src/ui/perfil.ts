@@ -16,6 +16,7 @@ import { getBodyMeasurements, getHistory, getProfile, saveProfile } from '@/util
 import type { BodyMeasurement, ProfileData } from '@/types';
 import { calculate1RM, calculateCalories, calculateProgressive } from '@/utils/calculations';
 import { cifra, escapar } from '@/utils/formato';
+import { erroresRecientes, textoDeErrores } from '@/utils/errores';
 import { esSerieValida } from '@/utils/series';
 import { abrirHoja } from '@/ui/session-screens';
 import { mostrarToast, confirmarDestructivo } from '@/ui/feedback';
@@ -518,6 +519,11 @@ export function renderPerfil(contenedor: HTMLElement): void {
         <span class="f-card-perfil__cuerpo">GymMate ${escapar(__APP_VERSION__)}. La app busca sola una versión nueva al abrirla.</span>
         <div class="f-card-perfil__acciones">
           <button type="button" class="f-btn f-btn--secundario f-btn--medida" data-perfil="actualizar">Buscar actualización</button>
+          ${
+            erroresRecientes().length > 0
+              ? `<button type="button" class="f-btn f-btn--medida f-btn--tenue" data-perfil="copiar-errores">Copiar errores (${erroresRecientes().length})</button>`
+              : ''
+          }
         </div>
       </section>
     </div>
@@ -1021,6 +1027,14 @@ function perfilDesdeLaPantalla(raiz: HTMLElement): ProfileData {
 function alTocarPerfil(el: HTMLElement, contenedor: HTMLElement): void {
   const accion = el.dataset.perfil;
   switch (accion) {
+    case 'copiar-errores': {
+      const texto = textoDeErrores();
+      void navigator.clipboard
+        ?.writeText(texto)
+        .then(() => mostrarToast({ tipo: 'exito', titulo: 'Errores copiados', detalle: 'Pégalos en un mensaje para mandarlos.' }))
+        .catch(() => mostrarToast({ tipo: 'aviso', titulo: 'No se pudo copiar', detalle: 'El navegador no dio permiso al portapapeles.' }));
+      break;
+    }
     case 'actualizar': {
       // Si hay version nueva, el worker toma el control y la app se recarga sola
       // (o avisa si hay un entrenamiento en curso). Si no, se dice.

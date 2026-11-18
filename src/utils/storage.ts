@@ -133,6 +133,11 @@ function setItem<T>(key: string, value: T): boolean {
   }
 }
 
+/** Lector con rescate y validacion de forma, para quien guarda su propia clave. */
+export const leerClave = getItem;
+/** Escritor que dice si de verdad escribio. */
+export const escribirClave = setItem;
+
 function removeItem(key: string): void {
   try {
     localStorage.removeItem(key);

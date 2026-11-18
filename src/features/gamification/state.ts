@@ -17,6 +17,7 @@ import {
   GAMIFICATION_SCHEMA_VERSION,
   MAX_XP_HISTORY,
 } from './constants';
+import { leerClave, escribirClave } from '@/utils/storage';
 import { calculateLevel, getLevelProgress, getLevelTitle } from './levels';
 import { createInitialMuscleRanks } from './muscle-ranks';
 import { initializeAchievements } from './achievements';
@@ -25,22 +26,9 @@ import { initializeAchievements } from './achievements';
 // LOCAL STORAGE HELPERS
 // ==========================================
 
-function getItem<T>(key: string, defaultValue: T): T {
-  try {
-    const item = localStorage.getItem(key);
-    return item ? JSON.parse(item) : defaultValue;
-  } catch {
-    return defaultValue;
-  }
-}
-
-function setItem<T>(key: string, value: T): void {
-  try {
-    localStorage.setItem(key, JSON.stringify(value));
-  } catch (error) {
-    console.error(`Error saving to localStorage: ${key}`, error);
-  }
-}
+// Mismo lector y escritor que el resto de la app (con rescate de datos dañados).
+const getItem = leerClave;
+const setItem = <T,>(key: string, value: T): void => { escribirClave(key, value); };
 
 // ==========================================
 // INITIAL STATE

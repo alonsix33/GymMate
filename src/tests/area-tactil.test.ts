@@ -32,3 +32,10 @@ describe('la barra de descanso de la sesion se ve', () => {
     expect(css).toMatch(/#fierroDescanso\s*\{\s*position:\s*sticky/);
   });
 });
+
+describe('el heatmap no ensancha la tarjeta', () => {
+  it('es una rejilla de 16 columnas minmax(0, 1fr), no flex con minimo por contenido', () => {
+    expect(css).toMatch(/\.f-heat\s*\{\s*display:\s*grid;\s*grid-template-columns:\s*repeat\(16,\s*minmax\(0,\s*1fr\)\)/);
+    expect(css).toMatch(/\.f-home__heatmap\s*\{[^}]*overflow:\s*hidden/);
+  });
+});

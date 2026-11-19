@@ -5496,3 +5496,17 @@ body:has(#medidasTab:not(.hidden)) {
 .f-campo__caja--select {
   font-size: var(--fs-16);
 }
+
+/* HEATMAP · las 16 columnas NUNCA pueden ensanchar la tarjeta.
+   Con `display:flex` y `flex:1`, el minimo de cada columna era su contenido y
+   Safari de iOS les daba ~26 px a cada una (las celdas son cuadradas por
+   `aspect-ratio`): 16 columnas se salian de la tarjeta por la derecha y
+   ensanchaban toda la pagina. Rejilla con `minmax(0, 1fr)`: el ancho lo manda
+   la tarjeta, no las celdas. */
+.f-heat {
+  display: grid;
+  grid-template-columns: repeat(16, minmax(0, 1fr));
+}
+.f-heat__semana { min-width: 0; }
+.f-heat__celda { width: 100%; min-width: 0; }
+.f-home__heatmap { min-width: 0; overflow: hidden; }
